@@ -294,11 +294,16 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .maplibregl-popup-content { max-height: 62vh; overflow-y: auto; }
 @media (max-width: 760px) {
   /* Le temps de désigner le terrain, le tiroir ne garde que sa consigne : la carte doit rester sous le doigt. */
-  body.vise #pile { max-height: 120px; }
   body.vise #w-parcelle .corps > :not(#form-parcelle):not(p:has(#viser-parcelle)) { display: none; }
   body.vise #form-parcelle { display: none; }
   .pc-boutons button { min-height: 40px; padding: 9px 13px; }
-  #pile { max-height: 56vh; }
+  #pile, #droite { overflow: visible !important; max-height: none !important; }
+  #pile .widget, #droite .widget { display: flex; flex-direction: column; max-height: 56vh; }
+  #droite .widget { max-height: 40vh; }
+  #pile .widget[hidden], #droite .widget[hidden] { display: none; }
+  #pile .widget > header, #droite .widget > header { flex: none; }
+  #pile .widget > .corps, #droite .widget > .corps { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }
+  body.vise #pile .widget { max-height: 120px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media print {
@@ -2717,6 +2722,8 @@ function basculer(id, forcer) {
     const nom = autre.id.slice(2);
     if (nom !== id && !EPINGLES.includes(nom)) basculer(nom, false);
   });
+  /* Sur téléphone, un seul panneau de gauche à la fois : deux panneaux empilés ne tiennent pas dans le tiroir. */
+  if (ouvrir && w.parentElement.id === 'pile' && window.matchMedia('(max-width: 760px)').matches) document.querySelectorAll('#pile .widget:not([hidden])').forEach(autre => { if (autre !== w) basculer(autre.id.slice(2), false); });
   w.hidden = !ouvrir;
   document.querySelectorAll('[data-w="' + id + '"]').forEach(b => b.setAttribute('aria-pressed', ouvrir));
   if (MODALES.includes(id)) {
@@ -4877,6 +4884,12 @@ function distPoly(pt, polys) {
   polys.forEach(p => p.forEach(r => { for (let i = 1; i < r.length; i++) { const k = distSegment(pt, r[i - 1], r[i]); if (k < d) d = k; } }));
   return d;
 }
+/* Distance au bord seul, que le point soit dedans ou dehors : elle distingue une haie qui suit la limite d'une haie qui coupe le terrain. */
+function distBord(pt, polys) {
+  let d = Infinity;
+  polys.forEach(p => p.forEach(r => { for (let i = 1; i < r.length; i++) { const k = distSegment(pt, r[i - 1], r[i]); if (k < d) d = k; } }));
+  return d;
+}
 function densifier(ligne, pas, max) {
   const pts = [];
   for (let i = 1; i < ligne.length; i++) {
@@ -4925,9 +4938,11 @@ function relation(geom, P) {
   }
   const lg = pcLignes(geom);
   if (lg.length) {
-    let d = Infinity, dedans = 0;
-    lg.forEach(l => densifier(l.map(plan.m), 1, 20000).forEach(p => { const k = distPoly(p, P.polys); if (k === 0) dedans++; if (k < d) d = k; }));
-    return { longueur: dedans, dist: d };
+    /* Un point par mètre de ligne. À moins de 2,5 m du bord, dedans ou dehors, la ligne suit la limite : le cadastre et le plan du PLU
+       ne se superposent pas mieux que cela. Plus loin à l'intérieur, elle coupe le terrain. */
+    let d = Infinity, dedans = 0, limite = 0;
+    lg.forEach(l => densifier(l.map(plan.m), 1, 20000).forEach(p => { const b = distBord(p, P.polys), k = dansPoly(p, P.polys) ? 0 : b; if (b <= 2.5) limite++; else if (k === 0) dedans++; if (k < d) d = k; }));
+    return { longueur: dedans, limite, dist: d };
   }
   let d = Infinity;
   pcPoints(geom).forEach(c => { const k = distPoly(plan.m(c), P.polys); if (k < d) d = k; });
@@ -4938,7 +4953,9 @@ function situer(r) {
   if (r.part >= 0.97) return ['sur', 'toute la parcelle'];
   if (r.part > 0.03) return ['sur', 'environ ' + Math.round(r.part * 100) + ' % de la parcelle'];
   if (r.part > 0) return ['bord', 'une frange de la parcelle'];
-  if (r.longueur >= 2) return ['sur', 'traverse la parcelle sur environ ' + nb(r.longueur) + ' m'];
+  if (r.longueur >= 3 && r.limite >= 3) return ['sur', 'suit la limite sur environ ' + nb(r.limite) + ' m et coupe le terrain sur environ ' + nb(r.longueur) + ' m'];
+  if (r.longueur >= 3) return ['sur', 'coupe le terrain sur environ ' + nb(r.longueur) + ' m'];
+  if (r.limite >= 2) return ['bord', 'suit la limite de la parcelle sur environ ' + nb(r.limite) + ' m'];
   if (r.point && r.dist === 0) return ['sur', 'sur la parcelle'];
   if (r.dist <= 3) return ['bord', 'en limite de parcelle (à moins de 3 m)'];
   return ['pres', 'à ' + metres(r.dist)];
@@ -5059,7 +5076,7 @@ async function bilanParcelle() {
     if (rang(v) === 2 && rang(l) < 2) { reunis.set(k, Object.assign({ n: 1, objets: [l.f] }, l)); return; }
     v.n++; v.objets.push(l.f);
     if (l.rel.part) v.rel = Object.assign({}, v.rel, { part: Math.min(1, (v.rel.part || 0) + l.rel.part) });
-    if (l.rel.longueur) v.rel = Object.assign({}, v.rel, { longueur: (v.rel.longueur || 0) + l.rel.longueur });
+    if (l.rel.longueur || l.rel.limite) v.rel = Object.assign({}, v.rel, { longueur: (v.rel.longueur || 0) + (l.rel.longueur || 0), limite: (v.rel.limite || 0) + (l.rel.limite || 0) });
     if (l.rel.dist < v.rel.dist) v.rel = Object.assign({}, v.rel, { dist: l.rel.dist });
     v.pos = situer(v.rel);
   });
