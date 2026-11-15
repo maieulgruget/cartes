@@ -925,6 +925,8 @@ const DONNEES = {
   /* Données bretonnes (GeoBretagne), relevées le 15/11/2026 sur Pléneuf-Val-André : couches et champs constatés. */
   ventes: { nom: 'Ventes de terrains à bâtir', origine: 'DGFiP, demandes de valeurs foncières géolocalisées (data.gouv.fr), copie du 15/11/2026', fige: true },
   infosplu: { nom: 'Informations portées au PLU', origine: 'Géoportail de l\'urbanisme', typeName: 'wfs_du:info_surf', plafond: 5000, surface: true },
+  reserve: { nom: 'Réserves naturelles nationales', origine: 'DREAL Bretagne, GeoBretagne', service: 'geobretagne', plafond: 200, surface: true, minuscules: true,
+    couches: [['dreal_b:RNN', 'Réserve naturelle nationale'], ['dreal_b:RNN_PP', 'Périmètre de protection']] },
   bande100: { nom: 'Bande des 100 m', origine: 'DREAL Bretagne, GeoBretagne', service: 'geobretagne', typeName: 'dreal_b:bande_100m_trait_cote', plafond: 500, surface: true, minuscules: true },
   humidesbzh: { nom: 'Zones humides du SAGE de la baie de Saint-Brieuc', origine: 'EPTB Baie de Saint-Brieuc, GeoBretagne', service: 'geobretagne', typeName: 'smbsb:izh_sage_bsb', plafond: 8000, surface: true, minuscules: true },
   bocage: { nom: 'Référentiel bocager de Bretagne', origine: 'IGN et Région Bretagne, GeoBretagne', service: 'geobretagne', typeName: 'ign:referentiel_bocager_regional', plafond: 20000, minuscules: true },
@@ -1270,6 +1272,10 @@ const QUESTIONS = [
     wms: { url: 'https://geobretagne.fr/geoserver/ddtm22/wms?', couche: 'L_ALEAS_SUBMERSION_MARINE_S_022', origine: 'DDTM des Côtes-d\'Armor, GeoBretagne' },
     note: 'Aléas de submersion marine des Côtes-d\'Armor, diffusés par la DDTM sur GeoBretagne. La carte est une image dessinée par le service : pas de chiffres ni de fiche. Ce n\'est pas le zonage d\'un plan de prévention.',
     classes: [] },
+  { id: 'reserve', discrete: true, groupe: 'Environnement', etendue: [-5.2, 47.2, -0.9, 48.95], titre: 'Où est la réserve naturelle ?', type: 'surface', superposees: true, vue: '2D', pitch: 0, fond: 'plangris', cle: 'reserve', champ: '_couche',
+    note: 'Réserve naturelle nationale et son périmètre de protection, tels que diffusés par la DREAL Bretagne. Dans la réserve, le décret de création fixe ce qui est permis.',
+    classes: [{ label: 'Réserve naturelle nationale', couleur: '#d1495b', test: egal('Réserve naturelle nationale') }, { label: 'Périmètre de protection', couleur: '#e2892f', test: egal('Périmètre de protection') }],
+    fiche: p => [['Protection', p._couche], ['Nom', p.nom_site], ['Création', p.date_crea ? String(p.date_crea).slice(0, 10) : null], ['Fiche', p.url_fiche]] },
   { id: 'humidesbzh', groupe: 'Environnement', etendue: [-3.67, 48.03, -1.9, 48.91], titre: 'Où sont les zones humides inventoriées ?', type: 'surface', vue: '2D', pitch: 0, fond: 'plangris', cle: 'humidesbzh', champ: 'd_t_gene',
     note: 'Inventaire des zones humides du SAGE de la baie de Saint-Brieuc, en hectares. État des connaissances : une zone absente de l\'inventaire peut exister.',
     classes: [['Milieux prairiaux', '#8fc46b'], ['Milieux boisés ou en voie de boisement', '#3f7d3a'], ['Milieux mis en culture', '#e3c04f'], ['Milieux en déprise', '#b08a5a'], ['Milieux artificialisés', '#9a9aa8'], ['Milieux aquatiques', '#3d7ea6']]
@@ -2831,6 +2837,7 @@ const GARDES = {
   bande100: 'Tracé de repérage. L\'interdiction ne vaut qu\'hors des espaces urbanisés.',
   submersion: 'Carte d\'aléa, pas le zonage d\'un plan de prévention.',
   humidesbzh: 'Inventaire : une zone absente d\'ici peut exister.',
+  reserve: 'Périmètre actuel : un projet d\'extension n\'y figure pas.',
   bocage: 'Inventaire régional : il recense, il ne protège pas.'
 };
 /* Un thème n'est proposé que là où sa donnée existe : dans l'étendue déclarée par sa couche (relevée au catalogue
@@ -4871,6 +4878,8 @@ const COUCHES_PARCELLE = [
   { groupe: 'Nature : inventaires et protections', tn: 'patrinat_znieff2:znieff2', marge: 500, couleur: '#3f8f5f', nom: p => 'ZNIEFF de type 2 (inventaire) — ' + (nomLibre(p) || '') },
   { groupe: 'Nature : inventaires et protections', tn: 'patrinat_apb:apb', marge: 500, couleur: '#d1495b', nom: p => 'Arrêté de protection de biotope — ' + (nomLibre(p) || '') },
   { groupe: 'Nature : inventaires et protections', tn: 'CONSERVATOIRE_LITTORAL.PARCELLES:parcelles_protegees', marge: 500, couleur: '#3d7ea6', nom: () => 'Terrain du Conservatoire du littoral', cle: () => 'cdl' },
+  { groupe: 'Nature : inventaires et protections', svc: 'geobretagne', tn: 'dreal_b:RNN', marge: 500, couleur: '#d1495b', nom: p => 'Réserve naturelle nationale — ' + (p.NOM_SITE || ''), cle: p => 'rnn' + p.NOM_SITE },
+  { groupe: 'Nature : inventaires et protections', svc: 'geobretagne', tn: 'dreal_b:RNN_PP', marge: 500, couleur: '#d1495b', nom: () => 'Périmètre de protection d\'une réserve naturelle nationale', cle: () => 'rnnpp' },
   { groupe: 'Littoral et eau (données bretonnes)', svc: 'geobretagne', tn: 'ddtm22:L_ALEAS_SUBMERSION_MARINE_S_022', marge: 100, couleur: '#2f6fb0', nom: p => 'Aléa de submersion marine — ' + String(p.TYPE_ALea || p.type_alea || '').replace(/^Aleas/i, 'aléa'), cle: p => String(p.TYPE_ALea || p.type_alea) },
   { groupe: 'Littoral et eau (données bretonnes)', svc: 'geobretagne', tn: 'dreal_b:bande_100m_trait_cote', marge: 200, couleur: '#3d7ea6', nom: () => 'Bande des 100 m depuis le rivage (repère de la DREAL)', cle: () => 'b100',
     sens: () => 'Hors des espaces urbanisés, la loi Littoral y interdit de construire. Tracé indicatif.' },
@@ -5138,6 +5147,7 @@ async function distanceReserve(P, tour) {
     let dmin = Infinity;
     anneaux(g).forEach(p => p.forEach(r => r.forEach(s => { const m = P.plan.m(s), k = Math.hypot(m[0] - c[0], m[1] - c[1]); if (k < dmin) dmin = k; })));
     if (!Number.isFinite(dmin)) return;
+    if (PARCELLE.lignes.some(l => l.c.tn === 'dreal_b:RNN' && l.pos[0] !== 'pres')) { $('reserve-parcelle').innerHTML = ''; return; }
     $('reserve-parcelle').innerHTML = '<h3>Réserve naturelle de la baie de Saint-Brieuc</h3><p class="pc-rien" style="font-style:normal">Son périmètre actuel (décret de 1998) passe à environ <strong>' +
       (dmin < 1000 ? nb(Math.round(dmin / 50) * 50) + ' m' : String(Math.round(dmin / 100) / 10).replace('.', ',') + ' km') + '</strong> de la parcelle, à vol d\'oiseau. Un projet d\'extension, s\'il existe, n\'est pas dans cette donnée.</p>';
   } catch (err) { reserveLue = null; }
@@ -5183,7 +5193,7 @@ async function remplirPlu(el, partition, veut) {
 /* Le SCoT qui s'impose au PLU : lu sur le Géoportail de l'urbanisme, là où se trouve la parcelle. Ses cartes (agglomérations, espaces
    proches du rivage, coupures d'urbanisation) ne sont publiées qu'en images dans le PDF : elles ne sont pas superposées ici, leur échelle
    ne permet pas de lire une parcelle. Ce que le SCoT dit d'une commune est donc noté à la main, daté, pour les seuls documents lus. */
-const SCOT_LUS = { scot_200097087: { le: '15/11/2026', communes: { '22186': 'Il classe Pléneuf-Val-André en « agglomération » au titre de la loi Littoral : construire dans le tissu déjà bâti y reste permis. Il vise une densité moyenne de 27 logements par hectare pour les extensions du secteur.' } } };
+const SCOT_LUS = { scot_200097087: { le: '15/11/2026', communes: { '22081': 'Il retient à Hillion deux agglomérations (le centre-ville et Saint-René), deux villages (La Grandville, Fortville) et deux secteurs déjà urbanisés (Lermot, Les Quilles). Hors de ces ensembles, la loi Littoral n\'admet pas d\'urbanisation nouvelle.', '22186': 'Il classe Pléneuf-Val-André en « agglomération » au titre de la loi Littoral : construire dans le tissu déjà bâti y reste permis. Il vise une densité moyenne de 27 logements par hectare pour les extensions du secteur.' } } };
 async function remplirScot(el, P) {
   if (!el) return;
   try {
