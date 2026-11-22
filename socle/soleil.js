@@ -32,13 +32,17 @@
   }
   function entete(fuseau) {
     if (!etat.jour) Object.assign(etat, maintenant(fuseau));
-    return `<div class="ligne"><input type="date" class="jour" value="${etat.jour}"><span class="fort heure"></span></div>`;
+    return `<div class="ligne"><input type="date" class="jour" value="${etat.jour}"><span class="fort heure"></span><button class="now">Maintenant</button></div>`;
+  }
+  // Le bouton « Maintenant » ramène la date et l'heure à l'instant présent, puis relance le calcul.
+  function brancherMaintenant(c, fuseau, apres) {
+    c.querySelector('.now').onclick = () => { Object.assign(etat, maintenant(fuseau)); c.querySelector('.jour').value = etat.jour; const h = c.querySelector('.h'); if (h) h.value = etat.minutes; apres(); };
   }
 
   /* « Où est la lumière à cette heure ? » */
   function lumiere(opts) {
     const memo = {}, q = {
-      libelle: opts.libelle || 'Où est la lumière à cette heure ?',
+      theme: opts.theme || 'Lumière', libelle: opts.libelle || 'Où est la lumière à cette heure ?',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<input type="range" class="h" min="0" max="1430" step="10" value="${etat.minutes}">
           <p class="etat"></p><div class="legende"><span><i style="background:#060a14"></i>à l'ombre</span><span><i style="background:#e9c46a"></i>lumière rasante (soleil sous 12°)</span></div>
@@ -59,6 +63,7 @@
         const recharger = async () => { await charger(app, memo); demander(); };
         h.oninput = () => { etat.minutes = +h.value; demander(); };
         jour.onchange = () => { if (jour.value) { etat.jour = jour.value; demander(); } };
+        brancherMaintenant(c, opts.fuseau, demander);
         app.suivre(q, recharger);
         await recharger();
       },
@@ -88,11 +93,12 @@
   /* « Quand ce versant s'éclaire-t-il ? » : la même analyse, en entrée directe. */
   function versant(opts) {
     const memo = {}, q = {
-      libelle: opts.libelle || 'Quand ce versant s\'éclaire-t-il ?',
+      theme: opts.theme || 'Versant', libelle: opts.libelle || 'Quand ce versant s\'éclaire-t-il ?',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat">Touche un point de la carte : un versant, un sommet, un fond de cirque.</p>`);
         c.querySelector('.heure').textContent = '';
         c.querySelector('.jour').onchange = e => { if (e.target.value) { etat.jour = e.target.value; if (q.dernier) q.toucher(app, q.dernier); } };
+        brancherMaintenant(c, opts.fuseau, () => { if (q.dernier) q.toucher(app, q.dernier); });
         const recharger = () => charger(app, memo); app.suivre(q, recharger); await recharger();
       },
       toucher(app, ll) { q.dernier = ll; heuresDeSoleil(app, memo.g, ll, opts, document.querySelector('.reponse .etat')); },
@@ -104,7 +110,7 @@
   /* « Où se lève et se couche le soleil ? » : directions depuis le centre de la carte, heures du lever, du coucher et des lumières dorées. */
   function leverCoucher(opts) {
     const q = {
-      libelle: opts.libelle || 'Où se lève et se couche le soleil ?',
+      theme: opts.theme || 'Lever et coucher', libelle: opts.libelle || 'Où se lève et se couche le soleil ?',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat"></p><div class="legende"><span><i style="background:#f4a261"></i>lever</span><span><i style="background:#e76f51"></i>coucher</span><span><i style="background:#e9c46a"></i>midi solaire</span></div><p class="petit">Directions tracées depuis le centre de la carte, sur un horizon plat : une crête retarde le lever et avance le coucher. Déplace la carte pour changer de point.</p>`);
         c.querySelector('.heure').textContent = '';
@@ -131,6 +137,7 @@
             : 'Pas de lever ni de coucher ce jour-là à cet endroit.';
         };
         c.querySelector('.jour').onchange = e => { if (e.target.value) { etat.jour = e.target.value; dessiner(); } };
+        brancherMaintenant(c, opts.fuseau, dessiner);
         app.suivre(q, dessiner); dessiner();
       },
       fermer(app) { app.retirer('axes'); }
@@ -141,7 +148,7 @@
   /* « Combien d'heures de soleil ? » : durée d'ensoleillement de chaque point sur la journée choisie, relief compris. */
   function duree(opts) {
     const memo = {}, q = {
-      libelle: opts.libelle || 'Combien d\'heures de soleil ?',
+      theme: opts.theme || 'Ensoleillement', libelle: opts.libelle || 'Combien d\'heures de soleil ?',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat"></p>
           <div class="legende"><span><i style="background:#0b1730"></i>jamais</span><span><i style="background:#3d5a80"></i>2 h</span><span><i style="background:#98c1d9"></i>4 h</span><span><i style="background:#e9c46a"></i>6 h</span><span><i style="background:#f4a261"></i>8 h</span><span><i style="background:#fff3c4"></i>10 h et plus</span></div>
@@ -167,6 +174,7 @@
           app.occupe(false);
         };
         c.querySelector('.jour').onchange = e => { if (e.target.value) { etat.jour = e.target.value; calculer(); } };
+        brancherMaintenant(c, opts.fuseau, calculer);
         app.suivre(q, calculer); await calculer();
       },
       toucher(app, ll) { heuresDeSoleil(app, memo.g, ll, opts, document.querySelector('.reponse .etat')); },

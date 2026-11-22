@@ -191,6 +191,7 @@
     Object.assign(style.sources, {
       ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
       plan: { type: 'raster', tiles: [`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/{z}/{x}/{y}.jpeg`], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN HD © IGN' },
+      ombrage: { type: 'raster', tiles: [wmts('IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'LiDAR HD © IGN' },
       bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
       relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
       estompe: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium' }
@@ -198,12 +199,13 @@
     style.layers.splice(premierTexte, 0,
       { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
       { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
+      { id: 'ombrage', type: 'raster', source: 'ombrage', layout: { visibility: 'none' } },
       { id: 'estompe', type: 'hillshade', source: 'estompe', paint: { 'hillshade-exaggeration': 0.4, 'hillshade-shadow-color': '#2b3545', 'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#55617a' } },
       { id: 'analyses', type: 'background', paint: { 'background-opacity': 0 } });   // repère : les analyses se glissent sous les étiquettes
     const textes = style.layers.filter(l => l.type === 'symbol').map(l => l.id);
     style.layers.splice(style.layers.findIndex(l => l.id === 'analyses') + 1, 0,
       { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15, layout: { visibility: 'none' },
-        paint: { 'fill-extrusion-height': ['coalesce', ['get', 'hauteur'], 4], 'fill-extrusion-color': '#e9e4d8', 'fill-extrusion-opacity': 0.92, 'fill-extrusion-vertical-gradient': true } });
+        paint: { 'fill-extrusion-height': ['coalesce', ['get', 'hauteur'], 4], 'fill-extrusion-color': '#e9e4d8', 'fill-extrusion-opacity': 0.75, 'fill-extrusion-vertical-gradient': true } });
 
     document.body.append(el('div', { id: 'carte' }));
     const map = new maplibregl.Map({
@@ -220,23 +222,25 @@
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', {}, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher');
-    outils.append(bFond, b3d, bRech);
+    const bFond = el('button', {}, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
+      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour');
+    outils.append(bFond, b3d, bRech, bIci, bRetour);
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' });
     bas.append(reponse, rang);
     const attente = el('div', { class: 'attente', hidden: '' }, 'Calcul…');
     const menu = el('div', { class: 'menu', hidden: '' });
     document.body.append(bTitre, outils, bas, attente, menu);
 
-    const fonds = ['gris', 'plan', 'ortho'], noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo' };
+    const fonds = ['gris', 'plan', 'ortho', 'ombrage'], noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo', ombrage: 'Relief' };
     let fond = 'gris';
     function mettreFond(f) {
       fond = f; bFond.textContent = noms[f];
       map.setLayoutProperty('ortho', 'visibility', f === 'ortho' ? 'visible' : 'none');
       map.setLayoutProperty('plan', 'visibility', f === 'plan' ? 'visible' : 'none');
-      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'plan' ? 0 : 0.12);
+      map.setLayoutProperty('ombrage', 'visibility', f === 'ombrage' ? 'visible' : 'none');
+      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'ortho' ? 0.12 : 0);
     }
-    bFond.onclick = () => mettreFond(fonds[(fonds.indexOf(fond) + 1) % 3]);
+    bFond.onclick = () => mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]);
     b3d.onclick = () => mettre3d(!relief3d);
 
     const app = {
@@ -266,7 +270,8 @@
       },
       questions: [], active: null,
       question(q) {
-        const b = el('button', { 'aria-pressed': 'false' }, propre(q.libelle)); q.bouton = b; rang.append(b); app.questions.push(q);
+        const b = el('button', { 'aria-pressed': 'false', title: q.libelle }, propre(q.theme || q.libelle));   // la puce porte le thème, la réponse porte la question
+        q.bouton = b; rang.append(b); app.questions.push(q);
         b.onclick = () => app.choisir(app.active === q ? null : q);
       },
       async choisir(q) {
@@ -287,13 +292,26 @@
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
     const cleSignets = 'cartes.signets.' + cfg.id;
-    function aller(v) { if (v.pitch > 5 && !relief3d) mettre3d(true); map.flyTo({ center: v.centre, zoom: v.zoom, pitch: v.pitch || 0, bearing: v.bearing || 0, duration: 1800 }); menu.hidden = true; }
+    // Chaque saut (lieu, recherche, position) garde la vue quittée : le bouton Retour y ramène, un saut à la fois.
+    const vues = [];
+    const retenir = () => { const c = map.getCenter(); vues.push({ center: [c.lng, c.lat], zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() }); if (vues.length > 12) vues.shift(); bRetour.hidden = false; };
+    bRetour.onclick = () => { const v = vues.pop(); if (v) map.flyTo(Object.assign({ duration: 1200 }, v)); bRetour.hidden = !vues.length; };
+    bIci.onclick = () => {
+      if (!navigator.geolocation) { app.occupe(true, 'Position indisponible sur cet appareil'); setTimeout(() => app.occupe(false), 2500); return; }
+      app.occupe(true, 'Recherche de ta position…');
+      navigator.geolocation.getCurrentPosition(p => {
+        app.occupe(false); const xy = [p.coords.longitude, p.coords.latitude], d = { type: 'Feature', geometry: { type: 'Point', coordinates: xy } };
+        if (map.getSource('maposition')) map.getSource('maposition').setData(d);
+        else { map.addSource('maposition', { type: 'geojson', data: d }); map.addLayer({ id: 'maposition', type: 'circle', source: 'maposition', paint: { 'circle-radius': 8, 'circle-color': '#2b7fff', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } }); }
+        retenir(); map.flyTo({ center: xy, zoom: Math.max(map.getZoom(), 14), duration: 1500 });
+      }, () => { app.occupe(true, 'Position refusée ou introuvable'); setTimeout(() => app.occupe(false), 2500); }, { enableHighAccuracy: true, timeout: 12000 });
+    };
+    function aller(v) { retenir(); if (v.pitch > 5 && !relief3d) mettre3d(true); map.flyTo({ center: v.centre, zoom: v.zoom, pitch: v.pitch || 0, bearing: v.bearing || 0, duration: 1800 }); menu.hidden = true; }
     function dessinerMenu() {
       const persos = garde.lire(cleSignets, []);
       menu.innerHTML = `<div><h3>Lieux</h3><ul class="lieux"></ul>
         <h3>Garder la vue actuelle</h3><div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue" maxlength="40"><button class="garder">Garder</button></div>
         <h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go">Chercher</button></div><ul class="res"></ul>
-        <h3>Voir depuis la route</h3><p style="margin:0"><button class="rue">Ouvrir Street View au centre de la carte</button></p>
         <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p>
         <p style="text-align:right;margin:10px 0 0"><button class="fermer">Fermer</button></p></div>`;
       const ul = menu.querySelector('.lieux');
@@ -304,7 +322,6 @@
         li.append(b); ul.append(li);
       });
       menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
-      menu.querySelector('.rue').onclick = () => { const c = map.getCenter(); window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${c.lat.toFixed(6)},${c.lng.toFixed(6)}&heading=${Math.round(map.getBearing())}`, '_blank', 'noopener'); };
       menu.querySelector('.garder').onclick = () => {
         const nom = menu.querySelector('.nomvue').value.trim(); if (!nom) return;
         const c = map.getCenter(), l = garde.lire(cleSignets, []).filter(x => x.nom !== nom);

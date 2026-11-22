@@ -21,6 +21,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
 .titre span { color: var(--muted); font-size: 12px; }
 .outils { position: fixed; right: 10px; top: calc(10px + env(safe-area-inset-top)); z-index: 3; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .outils button { min-width: 52px; font-size: 13px; backdrop-filter: blur(6px); }
+.outils button[hidden] { display: none; }
 
 .bas { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; padding: 0 0 calc(8px + env(safe-area-inset-bottom)); pointer-events: none; }
 .reponse { pointer-events: auto; margin: 0 10px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 11px 14px;
@@ -65,6 +66,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
 
 .reponse h2 span { cursor: pointer; }
 .reponse h2 span::after { content: ' ▾'; color: var(--muted); font-size: 12px; }
-.reponse.replie .corps { display: none; }
+.reponse.replie .corps > :not(.legende) { display: none; }   /* repliée, la réponse garde sa légende */
+.reponse.replie .legende { margin: 4px 0 0; }
 .reponse.replie h2 { margin: 0; }
 .reponse.replie h2 span::after { content: ' ▸'; }

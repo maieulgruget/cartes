@@ -67,7 +67,7 @@
   const hhmm = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).replace(':', ' h ');
   const jour = t => new Date(t).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', timeZone: 'Europe/Paris' });
   const m = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1).replace('.', ',') + ' m';
-  const sansMaree = '<p>Le modèle de marée ne répond pas pour l\'instant. La question « Et si la mer montait à… ? » fonctionne sans lui.</p>';
+  const sansMaree = '<p>Le modèle de marée ne répond pas pour l\'instant. Le thème « Niveau » fonctionne sans lui.</p>';
 
   const memo = {};
   async function estran() {
@@ -87,13 +87,13 @@
 
   // ---------- 1. La mer maintenant, et dans les heures qui viennent ----------
   const q1 = {
-    libelle: 'Où est la mer maintenant ?',
+    theme: 'Marée', libelle: 'Où est la mer maintenant ?',
     async ouvrir(app) {
       const s = await maree(); if (!s) { app.repondre(q1.libelle, sansMaree); return; }
       const t0 = Date.now();
       const c = app.repondre(q1.libelle, `<p class="etat"></p><input type="range" class="h" min="0" max="288" value="0">
         <div class="legende"><span><i style="background:#2c6aa8"></i>mer</span><span><i style="background:#d6be8c"></i>estran découvert</span></div>
-        <p class="petit">Glisse pour avancer dans les 48 prochaines heures. Référence : ${s.ref.nom}.</p>`);
+        <p class="petit">Glisse pour avancer dans les 48 prochaines heures. Référence : ${s.ref.nom}. <button class="now" style="padding:3px 10px;font-size:12px">Maintenant</button></p>`);
       const dessiner = async () => {
         const g = await estran(); if (app.active !== q1) return;
         const t = t0 + c.querySelector('.h').value * 6e5, niv = niveau(s, t), ex = extremes(s, t, t + 13 * 36e5), sens = niveau(s, t + 6e5) > niv;
@@ -101,6 +101,7 @@
         peindreMer(g, niv, bas, haut);
         c.querySelector('.etat').innerHTML = `${jour(t)} à <span class="fort">${hhmm(t)}</span> : mer à <span class="fort">${m(niv)}</span>, elle ${sens ? 'monte' : 'descend'}. ${ex.slice(0, 2).map(e => `${e.pm ? 'Pleine' : 'Basse'} mer vers ${hhmm(e.t)} (${m(e.h)})`).join(', ')}.`;
       };
+      c.querySelector('.now').onclick = () => { c.querySelector('.h').value = 0; dessiner(); };
       c.querySelector('.h').oninput = dessiner; app.suivre(q1, dessiner); await dessiner();
     },
     fermer(app) { app.retirer('mer'); }
@@ -109,7 +110,7 @@
   // ---------- 2. Hauteur libre ----------
   let libre = 3;
   const q2 = {
-    libelle: 'Et si la mer montait à… ?',
+    theme: 'Niveau', libelle: 'Et si la mer montait à… ?',
     async ouvrir(app) {
       const c = app.repondre(q2.libelle, `<p>Mer à <span class="fort niv"></span> <span class="petit">(niveau des cartes terrestres)</span></p><input type="range" class="h" min="-70" max="90" value="${libre * 10}">
         <p class="etat petit">Repères sur cette côte : une basse mer de vive-eau descend vers −5,5 m, une pleine mer de vive-eau monte vers +6 m, et les plus grandes marées approchent +7 m. Au-delà, c'est une surcote de tempête.</p>
@@ -122,7 +123,7 @@
 
   // ---------- 3. Durée d'émersion de l'estran ----------
   const q3 = {
-    libelle: 'Combien de temps à sec ?',
+    theme: 'Estran', libelle: 'Combien de temps à sec ?',
     async ouvrir(app) {
       const s = await maree(); if (!s) { app.repondre(q3.libelle, sansMaree); return; }
       const c = app.repondre(q3.libelle, `<p class="etat"></p>
@@ -166,7 +167,7 @@
       + ' <span class="petit">Un point à sec peut être coupé de la côte par un chenal plus bas : regarde tout le trajet, et vérifie les horaires officiels.</span>';
   }
   const q4 = {
-    libelle: 'Quand puis-je passer ici ?',
+    theme: 'Passage', libelle: 'Quand puis-je passer ici ?',
     async ouvrir(app) {
       const s = await maree(); if (!s) { app.repondre(q4.libelle, sansMaree); return; }
       app.repondre(q4.libelle, '<p class="etat">Touche un point de l\'estran : un rocher, un banc de sable, un passage à gué.</p>');

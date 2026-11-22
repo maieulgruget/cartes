@@ -47,7 +47,7 @@
   const choix = { seuil: 30, expos: new Set(['N', 'NE', 'E']), altMin: 1800 };
   const memoP = {};
   const qPentes = {
-    libelle: 'Quelles pentes éviter ?',
+    theme: 'Avalanche', libelle: 'Quelles pentes éviter ?',
     async ouvrir(app) {
       const c = app.repondre(qPentes.libelle, `
         <p class="petit">Reporte les orientations et l'altitude du bulletin d'avalanche du jour (massif du Beaufortain pour ce versant, Haute-Tarentaise en face).</p>
@@ -105,7 +105,7 @@
     return previs;
   }
   const qTemps = {
-    libelle: 'Quel temps là-haut ?',
+    theme: 'Météo', libelle: 'Quel temps là-haut ?',
     async ouvrir(app) {
       app.occupe(true, 'Prévisions…'); const p = await chargerPrevis(); app.occupe(false);
       if (!p) { app.repondre(qTemps.libelle, '<p>Les prévisions ne répondent pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
@@ -119,14 +119,14 @@
   // ---------- 3. Limite du gel sur le relief ----------
   const memoG = {};
   const qGel = {
-    libelle: 'Où est le gel ?',
+    theme: 'Gel', libelle: 'Où est le gel ?',
     async ouvrir(app) {
       app.occupe(true, 'Prévisions…'); const p = await chargerPrevis(); app.occupe(false);
       if (!p) { app.repondre(qGel.libelle, '<p>Les prévisions ne répondent pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
       const hh = p.village.hourly, maintenant = Date.now();
       let i0 = hh.time.findIndex(t => new Date(t).getTime() >= maintenant); if (i0 < 0) i0 = 0;
       const c = app.repondre(qGel.libelle, `<p>Isotherme 0 °C : <span class="fort iso"></span> <span class="quand"></span></p><input type="range" class="h" min="0" max="${hh.time.length - 1}" value="${i0}">
-        <p class="etat"></p><div class="legende"><span><i style="background:#8ecae6"></i>au-dessus de l'isotherme : il gèle dans l'air</span></div>
+        <p class="etat"></p><p style="margin:0"><button class="now" style="padding:3px 10px;font-size:12px">Maintenant</button></p><div class="legende"><span><i style="background:#8ecae6"></i>au-dessus de l'isotherme : il gèle dans l'air</span></div>
         <p class="petit">L'isotherme est celui de l'air libre. Au sol, une nuit claire fait geler plus bas, et un versant au soleil dégèle plus haut.</p>`);
       const dessiner = () => {
         const g = memoG.g; if (!g || app.active !== qGel) return;
@@ -143,13 +143,14 @@
         dessiner();
       };
       c.querySelector('.h').oninput = dessiner;
+      c.querySelector('.now').onclick = () => { c.querySelector('.h').value = i0; dessiner(); };
       app.suivre(qGel, recharger); await recharger();
     },
     fermer(app) { app.retirer('gel'); }
   };
 
   app.question(qPentes);
-  app.question(Socle.lumiere.lumiere({ libelle: 'Où est le soleil à cette heure ?', fuseau: 'Europe/Paris', note: 'Neige de printemps ou versant resté à l\'ombre : l\'heure d\'arrivée du soleil décide de la qualité de la neige.' }));
+  app.question(Socle.lumiere.lumiere({ theme: 'Soleil', libelle: 'Où est le soleil à cette heure ?', fuseau: 'Europe/Paris', note: 'Neige de printemps ou versant resté à l\'ombre : l\'heure d\'arrivée du soleil décide de la qualité de la neige.' }));
   app.question(Socle.lumiere.duree({ fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide.' }));
   app.question(qGel);
   app.question(qTemps);

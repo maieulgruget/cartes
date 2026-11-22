@@ -10,7 +10,7 @@
   function foret(opts) {
     opts = opts || {}; let cle = null;
     const q = {
-      libelle: opts.libelle || 'Quelle forêt ici ?',
+      theme: 'Forêt', libelle: opts.libelle || 'Quelle forêt ici ?',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement.</p><div class="legende"></div><p class="petit">BD Forêt de l'IGN : elle décrit des peuplements, pas des arbres un par un. ${opts.note || ''}</p>`);
         const charger = async () => {
