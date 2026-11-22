@@ -21,6 +21,7 @@
 <script src="../socle/socle.js"></script>
 <script src="../socle/soleil.js"></script>
 <script src="../socle/foret.js"></script>
+<script src="../socle/trace.js"></script>
 </head>
 <body>
 <script>
@@ -151,6 +152,42 @@
     fermer(app) { app.retirer('gel'); }
   };
 
+  // ---------- Itinéraire : profil, temps, pentes traversées et dominantes, soleil ----------
+  const T = Socle.traceOutils, L = Socle.lumiere;
+  const qTrace = Socle.trace({
+    cle: 'tarentaise', nom: 'Sortie au-dessus des Chapelles', libelle: 'Par où monter ?',
+    intro: 'Touche la carte pour poser le départ, puis chaque point de passage jusqu\'au sommet.',
+    pied: 'Outil de préparation : il ne remplace ni le bulletin d\'avalanche ni l\'observation du manteau neigeux.',
+    async analyse(app, d) {
+      const { g, a } = d, n = d.dist.length;
+      // temps de montée : dénivelé et distance combinés (le plus long des deux, plus la moitié de l'autre)
+      const temps = v => { const h1 = d.dplus / v, h2 = d.total / 1000 / 4; return Math.max(h1, h2) + Math.min(h1, h2) / 2; };
+      // pentes traversées, par orientation
+      let raide = 0, pmax = 0, imax = 0; const parExpo = {};
+      for (let i = 1; i < n; i++) { const l = d.dist[i] - d.dist[i - 1], p = d.pente[i]; if (p > pmax) { pmax = p; imax = i; } if (p >= 30) { raide += l; const r = ROSE[Math.round(d.expo[i] / 45) % 8]; parExpo[r] = (parExpo[r] || 0) + l; } }
+      // pentes qui dominent le tracé : la plus forte pente à moins de 80 m, plus haut que le tracé
+      const r = Math.max(1, Math.round(80 / g.pas)); let dom = 0, idom = 0, nbDom = 0;
+      for (let i = 0; i < n; i += 2) {
+        const k = app.indice(g, d.xy[i][0], d.xy[i][1]); if (k < 0) continue; const i0 = k % g.w, j0 = (k - i0) / g.w; let m = 0;
+        for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const ii = i0 + di, jj = j0 + dj; if (ii < 0 || jj < 0 || ii >= g.w || jj >= g.h || di * di + dj * dj > r * r) continue; const kk = jj * g.w + ii; if (g.z[kk] > d.z[i] + 5 && a.pente[kk] > m) m = a.pente[kk]; }
+        if (m >= 30) nbDom++; if (m > dom) { dom = m; idom = i; }
+      }
+      const partDom = Math.round(100 * nbDom / Math.ceil(n / 2));
+      d.repere = pmax >= 30 ? d.xy[imax] : (dom >= 30 ? d.xy[idom] : null);
+      // soleil : heure d'arrivée du soleil au départ, à mi-parcours et à l'arrivée, le jour choisi dans le thème Soleil
+      if (!L.etat.jour) Object.assign(L.etat, L.maintenant('Europe/Paris'));
+      const c0 = d.xy[n >> 1]; let gl = g; try { gl = await app.grille([c0[0] - 0.32, c0[1] - 0.22, c0[0] + 0.32, c0[1] + 0.22], 520); } catch (e) { gl = g; }
+      const premier = i => { const k = app.indice(gl, d.xy[i][0], d.xy[i][1]); if (k < 0) return null; for (let m = 0; m < 1440; m += 5) { const s = app.soleil(L.instant('Europe/Paris', L.etat.jour, m), d.xy[i][1], d.xy[i][0]); if (app.eclaire(gl, k, s.azimut, s.hauteur)) return m; } return null; };
+      const sol = [['départ', 0], ['mi-parcours', n >> 1], ['arrivée', n - 1]].map(([nom, i]) => { const m = premier(i); return `${nom} ${m == null ? 'sans soleil' : 'à ' + L.hm(m)}`; });
+      const expos = Object.entries(parExpo).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${T.km(v)}`).join(', ');
+      return `<p>Montée : environ <span class="fort">${T.duree(temps(400))}</span> à 400 m/h, ${T.duree(temps(300))} à 300 m/h, pauses non comprises.</p>
+        <p>${raide > 0 ? `Le tracé passe <span class="fort">${T.km(raide)}</span> sur des pentes de 30° ou plus (en rouge), orientées ${expos}. Pente la plus forte sous les skis : <span class="fort">${Math.round(pmax)}°</span> vers ${Math.round(d.z[imax])} m (point rouge).` : `Le tracé reste sous 30° de pente : au plus <span class="fort">${Math.round(pmax)}°</span>, vers ${Math.round(d.z[imax])} m.`}</p>
+        <p>${dom >= 30 ? `Au-dessus du tracé, à moins de 80 m, la pente atteint <span class="fort">${Math.round(dom)}°</span> vers ${Math.round(d.z[idom])} m ; <span class="fort">${partDom} %</span> du parcours passe sous une pente de 30° ou plus.` : 'Aucune pente de 30° ou plus ne domine le tracé à moins de 80 m.'}</p>
+        <p>Soleil le ${L.etat.jour.split('-').reverse().join('/')} : ${sol.join(', ')}.</p>
+        <p class="petit">Maille de calcul : ${Math.round(g.pas)} m. Un tracé posé en quelques points coupe droit entre eux : ajoute des points dans les passages raides. Les pentes au-delà de 80 m (couloirs, grandes faces) ne sont pas comptées. L'heure du soleil tient compte des crêtes jusqu'à 25 km, sur une maille d'une centaine de mètres.</p>`;
+    }
+  });
+  app.question(qTrace);
   app.question(qPentes);
   app.question(Socle.lumiere.lumiere({ theme: 'Soleil', libelle: 'Où est le soleil à cette heure ?', fuseau: 'Europe/Paris', note: 'Neige de printemps ou versant resté à l\'ombre : l\'heure d\'arrivée du soleil décide de la qualité de la neige.' }));
   app.question(Socle.lumiere.duree({ fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide.' }));

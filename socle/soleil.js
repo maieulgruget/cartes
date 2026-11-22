@@ -186,5 +186,5 @@
     return q;
   }
 
-  S.lumiere = { lumiere, versant, leverCoucher, duree, cap, hm, instant, decalage };
+  S.lumiere = { lumiere, versant, leverCoucher, duree, cap, hm, instant, decalage, etat, maintenant };
 })();

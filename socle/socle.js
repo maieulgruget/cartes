@@ -231,7 +231,7 @@
     const menu = el('div', { class: 'menu', hidden: '' });
     document.body.append(bTitre, outils, bas, attente, menu);
 
-    const fonds = ['gris', 'plan', 'ortho', 'ombrage'], noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo', ombrage: 'Relief' };
+    const fonds = ['plan', 'gris', 'ortho', 'ombrage'], noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo', ombrage: 'Relief' };
     let fond = 'gris';
     function mettreFond(f) {
       fond = f; bFond.textContent = noms[f];
@@ -240,7 +240,7 @@
       map.setLayoutProperty('ombrage', 'visibility', f === 'ombrage' ? 'visible' : 'none');
       map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'ortho' ? 0.12 : 0);
     }
-    bFond.onclick = () => mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]);
+    bFond.onclick = () => { mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]); garde.ecrire('cartes.fond', fond); };
     b3d.onclick = () => mettre3d(!relief3d);
 
     const app = {
@@ -362,7 +362,9 @@
     bRech.onclick = () => { dessinerMenu(); menu.hidden = false; const q = menu.querySelector('.q'); q.scrollIntoView({ block: 'center' }); q.focus(); };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
     if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); map.setLayoutProperty('batiments3d', 'visibility', 'visible'); b3d.setAttribute('aria-pressed', 'true'); }
-    if (cfg.fond && cfg.fond !== 'gris') mettreFond(cfg.fond);
+    // Fond d'ouverture : le dernier choisi sur cet appareil, sinon celui de la carte, sinon le Plan IGN HD.
+    const fondDepart = garde.lire('cartes.fond', null) || cfg.fond || 'plan';
+    if (fonds.includes(fondDepart) && fondDepart !== 'gris') mettreFond(fondDepart);
     window.carteApp = app;
     return app;
   }
