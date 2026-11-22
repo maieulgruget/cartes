@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="La Réunion">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="icon" href="../socle/icone-180.png">
+<title>La Réunion — où est la lumière</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+<script src="../socle/soleil.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const F = 'Indian/Reunion';
+  const app = await Socle.creer({
+    id: 'reunion', racine: '../', titre: 'Où est la lumière', sousTitre: 'La Réunion',
+    centre: [55.4700, -21.0950], zoom: 11.3, pitch: 55, bearing: 20, pitch3d: 60,
+    recherche: { centre: [55.53, -21.13], rayonKm: 60 },
+    signets: [
+      { nom: 'Toute l\'île', centre: [55.535, -21.125], zoom: 9.7, pitch: 0, bearing: 0 },
+      { nom: 'Mafate, vu du Maïdo', note: 'le cirque sans route', centre: [55.4180, -21.0700], zoom: 12.6, pitch: 62, bearing: 70 },
+      { nom: 'Cilaos', centre: [55.4700, -21.1330], zoom: 12.6, pitch: 60, bearing: 0 },
+      { nom: 'Salazie et Hell-Bourg', centre: [55.5210, -21.0660], zoom: 12.6, pitch: 60, bearing: -150 },
+      { nom: 'Piton des Neiges', note: '3 070 m, le toit de l\'île', centre: [55.4800, -21.0994], zoom: 13.2, pitch: 65, bearing: -60 },
+      { nom: 'Col du Taïbit', centre: [55.4326, -21.1128], zoom: 13.6, pitch: 62, bearing: -20 },
+      { nom: 'Trou de Fer', centre: [55.5555, -21.0397], zoom: 13.6, pitch: 62, bearing: 170 },
+      { nom: 'Piton de la Fournaise', note: 'depuis le Pas de Bellecombe', centre: [55.7050, -21.2360], zoom: 12.8, pitch: 62, bearing: 110 },
+      { nom: 'Cap Méchant', note: 'la côte sauvage du sud', centre: [55.7109, -21.3760], zoom: 14, pitch: 55, bearing: 160 }
+    ],
+    sources: 'Relief : LiDAR HD de l\'IGN, lu à la volée ; en vue rapprochée, le calcul prend le modèle de surface, donc les arbres et les bâtiments portent ombre. Photo aérienne et plan : IGN. La position du soleil est calculée (précision de l\'ordre du demi-degré), les heures sont celles de La Réunion. Les nuages, qui montent dans les cirques en fin de matinée, ne sont pas pris en compte.'
+  });
+  app.question(Socle.lumiere.lumiere({ fuseau: F, note: 'Sous les tropiques, le soleil passe au nord une grande partie de l\'année, et presque à la verticale en été austral.' }));
+  app.question(Socle.lumiere.versant({ fuseau: F }));
+  app.question(Socle.lumiere.duree({ fuseau: F, noteDuree: 'Les fonds de cirque et les pieds de rempart ne voient le soleil que quelques heures.' }));
+  app.question(Socle.lumiere.leverCoucher({ fuseau: F }));
+})();
+</script>
+</body>
+</html>

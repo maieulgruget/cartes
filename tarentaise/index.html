@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tarentaise">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="icon" href="../socle/icone-180.png">
+<title>Versant du soleil — Les Chapelles, Tarentaise</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+<script src="../socle/soleil.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const ROSE = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+  const app = await Socle.creer({
+    id: 'tarentaise', racine: '../', titre: 'Versant du soleil', sousTitre: 'Les Chapelles',
+    centre: [6.7250, 45.6020], zoom: 12.4, pitch: 55, bearing: -25, pitch3d: 60,
+    recherche: { centre: [6.7368, 45.5923], rayonKm: 60 },
+    signets: [
+      { nom: 'Les Chapelles et Montgirod', note: 'les villages du versant', centre: [6.7330, 45.5930], zoom: 14.2, pitch: 55, bearing: -20 },
+      { nom: 'Picolard', centre: [6.7133, 45.5828], zoom: 14.6, pitch: 55, bearing: -10 },
+      { nom: 'Dôme de Vaugelaz', note: 'le sommet au-dessus des villages', centre: [6.7007, 45.6106], zoom: 13.8, pitch: 62, bearing: -30 },
+      { nom: 'Derrière le Dôme : col de Forclaz', centre: [6.7128, 45.6525], zoom: 13.3, pitch: 60, bearing: 160 },
+      { nom: 'Fort de la Platte', centre: [6.7430, 45.6381], zoom: 13.8, pitch: 60, bearing: -40 },
+      { nom: 'Pointe de la Terrasse', centre: [6.7247, 45.6702], zoom: 13.4, pitch: 62, bearing: 150 },
+      { nom: 'Tout le versant, vu des Arcs', centre: [6.7300, 45.6150], zoom: 11.9, pitch: 58, bearing: -15 }
+    ],
+    sources: 'Relief : LiDAR HD de l\'IGN, lu à la volée. Photo aérienne et plan : IGN. Prévisions : Open-Meteo. Les pentes, les ombres et la limite du gel sont calculées dans la page, sur la vue affichée : plus la vue est rapprochée, plus la maille est fine. Outil de préparation, qui ne remplace ni le bulletin d\'avalanche de Météo-France ni le jugement sur le terrain.'
+  });
+  const { map } = app;
+
+  // ---------- 1. Pentes croisées avec l'orientation et l'altitude ----------
+  const choix = { seuil: 30, expos: new Set(['N', 'NE', 'E']), altMin: 1800 };
+  const memoP = {};
+  const qPentes = {
+    libelle: 'Quelles pentes éviter ?',
+    async ouvrir(app) {
+      const c = app.repondre(qPentes.libelle, `
+        <p class="petit">Reporte les orientations et l'altitude du bulletin d'avalanche du jour (massif du Beaufortain pour ce versant, Haute-Tarentaise en face).</p>
+        <div class="ligne"><label>Orientations</label><div class="puces expos">${ROSE.map(r => `<button data-r="${r}" aria-pressed="${choix.expos.has(r)}">${r}</button>`).join('')}</div></div>
+        <div class="ligne"><label>Pente à partir de</label><div class="puces seuils">${[30, 35, 40].map(s => `<button data-s="${s}" aria-pressed="${choix.seuil === s}">${s}°</button>`).join('')}</div></div>
+        <div class="ligne"><label>Au-dessus de <span class="fort alt">${choix.altMin} m</span></label></div>
+        <input type="range" class="altmin" min="800" max="3200" step="100" value="${choix.altMin}">
+        <p class="etat"></p>
+        <div class="legende"><span><i style="background:#f4d35e"></i>30-35°</span><span><i style="background:#ee964b"></i>35-40°</span><span><i style="background:#e63946"></i>40-45°</span><span><i style="background:#9d4edd"></i>plus de 45°</span><span><i style="background:rgba(255,255,255,.35)"></i>raide, hors critères</span></div>`);
+      const dessiner = () => {
+        const g = memoP.g, a = memoP.a; if (!g || app.active !== qPentes) return;
+        let n = 0, tot = 0;
+        const url = app.peindre(g, k => {
+          const p = a.pente[k]; if (!(p >= 0)) return null; tot++;
+          if (p < choix.seuil) return null;
+          const dans = g.z[k] >= choix.altMin && choix.expos.has(ROSE[Math.round(a.expo[k] / 45) % 8]);
+          if (!dans) return [255, 255, 255, 45];
+          n++; return p < 35 ? [244, 211, 94, 200] : p < 40 ? [238, 150, 75, 210] : p < 45 ? [230, 57, 70, 215] : [157, 78, 221, 220];
+        });
+        app.poser('pentes', g, url);
+        const ha = n * g.pas * g.pas / 1e4;
+        c.querySelector('.etat').innerHTML = `<span class="fort">${Math.round(100 * n / Math.max(1, tot))} %</span> de la vue répond aux critères, soit environ ${ha >= 100 ? Math.round(ha / 100) + ' km²' : Math.round(ha) + ' ha'}. Maille de calcul : ${Math.round(g.pas)} m${g.pas > 25 ? ' — <span class="fort">zoome</span> : à cette maille, les pentes sont lissées et sous-estimées.' : '.'}`;
+      };
+      const recharger = async () => {
+        const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
+        if (memoP.cle !== cle) { app.occupe(true, 'Calcul des pentes…'); memoP.g = await app.grille(b, 460); memoP.a = app.pentes(memoP.g); memoP.cle = cle; app.occupe(false); }
+        dessiner();
+      };
+      c.querySelector('.expos').onclick = e => { const r = e.target.dataset.r; if (!r) return; choix.expos.has(r) ? choix.expos.delete(r) : choix.expos.add(r); e.target.setAttribute('aria-pressed', choix.expos.has(r)); dessiner(); };
+      c.querySelector('.seuils').onclick = e => { const s = +e.target.dataset.s; if (!s) return; choix.seuil = s; c.querySelectorAll('.seuils button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.s === s)); dessiner(); };
+      c.querySelector('.altmin').oninput = e => { choix.altMin = +e.target.value; c.querySelector('.alt').textContent = choix.altMin + ' m'; dessiner(); };
+      app.suivre(qPentes, recharger); await recharger();
+    },
+    toucher(app, ll) {
+      const g = memoP.g, k = g ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0) return;
+      const p = memoP.a.pente[k], e = memoP.a.expo[k];
+      document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, pente de <span class="fort">${Math.round(p)}°</span> orientée <span class="fort">${ROSE[Math.round(e / 45) % 8]}</span> (maille ${Math.round(g.pas)} m).`;
+    },
+    fermer(app) { app.retirer('pentes'); }
+  };
+
+  // ---------- 2. Prévisions : au village et en altitude ----------
+  const PT = { lat: 45.5923, lon: 6.7368 };
+  const JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+  const TEMPS = c => c === 0 ? 'ciel clair' : c <= 2 ? 'peu nuageux' : c === 3 ? 'couvert' : c <= 48 ? 'brouillard' : c <= 57 ? 'bruine' : c <= 67 ? 'pluie' : c <= 77 ? 'neige' : c <= 82 ? 'averses' : c <= 86 ? 'averses de neige' : 'orage';
+  let previs = null;
+  async function chargerPrevis() {
+    if (previs) return previs;
+    const base = `https://api.open-meteo.com/v1/forecast?latitude=${PT.lat}&longitude=${PT.lon}&timezone=Europe%2FParis&forecast_days=4`;
+    const [village, haut] = await Promise.all([
+      app.meteo(base + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&hourly=freezing_level_height'),
+      app.meteo(base + '&elevation=2200&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant')
+    ]);
+    if (village) previs = { village, haut };
+    return previs;
+  }
+  const qTemps = {
+    libelle: 'Quel temps là-haut ?',
+    async ouvrir(app) {
+      app.occupe(true, 'Prévisions…'); const p = await chargerPrevis(); app.occupe(false);
+      if (!p) { app.repondre(qTemps.libelle, '<p>Les prévisions ne répondent pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
+      const d = p.village.daily, h = p.haut && p.haut.daily;
+      app.repondre(qTemps.libelle, `<div class="jours">${d.time.map((t, i) => `<div><b>${JOURS[new Date(t + 'T12:00').getDay()]} ${t.slice(8)}</b>${TEMPS(d.weather_code[i])}<br>${Math.round(d.temperature_2m_min[i])}° / ${Math.round(d.temperature_2m_max[i])}°<br>${d.snowfall_sum[i] > 0 ? '<span class="fort">' + d.snowfall_sum[i].toFixed(0) + ' cm de neige</span>' : d.precipitation_sum[i] > 0.2 ? d.precipitation_sum[i].toFixed(0) + ' mm' : 'sec'}</div>`).join('')}</div>
+        ${h ? `<p class="petit">À 2 200 m (hauteur du Dôme de Vaugelaz) :</p><div class="jours">${h.time.map((t, i) => `<div>${Math.round(h.temperature_2m_min[i])}° / ${Math.round(h.temperature_2m_max[i])}°<br>vent ${ROSE[Math.round(h.wind_direction_10m_dominant[i] / 45) % 8]} ${Math.round(h.wind_speed_10m_max[i])} km/h<br>rafales ${Math.round(h.wind_gusts_10m_max[i])}</div>`).join('')}</div>` : ''}
+        <p class="petit">Première ligne : aux Chapelles (1 300 m). Le vent en altitude est celui du modèle à 10 m du sol, à prendre comme un ordre de grandeur.</p>`);
+    }
+  };
+
+  // ---------- 3. Limite du gel sur le relief ----------
+  const memoG = {};
+  const qGel = {
+    libelle: 'Où est le gel ?',
+    async ouvrir(app) {
+      app.occupe(true, 'Prévisions…'); const p = await chargerPrevis(); app.occupe(false);
+      if (!p) { app.repondre(qGel.libelle, '<p>Les prévisions ne répondent pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
+      const hh = p.village.hourly, maintenant = Date.now();
+      let i0 = hh.time.findIndex(t => new Date(t).getTime() >= maintenant); if (i0 < 0) i0 = 0;
+      const c = app.repondre(qGel.libelle, `<p>Isotherme 0 °C : <span class="fort iso"></span> <span class="quand"></span></p><input type="range" class="h" min="0" max="${hh.time.length - 1}" value="${i0}">
+        <p class="etat"></p><div class="legende"><span><i style="background:#8ecae6"></i>au-dessus de l'isotherme : il gèle dans l'air</span></div>
+        <p class="petit">L'isotherme est celui de l'air libre. Au sol, une nuit claire fait geler plus bas, et un versant au soleil dégèle plus haut.</p>`);
+      const dessiner = () => {
+        const g = memoG.g; if (!g || app.active !== qGel) return;
+        const i = +c.querySelector('.h').value, iso = hh.freezing_level_height[i], t = new Date(hh.time[i]);
+        c.querySelector('.iso').textContent = Math.round(iso / 50) * 50 + ' m';
+        c.querySelector('.quand').textContent = `${JOURS[t.getDay()]} ${t.getDate()} à ${t.getHours()} h`;
+        let n = 0, tot = 0;
+        app.poser('gel', g, app.peindre(g, k => { const z = g.z[k]; if (!(z === z)) return null; tot++; if (z < iso) return null; n++; return [142, 202, 230, z < iso + 100 ? 110 : 150]; }));
+        c.querySelector('.etat').textContent = `${Math.round(100 * n / Math.max(1, tot))} % de la vue est au-dessus.`;
+      };
+      const recharger = async () => {
+        const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
+        if (memoG.cle !== cle) { app.occupe(true, 'Lecture du relief…'); memoG.g = await app.grille(b, 460); memoG.cle = cle; app.occupe(false); }
+        dessiner();
+      };
+      c.querySelector('.h').oninput = dessiner;
+      app.suivre(qGel, recharger); await recharger();
+    },
+    fermer(app) { app.retirer('gel'); }
+  };
+
+  app.question(qPentes);
+  app.question(Socle.lumiere.lumiere({ libelle: 'Où est le soleil à cette heure ?', fuseau: 'Europe/Paris', note: 'Neige de printemps ou versant resté à l\'ombre : l\'heure d\'arrivée du soleil décide de la qualité de la neige.' }));
+  app.question(Socle.lumiere.duree({ fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide.' }));
+  app.question(qGel);
+  app.question(qTemps);
+})();
+</script>
+</body>
+</html>

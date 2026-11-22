@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Semnoz">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="icon" href="../socle/icone-180.png">
+<title>Semnoz — où chercher les champignons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const app = await Socle.creer({
+    id: 'semnoz', racine: '../', titre: 'Où chercher', sousTitre: 'Semnoz, champignons',
+    centre: [6.1050, 45.8250], zoom: 11.9, pitch: 50, bearing: 15, pitch3d: 58,
+    recherche: { centre: [6.105, 45.83], rayonKm: 30 },
+    signets: [
+      { nom: 'Tout le Semnoz', centre: [6.1050, 45.8300], zoom: 11.6, pitch: 0, bearing: 0 },
+      { nom: 'Crêt de Châtillon', note: 'le sommet, 1 699 m', centre: [6.1039, 45.7984], zoom: 13.6, pitch: 60, bearing: 20 },
+      { nom: 'Forêt du Crêt du Maure', note: 'au-dessus d\'Annecy', centre: [6.1230, 45.8750], zoom: 13.6, pitch: 55, bearing: 180 },
+      { nom: 'Versant du lac (Sevrier, Saint-Jorioz)', centre: [6.1300, 45.8400], zoom: 13, pitch: 58, bearing: -100 },
+      { nom: 'Versant ouest (Quintal, Viuz-la-Chiésaz)', centre: [6.0800, 45.8200], zoom: 13, pitch: 58, bearing: 90 },
+      { nom: 'Col de Leschaux', centre: [6.1250, 45.7750], zoom: 13.4, pitch: 55, bearing: 0 }
+    ],
+    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges). Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
+  });
+  const { map } = app;
+
+  /* Règles par champignon. arbres : poids de chaque type de peuplement (0 à 1). alt : plage d'altitude habituelle.
+     temp : plage de température moyenne de l'air favorable. mois : saison. pluie : cumul utile sur 14 jours (mm). frais : préfère les versants frais. */
+  const CHAMPIGNONS = {
+    cepe: { nom: 'Cèpe de Bordeaux', mois: [7, 8, 9, 10], alt: [500, 1700], temp: [10, 19], pluie: 30, frais: 0.3,
+      arbres: { sapin: 1, mixte_c: 1, mixte_f: 0.9, hetre: 0.9, feuillus: 0.7, coniferes: 0.7, pin: 0.5 }, mot: 'Hêtres, épicéas et sapins, lisières et bords de chemin ; pousse une dizaine de jours après une bonne pluie, tant que le sol reste doux.' },
+    girolle: { nom: 'Girolle', mois: [6, 7, 8, 9, 10], alt: [500, 1600], temp: [11, 20], pluie: 30, frais: 0.5,
+      arbres: { hetre: 1, mixte_f: 1, mixte_c: 0.9, sapin: 0.8, feuillus: 0.8, coniferes: 0.6, pin: 0.5 }, mot: 'Sols moussus et frais, sous hêtres comme sous épicéas ; revient aux mêmes endroits d\'une année à l\'autre.' },
+    trompette: { nom: 'Trompette de la mort', mois: [8, 9, 10, 11], alt: [400, 1200], temp: [6, 15], pluie: 40, frais: 0.7,
+      arbres: { hetre: 1, feuillus: 0.9, mixte_f: 0.8, mixte_c: 0.3 }, mot: 'Hêtraies et chênaies humides, en troupes dans les feuilles mortes, souvent dans les creux et les bas de pente.' },
+    mouton: { nom: 'Pied-de-mouton', mois: [8, 9, 10, 11, 12], alt: [500, 1600], temp: [4, 14], pluie: 25, frais: 0.5,
+      arbres: { hetre: 1, mixte_f: 1, mixte_c: 1, sapin: 0.9, feuillus: 0.7, coniferes: 0.6 }, mot: 'Feuillus et conifères mêlés ; tardif, il tient jusqu\'aux premières gelées.' },
+    tube: { nom: 'Chanterelle en tube', mois: [9, 10, 11, 12], alt: [700, 1700], temp: [2, 11], pluie: 30, frais: 0.8,
+      arbres: { sapin: 1, mixte_c: 1, coniferes: 0.8, mixte_f: 0.5, pin: 0.5 }, mot: 'Sous épicéas et sapins, dans la mousse et le bois pourri ; le champignon de fin de saison.' },
+    lactaire: { nom: 'Lactaire délicieux', mois: [9, 10, 11], alt: [400, 1500], temp: [6, 15], pluie: 30, frais: 0.2,
+      arbres: { pin: 1, coniferes: 0.7, mixte_c: 0.4 }, mot: 'Lié aux pins ; sous les épicéas et les sapins, ce sont ses cousins (lactaire de l\'épicéa, lactaire saumon).' },
+    morille: { nom: 'Morille', mois: [3, 4, 5], alt: [400, 1600], temp: [5, 13], pluie: 20, frais: 0.2,
+      arbres: { feuillus: 0.8, mixte_f: 0.8, mixte_c: 0.7, sapin: 0.7, ouvert: 0.4, coniferes: 0.5 }, mot: 'Lisières, frênes, bords de ruisseau, coupes récentes ; en montagne, sous épicéas après la fonte. Remonte en altitude avec le printemps.' }
+  };
+  const LIB = { feuillus: 'feuillus', hetre: 'hêtre', mixte_f: 'feuillus et conifères', mixte_c: 'conifères et feuillus', sapin: 'sapin ou épicéa', coniferes: 'conifères', pin: 'pin sylvestre', ouvert: 'lande ou pelouse' };
+  const TEINTE = { feuillus: '#7fb069', hetre: '#a7c957', mixte_f: '#5fa8a0', mixte_c: '#3d8b8b', sapin: '#2f6690', coniferes: '#3a7ca5', pin: '#c9a227', ouvert: '#8d7b68' };
+  const CODES = Object.keys(LIB);
+
+  const foret = await (await fetch('foret.geojson')).json();
+  map.addSource('foret', { type: 'geojson', data: foret });
+  map.addLayer({ id: 'foret', type: 'fill', source: 'foret', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'g'], ...CODES.flatMap(c => [c, TEINTE[c]]), '#888'], 'fill-opacity': 0.55 } }, 'analyses');
+
+  // ---------- Météo des 14 derniers jours, ramenée à l'altitude ----------
+  const REF = { lat: 45.83, lon: 6.105, alt: 1100 };
+  let passe = null;
+  async function meteoPassee() {
+    if (passe) return passe;
+    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${REF.lat}&longitude=${REF.lon}&elevation=${REF.alt}&timezone=Europe%2FParis&past_days=14&forecast_days=1&daily=precipitation_sum,temperature_2m_mean,temperature_2m_min`);
+    if (!j || !j.daily) return null;
+    const d = j.daily, n = d.time.length, som = (a, i0, i1) => a.slice(i0, i1).reduce((s, v) => s + (v || 0), 0);
+    passe = { d, pluie14: som(d.precipitation_sum, 0, n), pluie5: som(d.precipitation_sum, n - 5, n), pluieAv: som(d.precipitation_sum, Math.max(0, n - 14), n - 4),
+      t7: som(d.temperature_2m_mean, n - 7, n) / 7, tmin3: Math.min(...d.temperature_2m_min.slice(n - 3).filter(v => v != null)) };
+    return passe;
+  }
+  const tempA = (p, alt) => p.t7 - 6.5 * (alt - REF.alt) / 1000;   // gradient moyen de 6,5 °C par 1 000 m
+
+  // ---------- Grille : altitude, pente, exposition et type de forêt par maille ----------
+  const memo = {};
+  async function terrain() {
+    const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
+    if (memo.cle === cle) return memo;
+    app.occupe(true, 'Lecture du relief…'); const g = await app.grille(b, 420); const a = app.pentes(g);
+    // Les polygones de forêt sont dessinés dans une image aux dimensions de la grille : un code de couleur par type.
+    const c = document.createElement('canvas'); c.width = g.w; c.height = g.h; const ctx = c.getContext('2d', { willReadFrequently: true });
+    const X = lon => (app.versMerc(lon, 0)[0] - g.x0) / (g.x1 - g.x0) * g.w, Y = lat => (g.y1 - app.versMerc(0, lat)[1]) / (g.y1 - g.y0) * g.h;
+    for (const f of foret.features) {
+      ctx.fillStyle = `rgb(${(CODES.indexOf(f.properties.g) + 1) * 20},0,0)`; ctx.beginPath();
+      for (const poly of (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates)) for (const an of poly) { an.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.closePath(); }
+      ctx.fill('evenodd');
+    }
+    const px = ctx.getImageData(0, 0, g.w, g.h).data, type = new Uint8Array(g.w * g.h);
+    for (let k = 0; k < type.length; k++) type[k] = Math.round(px[4 * k] / 20);
+    Object.assign(memo, { cle, g, a, type }); app.occupe(false); return memo;
+  }
+
+  // ---------- 1. Où chercher tel champignon ----------
+  let choisi = 'cepe';
+  const q1 = {
+    libelle: 'Où chercher ?',
+    async ouvrir(app) {
+      const c = app.repondre(q1.libelle, `<div class="ligne"><select class="esp">${Object.entries(CHAMPIGNONS).map(([k, v]) => `<option value="${k}"${k === choisi ? ' selected' : ''}>${v.nom}</option>`).join('')}</select></div>
+        <p class="mot"></p><p class="etat"></p>
+        <div class="legende"><span><i style="background:#3b2f63"></i>possible</span><span><i style="background:#b5446e"></i>bon</span><span><i style="background:#f4a261"></i>très bon</span><span><i style="background:#fff3b0"></i>le meilleur de la vue</span></div>
+        <p class="petit">Note de chaque maille : type de forêt × altitude où la température de la semaine convient × fraîcheur du versant. Touche la carte pour le détail d'un point.</p>`);
+      const p = await meteoPassee();
+      const dessiner = async () => {
+        const { g, a, type } = await terrain(); if (app.active !== q1) return;
+        const ch = CHAMPIGNONS[choisi], mois = new Date().getMonth() + 1, sec = p ? p.pluie14 < ch.pluie * 0.6 : false;
+        const note = k => {
+          const z = g.z[k], t = CODES[type[k] - 1]; if (!(z === z) || !t) return 0;
+          let n = ch.arbres[t] || 0; if (!n) return 0;
+          // altitude : plage habituelle, resserrée par la température de la semaine si on la connaît
+          let fa = z < ch.alt[0] - 150 || z > ch.alt[1] + 150 ? 0 : (z < ch.alt[0] || z > ch.alt[1]) ? 0.4 : 1;
+          if (p) { const T = tempA(p, z), [t0, t1] = ch.temp; fa *= T < t0 - 3 || T > t1 + 3 ? 0.15 : T < t0 ? 0.55 : T > t1 ? 0.55 : 1; }
+          // fraîcheur : versants nord et est, pentes modérées ; elle compte davantage par temps sec
+          const e = a.expo[k], pe = a.pente[k], nord = e === e ? (Math.cos(e * Math.PI / 180) + 1) / 2 : 0.5, poids = Math.min(1, ch.frais + (sec ? 0.3 : 0));
+          const ff = (1 - poids) + poids * nord, fp = pe > 40 ? 0.3 : pe > 30 ? 0.7 : 1;
+          return n * fa * ff * fp;
+        };
+        const notes = new Float32Array(g.w * g.h); let max = 0; for (let k = 0; k < notes.length; k++) { notes[k] = note(k); if (notes[k] > max) max = notes[k]; }
+        memo.notes = notes; memo.max = max;
+        const R = [[0.15, 59, 47, 99], [0.4, 181, 68, 110], [0.7, 244, 162, 97], [1, 255, 243, 176]];
+        app.poser('note', g, app.peindre(g, k => { const v = notes[k]; if (v < 0.15) return null; for (let i = 1; i < R.length; i++) if (v <= R[i][0]) { const A = R[i - 1], B = R[i], u = (v - A[0]) / (B[0] - A[0]); return [A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u, A[3] + (B[3] - A[3]) * u, 215]; } return [255, 243, 176, 215]; }));
+        c.querySelector('.mot').textContent = ch.mot;
+        let avis = !ch.mois.includes(mois) ? `<span class="fort">Hors saison</span> (elle va de ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[0] - 1]} à ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[ch.mois.length - 1] - 1]}) : la carte montre les secteurs, pas une pousse en cours.` : '';
+        if (p) {
+          const zBas = Math.round((REF.alt + (p.t7 - ch.temp[1]) / 6.5 * 1000) / 50) * 50, zHaut = Math.round((REF.alt + (p.t7 - ch.temp[0]) / 6.5 * 1000) / 50) * 50;
+          const lo = Math.max(ch.alt[0], zBas), hi = Math.min(ch.alt[1], zHaut);
+          avis += ` Cette semaine, la température lui convient ${lo < hi ? `entre <span class="fort">${lo} et ${hi} m</span>` : (zHaut < ch.alt[0] ? 'nulle part : il fait trop froid, même en bas' : 'nulle part : il fait trop chaud, même en haut')}. Pluie des 14 derniers jours : <span class="fort">${Math.round(p.pluie14)} mm</span>${sec ? ', trop peu : les versants frais sont favorisés' : ', suffisant'}${p.tmin3 < -1 ? '. Il a gelé ces trois derniers jours, ce qui arrête la plupart des pousses' : ''}.`;
+        } else avis += ' La météo des derniers jours ne répond pas : la note ne tient compte que de la forêt, de l\'altitude et du versant.';
+        c.querySelector('.etat').innerHTML = avis;
+      };
+      c.querySelector('.esp').onchange = e => { choisi = e.target.value; dessiner(); };
+      app.suivre(q1, dessiner); await dessiner();
+    },
+    toucher(app, ll) {
+      const { g, a, type, notes } = memo; const k = g ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0 || !notes) return;
+      const t = CODES[type[k] - 1], e = a.expo[k];
+      document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, ${t ? LIB[t] : 'hors forêt'}, pente de ${Math.round(a.pente[k])}° tournée vers ${['le nord', 'le nord-est', 'l\'est', 'le sud-est', 'le sud', 'le sud-ouest', 'l\'ouest', 'le nord-ouest'][Math.round(e / 45) % 8]}${passe ? `, environ ${Math.round(tempA(passe, g.z[k]))} °C de moyenne cette semaine` : ''}. Note : <span class="fort">${Math.round(notes[k] * 100)} / 100</span> pour ${CHAMPIGNONS[choisi].nom.toLowerCase()}.`;
+    },
+    fermer(app) { app.retirer('note'); }
+  };
+
+  // ---------- 2. Pluie et température ----------
+  const q2 = {
+    libelle: 'A-t-il assez plu ?',
+    async ouvrir(app) {
+      app.occupe(true, 'Météo…'); const p = await meteoPassee(); app.occupe(false);
+      if (!p) { app.repondre(q2.libelle, '<p>La météo des derniers jours ne répond pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
+      const max = Math.max(5, ...p.d.precipitation_sum.map(v => v || 0));
+      const barres = p.d.time.map((t, i) => `<div title="${t}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:70px"><div style="width:70%;background:#4a90c2;border-radius:2px 2px 0 0;height:${Math.round(66 * (p.d.precipitation_sum[i] || 0) / max)}px"></div><small style="font-size:9px;color:#9aa8bb">${t.slice(8)}</small></div>`).join('');
+      const pousse = p.pluieAv >= 25 && p.t7 > 5 && p.tmin3 > -1;
+      app.repondre(q2.libelle, `<div style="display:flex;gap:1px;align-items:flex-end">${barres}</div>
+        <p><span class="fort">${Math.round(p.pluie14)} mm</span> en 14 jours, dont ${Math.round(p.pluie5)} mm sur les 5 derniers. À 1 100 m : <span class="fort">${p.t7.toFixed(0)} °C</span> de moyenne sur 7 jours, minimum de ${p.tmin3.toFixed(0)} °C ces 3 derniers jours.</p>
+        <p>${pousse ? '<span class="fort">Conditions de pousse réunies</span> : une pluie franche il y a 5 à 14 jours, puis de la douceur.' : p.tmin3 <= -1 ? 'Le gel de ces derniers jours a sans doute arrêté la pousse au-dessus de ' + Math.round((REF.alt - (0 - p.tmin3) / 6.5 * 1000) / 100) * 100 + ' m.' : p.pluieAv < 25 ? 'Pas assez de pluie il y a une à deux semaines : la pousse, s\'il y en a une, sera dans les fonds humides et les versants nord.' : 'Trop froid pour une pousse franche.'}</p>
+        <p class="petit">Règle de cueilleur : il faut environ 25 mm de pluie, puis 5 à 14 jours sans gel. Chaque barre est un jour (millimètres de pluie).</p>`);
+    }
+  };
+
+  // ---------- 3. Quelle forêt ici ----------
+  const q3 = {
+    libelle: 'Quelle forêt ici ?',
+    async ouvrir(app) {
+      map.setLayoutProperty('foret', 'visibility', 'visible');
+      app.repondre(q3.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement.</p><div class="legende">${CODES.map(c => `<span><i style="background:${TEINTE[c]}"></i>${LIB[c]}</span>`).join('')}</div>
+        <p class="petit">La BD Forêt décrit des peuplements, pas des arbres : sur le Semnoz, les « feuillus » sont surtout des hêtres, et les mélanges associent hêtre, sapin et épicéa.</p>`);
+    },
+    toucher(app, ll) {
+      const f = map.queryRenderedFeatures(map.project(ll), { layers: ['foret'] })[0];
+      document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(f.properties.t)}</span>. Champignons qui s'y plaisent : ${Object.values(CHAMPIGNONS).filter(c => (c.arbres[f.properties.g] || 0) >= 0.8).map(c => c.nom.toLowerCase()).join(', ') || 'aucun de la liste'}.` : 'Ce point n\'est pas en forêt.';
+    },
+    fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); }
+  };
+  [q1, q2, q3].forEach(q => app.question(q));
+})();
+</script>
+</body>
+</html>

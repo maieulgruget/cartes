@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Marées">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="icon" href="../socle/icone-180.png">
+<title>Marées — de Bréhat au cap Fréhel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const app = await Socle.creer({
+    id: 'marees', racine: '../', titre: 'Où est la mer', sousTitre: 'De Bréhat au cap Fréhel',
+    centre: [-2.6500, 48.5350], zoom: 11.6, pitch: 0, bearing: 0, pitch3d: 50, exageration: 2,
+    recherche: { centre: [-2.65, 48.65], rayonKm: 70 },
+    signets: [
+      { nom: 'Toute la côte', note: 'de Bréhat au cap Fréhel', centre: [-2.66, 48.70], zoom: 9.6, pitch: 0, bearing: 0 },
+      { nom: 'Anse d\'Yffiniac et Hillion', note: 'le fond de la baie de Saint-Brieuc', centre: [-2.6700, 48.5200], zoom: 12.6, pitch: 0, bearing: 0 },
+      { nom: 'Anse de Morieux', centre: [-2.6050, 48.5300], zoom: 13, pitch: 0, bearing: 0 },
+      { nom: 'Le Val-André et Dahouët', centre: [-2.5650, 48.5900], zoom: 13.2, pitch: 0, bearing: 0 },
+      { nom: 'Erquy', centre: [-2.4650, 48.6350], zoom: 12.8, pitch: 0, bearing: 0 },
+      { nom: 'Cap Fréhel et Fort la Latte', centre: [-2.3100, 48.6750], zoom: 12.6, pitch: 0, bearing: 0 },
+      { nom: 'Binic et Saint-Quay-Portrieux', centre: [-2.8150, 48.6250], zoom: 12.4, pitch: 0, bearing: 0 },
+      { nom: 'Paimpol', centre: [-3.0300, 48.7800], zoom: 12.6, pitch: 0, bearing: 0 },
+      { nom: 'Île de Bréhat', centre: [-2.9950, 48.8480], zoom: 13, pitch: 0, bearing: 0 }
+    ],
+    sources: 'Relief de l\'estran et petits fonds : RGE ALTI de l\'IGN (qui intègre le relevé Litto3D), lu à la volée. Hauteur de mer : modèle de marée d\'Open-Meteo, au point de référence le plus proche de la vue ; ce n\'est pas l\'annuaire du Shom, et l\'écart peut atteindre plusieurs dizaines de centimètres et de minutes, davantage par vent fort ou basse pression. Les hauteurs sont données par rapport au niveau des cartes terrestres (NGF), pas au zéro des cartes marines. Carte de curiosité et de préparation : pour traverser un estran, se fier aux horaires officiels et garder une large marge.'
+  });
+  const { map } = app;
+  // Points de référence au large, pour le modèle de marée.
+  const REFS = [{ nom: 'Bréhat', p: [-2.95, 48.88] }, { nom: 'Saint-Quay', p: [-2.75, 48.67] }, { nom: 'baie de Saint-Brieuc', p: [-2.62, 48.62] }, { nom: 'Erquy et Fréhel', p: [-2.40, 48.70] }];
+  const DECAL = 0.45;   // niveau moyen de la mer au-dessus du zéro NGF sur cette côte (ordre de grandeur, à affiner)
+  const series = new Map();
+  async function maree() {
+    const c = map.getCenter(), ref = REFS.reduce((a, b) => app.distKm([c.lng, c.lat], a.p) < app.distKm([c.lng, c.lat], b.p) ? a : b);
+    if (!series.has(ref.nom)) {
+      const j = await app.meteo(`https://marine-api.open-meteo.com/v1/marine?latitude=${ref.p[1]}&longitude=${ref.p[0]}&hourly=sea_level_height_msl&timezone=GMT&past_days=1&forecast_days=3`);
+      const v = j && j.hourly && j.hourly.sea_level_height_msl;
+      series.set(ref.nom, v && v.some(x => x != null) ? { ref, t: j.hourly.time.map(s => Date.parse(s + ':00Z')), h: v.map(x => x == null ? NaN : x + DECAL) } : null);
+    }
+    return series.get(ref.nom);
+  }
+  function niveau(s, t) {
+    const i = Math.floor((t - s.t[0]) / 36e5); if (i < 0 || i >= s.h.length - 1) return NaN;
+    const f = (t - s.t[i]) / 36e5; return s.h[i] + (s.h[i + 1] - s.h[i]) * f;
+  }
+  function extremes(s, t0, t1) {
+    const r = []; let av = niveau(s, t0), sens = 0;
+    for (let t = t0 + 6e5; t <= t1; t += 6e5) { const v = niveau(s, t), ns = Math.sign(v - av); if (sens && ns && ns !== sens) r.push({ t: t - 6e5, h: av, pm: sens > 0 }); if (ns) sens = ns; av = v; }
+    return r;
+  }
+  const hhmm = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).replace(':', ' h ');
+  const jour = t => new Date(t).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', timeZone: 'Europe/Paris' });
+  const m = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1).replace('.', ',') + ' m';
+  const sansMaree = '<p>Le modèle de marée ne répond pas pour l\'instant. La question « Et si la mer montait à… ? » fonctionne sans lui.</p>';
+
+  const memo = {};
+  async function estran() {
+    const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
+    if (memo.cle !== cle) { app.occupe(true, 'Lecture de l\'estran…'); memo.g = await app.grille(b, 520, { couche: Socle.RGEALTI }); memo.cle = cle; app.occupe(false); }
+    return memo.g;
+  }
+  // La mer couvre tout ce qui est sous le niveau ; au large, le relevé n'a pas de valeur : c'est la mer.
+  function peindreMer(g, niv, bas, haut) {
+    app.poser('mer', g, app.peindre(g, k => {
+      const z = g.z[k];
+      if (!(z === z) || z < niv) { const prof = (z === z) ? Math.min(1, (niv - z) / 6) : 1; return [30 + 20 * (1 - prof), 95 + 45 * (1 - prof), 160 + 30 * (1 - prof), 150 + 60 * prof]; }
+      if (bas != null && z < haut) return [214, 190, 140, 105];   // estran découvert
+      return null;
+    }));
+  }
+
+  // ---------- 1. La mer maintenant, et dans les heures qui viennent ----------
+  const q1 = {
+    libelle: 'Où est la mer maintenant ?',
+    async ouvrir(app) {
+      const s = await maree(); if (!s) { app.repondre(q1.libelle, sansMaree); return; }
+      const t0 = Date.now();
+      const c = app.repondre(q1.libelle, `<p class="etat"></p><input type="range" class="h" min="0" max="288" value="0">
+        <div class="legende"><span><i style="background:#2c6aa8"></i>mer</span><span><i style="background:#d6be8c"></i>estran découvert</span></div>
+        <p class="petit">Glisse pour avancer dans les 48 prochaines heures. Référence : ${s.ref.nom}.</p>`);
+      const dessiner = async () => {
+        const g = await estran(); if (app.active !== q1) return;
+        const t = t0 + c.querySelector('.h').value * 6e5, niv = niveau(s, t), ex = extremes(s, t, t + 13 * 36e5), sens = niveau(s, t + 6e5) > niv;
+        const jr = extremes(s, t - 7 * 36e5, t + 7 * 36e5), haut = Math.max(...jr.filter(e => e.pm).map(e => e.h), niv), bas = Math.min(...jr.filter(e => !e.pm).map(e => e.h), niv);
+        peindreMer(g, niv, bas, haut);
+        c.querySelector('.etat').innerHTML = `${jour(t)} à <span class="fort">${hhmm(t)}</span> : mer à <span class="fort">${m(niv)}</span>, elle ${sens ? 'monte' : 'descend'}. ${ex.slice(0, 2).map(e => `${e.pm ? 'Pleine' : 'Basse'} mer vers ${hhmm(e.t)} (${m(e.h)})`).join(', ')}.`;
+      };
+      c.querySelector('.h').oninput = dessiner; app.suivre(q1, dessiner); await dessiner();
+    },
+    fermer(app) { app.retirer('mer'); }
+  };
+
+  // ---------- 2. Hauteur libre ----------
+  let libre = 3;
+  const q2 = {
+    libelle: 'Et si la mer montait à… ?',
+    async ouvrir(app) {
+      const c = app.repondre(q2.libelle, `<p>Mer à <span class="fort niv"></span> <span class="petit">(niveau des cartes terrestres)</span></p><input type="range" class="h" min="-70" max="90" value="${libre * 10}">
+        <p class="etat petit">Repères sur cette côte : une basse mer de vive-eau descend vers −5,5 m, une pleine mer de vive-eau monte vers +6 m, et les plus grandes marées approchent +7 m. Au-delà, c'est une surcote de tempête.</p>
+        <div class="legende"><span><i style="background:#2c6aa8"></i>sous l'eau</span></div>`);
+      const dessiner = async () => { const g = await estran(); if (app.active !== q2) return; libre = c.querySelector('.h').value / 10; c.querySelector('.niv').textContent = m(libre); peindreMer(g, libre); };
+      c.querySelector('.h').oninput = dessiner; app.suivre(q2, dessiner); await dessiner();
+    },
+    fermer(app) { app.retirer('mer'); }
+  };
+
+  // ---------- 3. Durée d'émersion de l'estran ----------
+  const q3 = {
+    libelle: 'Combien de temps à sec ?',
+    async ouvrir(app) {
+      const s = await maree(); if (!s) { app.repondre(q3.libelle, sansMaree); return; }
+      const c = app.repondre(q3.libelle, `<p class="etat"></p>
+        <div class="legende"><span><i style="background:#1d4e89"></i>toujours sous l'eau</span><span><i style="background:#4f9d8e"></i>à sec 25 % du temps</span><span><i style="background:#e9c46a"></i>50 %</span><span><i style="background:#f4a261"></i>75 %</span><span><i style="background:#f1e3c0"></i>presque toujours à sec</span></div>
+        <p class="petit">Part du temps où chaque point de l'estran est découvert sur les deux prochaines marées (environ 25 heures). C'est ce qui sépare les vasières, les herbiers et le haut de plage. Touche un point pour ses heures de passage.</p>`);
+      const R = [[0, 29, 78, 137], [0.25, 79, 157, 142], [0.5, 233, 196, 106], [0.75, 244, 162, 97], [1, 241, 227, 192]];
+      const dessiner = async () => {
+        const g = await estran(); if (app.active !== q3) return;
+        const t0 = Date.now(), niv = []; for (let t = t0; t <= t0 + 25 * 36e5; t += 6e5) niv.push(niveau(s, t));
+        niv.sort((a, b) => a - b); const bas = niv[0], haut = niv[niv.length - 1];
+        let surf = 0;
+        app.poser('mer', g, app.peindre(g, k => {
+          const z = g.z[k]; if (!(z === z) || z <= bas) return [29, 78, 137, 170]; if (z >= haut) return null;
+          let lo = 0, hi = niv.length; while (lo < hi) { const mi = (lo + hi) >> 1; if (niv[mi] < z) lo = mi + 1; else hi = mi; }
+          const f = lo / niv.length; surf++;
+          for (let i = 1; i < R.length; i++) if (f <= R[i][0]) { const a = R[i - 1], b2 = R[i], u = (f - a[0]) / (b2[0] - a[0]); return [a[1] + (b2[1] - a[1]) * u, a[2] + (b2[2] - a[2]) * u, a[3] + (b2[3] - a[3]) * u, 200]; }
+        }));
+        const km2 = surf * g.pas * g.pas / 1e6;
+        c.querySelector('.etat').innerHTML = `Sur ces deux marées, la mer va de <span class="fort">${m(bas)}</span> à <span class="fort">${m(haut)}</span> : <span class="fort">${km2 >= 1 ? km2.toFixed(1).replace('.', ',') + ' km²' : Math.round(km2 * 100) + ' ha'}</span> d'estran se découvrent dans la vue.`;
+      };
+      app.suivre(q3, dessiner); await dessiner();
+    },
+    toucher(app, ll) { passage(ll, document.querySelector('.reponse .etat')); },
+    fermer(app) { app.retirer('mer', 'pointmer'); }
+  };
+
+  // ---------- 4. Heures de passage en un point ----------
+  async function passage(ll, cible) {
+    const s = await maree(), g = memo.g; if (!s || !g || !cible) return;
+    const k = app.indice(g, ll.lng, ll.lat); if (k < 0) return;
+    const z = g.z[k], d = { type: 'Feature', geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] } };
+    if (map.getSource('pointmer')) map.getSource('pointmer').setData(d);
+    else { map.addSource('pointmer', { type: 'geojson', data: d }); map.addLayer({ id: 'pointmer', type: 'circle', source: 'pointmer', paint: { 'circle-radius': 7, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
+    if (!(z === z)) { cible.innerHTML = 'Ce point est au large : le relevé n\'y donne pas de hauteur.'; return; }
+    const MARGE = 0.5, t0 = Date.now(), plages = []; let deb = null;
+    for (let t = t0; t <= t0 + 48 * 36e5; t += 3e5) { const sec = niveau(s, t) < z - MARGE; if (sec && deb == null) deb = t; if (!sec && deb != null) { plages.push([deb, t]); deb = null; } }
+    if (deb != null) plages.push([deb, t0 + 48 * 36e5]);
+    cible.innerHTML = `Ce point est à <span class="fort">${m(z)}</span>. ` + (plages.length
+      ? `Avec 50 cm de marge, il est à sec ${plages.slice(0, 4).map(p => `${jour(p[0])} de <span class="fort">${hhmm(p[0])}</span> à <span class="fort">${hhmm(p[1])}</span>`).join(' ; ')}.`
+      : (niveau(s, t0) < z ? 'La mer ne l\'atteint pas dans les 48 heures.' : 'Il reste sous l\'eau dans les 48 heures.'))
+      + ' <span class="petit">Un point à sec peut être coupé de la côte par un chenal plus bas : regarde tout le trajet, et vérifie les horaires officiels.</span>';
+  }
+  const q4 = {
+    libelle: 'Quand puis-je passer ici ?',
+    async ouvrir(app) {
+      const s = await maree(); if (!s) { app.repondre(q4.libelle, sansMaree); return; }
+      app.repondre(q4.libelle, '<p class="etat">Touche un point de l\'estran : un rocher, un banc de sable, un passage à gué.</p>');
+      const suivre = async () => { const g = await estran(); if (app.active === q4) peindreMer(g, niveau(s, Date.now())); };
+      app.suivre(q4, suivre); await suivre();
+    },
+    toucher(app, ll) { passage(ll, document.querySelector('.reponse .etat')); },
+    fermer(app) { app.retirer('mer', 'pointmer'); }
+  };
+  [q1, q3, q4, q2].forEach(q => app.question(q));
+})();
+</script>
+</body>
+</html>
