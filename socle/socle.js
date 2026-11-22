@@ -29,7 +29,7 @@
     const hs = Math.max(2, Math.round(w * (lat1 - lat0) / (lon1 - lon0)));
     const u = `${GEOPF}/wms-r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${couche}&STYLES=&FORMAT=image/x-bil;bits=32&CRS=EPSG:4326&BBOX=${lat0},${lon0},${lat1},${lon1}&WIDTH=${w}&HEIGHT=${hs}`;
     let r = await fetch(u, { signal });
-    if (!r.ok && r.status !== 400) { await new Promise(res => setTimeout(res, 500)); r = await fetch(u, { signal }); }   // un second essai si le service est occupé
+    if (!r.ok) { await new Promise(res => setTimeout(res, 600)); r = await fetch(u, { signal }); }   // un second essai : le service refuse parfois une requête qu'il accepte l'instant d'après
     if (!r.ok) throw new Error('Altitudes IGN : ' + r.status);
     const buf = await r.arrayBuffer();
     if (buf.byteLength < w * hs * 4) throw new Error('Altitudes IGN : réponse incomplète');
@@ -226,8 +226,9 @@
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
     const bFond = el('button', {}, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
-      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { 'aria-label': 'Remettre le nord en haut' }, 'Nord ↑');
-    outils.append(bFond, b3d, bNord, bRech, bIci, bRetour);
+      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { 'aria-label': 'Remettre le nord en haut' }, 'Nord ↑'),
+      bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
+    outils.append(bFond, b3d, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' });
     bas.append(reponse, rang);
     const attente = el('div', { class: 'attente', hidden: '' }, 'Calcul…');
@@ -335,6 +336,13 @@
         retenir(); map.flyTo({ center: xy, zoom: Math.max(map.getZoom(), 14), duration: 1500 });
       }, () => { app.occupe(true, 'Position refusée ou introuvable'); setTimeout(() => app.occupe(false), 2500); }, { enableHighAccuracy: true, timeout: 12000 });
     };
+    // Point « maison » de la carte (un hameau ou un quartier, pas une adresse) : un repère fixe et un bouton pour y revenir.
+    if (cfg.maison) {
+      map.addSource('maison', { type: 'geojson', data: { type: 'Feature', properties: { nom: cfg.maison.nom }, geometry: { type: 'Point', coordinates: cfg.maison.centre } } });
+      map.addLayer({ id: 'maison', type: 'circle', source: 'maison', paint: { 'circle-radius': 7, 'circle-color': '#b8963e', 'circle-stroke-color': '#1a2e4a', 'circle-stroke-width': 2.5 } });
+      map.addLayer({ id: 'maison-nom', type: 'symbol', source: 'maison', layout: { 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 13, 'text-offset': [0, 1.1], 'text-anchor': 'top' }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#fff', 'text-halo-width': 2 } });
+      bMaison.onclick = () => aller({ centre: cfg.maison.centre, zoom: cfg.maison.zoom || 14.5, pitch: relief3d ? (cfg.pitch3d || 60) : 0, bearing: map.getBearing() });
+    }
     function aller(v) { retenir(); if (v.pitch > 5 && !relief3d) mettre3d(true); map.flyTo({ center: v.centre, zoom: v.zoom, pitch: v.pitch || 0, bearing: v.bearing || 0, duration: 1800 }); menu.hidden = true; }
     function dessinerMenu() {
       const persos = garde.lire(cleSignets, []);
