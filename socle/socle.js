@@ -205,7 +205,8 @@
     const textes = style.layers.filter(l => l.type === 'symbol').map(l => l.id);
     style.layers.splice(style.layers.findIndex(l => l.id === 'analyses') + 1, 0,
       { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15, layout: { visibility: 'none' },
-        paint: { 'fill-extrusion-height': ['coalesce', ['get', 'hauteur'], 4], 'fill-extrusion-color': '#e9e4d8', 'fill-extrusion-opacity': 0.75, 'fill-extrusion-vertical-gradient': true } });
+        paint: { 'fill-extrusion-height': ['coalesce', ['get', 'hauteur'], 4], 'fill-extrusion-opacity': 0.8, 'fill-extrusion-vertical-gradient': true,
+          'fill-extrusion-color': ['match', ['get', 'usage_1'], 'Résidentiel', '#e8dcc2', 'Agricole', '#c9b458', 'Commercial et services', '#7aa6c2', 'Industriel', '#9a8fb5', 'Religieux', '#c97b63', 'Sportif', '#7fb069', 'Annexe', '#cfcfcf', '#dcdcdc'] } });
 
     document.body.append(el('div', { id: 'carte' }));
     const map = new maplibregl.Map({
@@ -217,14 +218,16 @@
     await new Promise(res => map.once('load', res));
     const exag = cfg.exageration || 1;
     let relief3d = false;
-    const mettre3d = oui => { relief3d = oui; map.setTerrain(oui ? { source: 'relief', exaggeration: exag } : null); map.setLayoutProperty('batiments3d', 'visibility', oui ? 'visible' : 'none'); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
+    // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident.
+    const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' ? 'visible' : 'none');
+    const mettre3d = oui => { relief3d = oui; map.setTerrain(oui ? { source: 'relief', exaggeration: exag } : null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
 
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
     const bFond = el('button', {}, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
-      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour');
-    outils.append(bFond, b3d, bRech, bIci, bRetour);
+      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { 'aria-label': 'Remettre le nord en haut' }, 'Nord ↑');
+    outils.append(bFond, b3d, bNord, bRech, bIci, bRetour);
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' });
     bas.append(reponse, rang);
     const attente = el('div', { class: 'attente', hidden: '' }, 'Calcul…');
@@ -239,9 +242,11 @@
       map.setLayoutProperty('plan', 'visibility', f === 'plan' ? 'visible' : 'none');
       map.setLayoutProperty('ombrage', 'visibility', f === 'ombrage' ? 'visible' : 'none');
       map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'ortho' ? 0.12 : 0);
+      majBatiments();
     }
     bFond.onclick = () => { mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]); garde.ecrire('cartes.fond', fond); };
     b3d.onclick = () => mettre3d(!relief3d);
+    bNord.onclick = () => map.easeTo({ bearing: 0, duration: 600 });
 
     const app = {
       map, cfg, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, propre, versGeo, versMerc, distKm,
@@ -263,8 +268,17 @@
       },
       retirer(...ids) { for (const id of ids) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); } },
       repondre(titre, html) {
-        reponse.hidden = false; reponse.innerHTML = `<h2><span>${propre(titre)}</span><button aria-label="Fermer">×</button></h2><div class="corps">${html}</div>`;
-        reponse.querySelector('h2 button').onclick = () => app.choisir(null);
+        reponse.hidden = false; reponse.classList.remove('replie'); masque = false;
+        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="oeil" aria-pressed="false">Masquer</button><button class="x" aria-label="Fermer">×</button></h2><div class="corps">${html}</div>`;
+        reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
+        // Masquer : retire un instant ce que le thème a posé sur la carte, pour voir le fond et le relief dessous.
+        reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.textContent = masque ? 'Montrer' : 'Masquer'; e.target.setAttribute('aria-pressed', masque); appliquerMasque(); };
+        // Les explications (ce qui est calculé, comment, avec quelle fiabilité) se rangent sous un seul intitulé.
+        const corps = reponse.querySelector('.corps'), notes = [...corps.querySelectorAll(':scope > p.petit')], q = app.active;
+        if (notes.length || (q && q.aide)) {
+          const det = el('details', { class: 'aide' }, '<summary>Ce que montre la carte</summary>' + (q && q.aide ? `<p>${q.aide}</p>` : ''));
+          notes.forEach(p => det.append(p)); corps.append(det);
+        }
         reponse.querySelector('h2 span').onclick = () => reponse.classList.toggle('replie');
         return reponse.querySelector('.corps');
       },
@@ -278,6 +292,7 @@
         return masques;
       },
       questions: [], active: null,
+      masquer() { appliquerMasque(); },
       question(q) {
         const b = el('button', { 'aria-pressed': 'false', title: q.libelle }, propre(q.theme || q.libelle));   // la puce porte le thème, la réponse porte la question
         q.bouton = b; rang.append(b); app.questions.push(q);
@@ -285,7 +300,7 @@
       },
       async choisir(q) {
         if (app.active) { const a = app.active; a.bouton.setAttribute('aria-pressed', 'false'); app.active = null; try { a.fermer && a.fermer(app); } catch (e) { console.error(e); } }
-        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false);
+        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); if (masque) { masque = false; appliquerMasque(); }
         if (!q) return;
         app.active = q; q.bouton.setAttribute('aria-pressed', 'true'); q.bouton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
         try { await q.ouvrir(app); } catch (e) { console.error(e); app.occupe(false); app.repondre(q.libelle, `<p>Impossible de répondre pour l'instant : ${propre(e.message || e)}.</p><p class="petit">Vérifie la connexion, puis touche de nouveau la question.</p>`); }
@@ -297,6 +312,11 @@
         if (!q._enveloppe) { q._enveloppe = true; q.fermer = a => { map.off('moveend', q._suivi); clearTimeout(t); f0 && f0(a); }; }
       }
     };
+    // Couches du fond de carte, relevées une fois : tout ce qui s'y ajoute ensuite appartient à un thème.
+    const couchesFond = new Set(map.getStyle().layers.map(l => l.id).concat(['maposition']));
+    let masque = false;
+    function appliquerMasque() { for (const l of map.getStyle().layers) if (!couchesFond.has(l.id)) map.setLayoutProperty(l.id, 'visibility', masque ? 'none' : 'visible'); }
+    map.on('sourcedata', () => { if (masque) appliquerMasque(); });
     map.on('click', e => { if (app.active && app.active.toucher) app.active.toucher(app, e.lngLat); });
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
@@ -361,7 +381,7 @@
     bTitre.onclick = () => { dessinerMenu(); menu.hidden = false; };
     bRech.onclick = () => { dessinerMenu(); menu.hidden = false; const q = menu.querySelector('.q'); q.scrollIntoView({ block: 'center' }); q.focus(); };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
-    if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); map.setLayoutProperty('batiments3d', 'visibility', 'visible'); b3d.setAttribute('aria-pressed', 'true'); }
+    if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
     // Fond d'ouverture : le dernier choisi sur cet appareil, sinon celui de la carte, sinon le Plan IGN HD.
     const fondDepart = garde.lire('cartes.fond', null) || cfg.fond || 'plan';
     if (fonds.includes(fondDepart) && fondDepart !== 'gris') mettreFond(fondDepart);

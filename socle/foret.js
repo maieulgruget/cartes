@@ -12,6 +12,7 @@
     const q = {
       theme: 'Forêt', libelle: opts.libelle || 'Quelle forêt ici ?',
       async ouvrir(app) {
+        q.fondAvant = app.fond; if (app.fond !== 'ombrage') app.mettreFond('ombrage');   // les peuplements se lisent mieux sur le relief ombré
         const c = app.repondre(q.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement, ou un type de la légende pour le masquer.</p><div class="legende"></div><p class="petit">BD Forêt de l'IGN : elle décrit des peuplements, pas des arbres un par un. ${opts.note || ''}</p>`);
         const charger = async () => {
           if (app.map.getZoom() < 11) { c.querySelector('.etat').textContent = 'Zoome un peu pour afficher les forêts.'; return; }
@@ -39,7 +40,7 @@
         const f = app.map.queryRenderedFeatures(app.map.project(ll), { layers: ['bdforet'] })[0];
         document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(f.properties.tfv)}</span> (${app.propre(f.properties.essence)}).` : 'Ce point n\'est pas en forêt.';
       },
-      fermer(app) { cle = null; app.retirer('bdforet'); }
+      fermer(app) { cle = null; app.retirer('bdforet'); if (q.fondAvant && q.fondAvant !== app.fond) app.mettreFond(q.fondAvant); }
     };
     return q;
   }

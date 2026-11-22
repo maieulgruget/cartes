@@ -12,30 +12,35 @@
 <link rel="apple-touch-icon" href="../socle/icone-180.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="../socle/icone-180.png">
-<title>Semnoz — où chercher les champignons</title>
+<title>Où chercher les champignons — autour d'Annecy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="../socle/socle.css">
 <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
 <script src="../socle/socle.js"></script>
+<script src="../socle/formes.js"></script>
 </head>
 <body>
 <script>
 (async function () {
   const app = await Socle.creer({
-    id: 'semnoz', racine: '../', titre: 'Où chercher', sousTitre: 'Semnoz, champignons',
+    id: 'semnoz', racine: '../', titre: 'Où chercher', sousTitre: 'Champignons, autour d\'Annecy',
     centre: [6.1050, 45.8250], zoom: 11.9, pitch: 50, bearing: 15, pitch3d: 58,
-    recherche: { centre: [6.105, 45.83], rayonKm: 30 },
+    recherche: { centre: [6.105, 45.83], rayonKm: 70 },
     signets: [
       { nom: 'Tout le Semnoz', centre: [6.1050, 45.8300], zoom: 11.6, pitch: 0, bearing: 0 },
       { nom: 'Crêt de Châtillon', note: 'le sommet, 1 699 m', centre: [6.1039, 45.7984], zoom: 13.6, pitch: 60, bearing: 20 },
       { nom: 'Forêt du Crêt du Maure', note: 'au-dessus d\'Annecy', centre: [6.1230, 45.8750], zoom: 13.6, pitch: 55, bearing: 180 },
       { nom: 'Versant du lac (Sevrier, Saint-Jorioz)', centre: [6.1300, 45.8400], zoom: 13, pitch: 58, bearing: -100 },
       { nom: 'Versant ouest (Quintal, Viuz-la-Chiésaz)', centre: [6.0800, 45.8200], zoom: 13, pitch: 58, bearing: 90 },
-      { nom: 'Col de Leschaux', centre: [6.1250, 45.7750], zoom: 13.4, pitch: 55, bearing: 0 }
+      { nom: 'Col de Leschaux', centre: [6.1250, 45.7750], zoom: 13.4, pitch: 55, bearing: 0 },
+      { nom: 'Bauges : Margériaz et Revard', centre: [6.0350, 45.6600], zoom: 12, pitch: 50, bearing: 0 },
+      { nom: 'Bauges : vallon de Bellevaux', centre: [6.2300, 45.6700], zoom: 12.4, pitch: 55, bearing: 30 },
+      { nom: 'Plateau des Glières et Parmelan', centre: [6.2700, 45.9500], zoom: 12, pitch: 50, bearing: 0 },
+      { nom: 'Aravis : La Clusaz et Manigod', centre: [6.4000, 45.8800], zoom: 11.8, pitch: 50, bearing: 0 }
     ],
-    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges). Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
+    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges), fournie avec la page pour le Semnoz et lue à la volée pour les autres massifs. Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
   });
   const { map } = app;
 
@@ -61,15 +66,35 @@
   const TEINTE = { feuillus: '#7fb069', hetre: '#a7c957', mixte_f: '#5fa8a0', mixte_c: '#3d8b8b', sapin: '#2f6690', coniferes: '#3a7ca5', pin: '#c9a227', ouvert: '#8d7b68' };
   const CODES = Object.keys(LIB);
 
-  const foret = await (await fetch('foret.geojson')).json();
+  /* Forêts : le Semnoz est fourni avec la page (affichage immédiat) ; ailleurs, les peuplements de la vue sont lus
+     auprès de l'IGN, ce qui étend la carte à tous les massifs alentour. */
+  let foret = await (await fetch('foret.geojson')).json();
+  const SEMNOZ = [6.03, 45.76, 6.18, 45.90]; let cleForet = 'semnoz';
+  const groupe = pr => { const e = pr.essence || '', t = pr.tfv || ''; return /feuillus prépondérants/.test(t) ? 'mixte_f' : /conifères prépondérants/.test(t) ? 'mixte_c' : e === 'Hêtre' ? 'hetre' : e === 'Sapin, épicéa' ? 'sapin' : /^Pin/.test(e) ? 'pin' : e === 'Mixte' ? 'mixte_f' : /Conifères|Mélèze|Douglas/.test(e) ? 'coniferes' : /NC|NR/.test(e) || !e ? 'ouvert' : 'feuillus'; };
+  async function foretDeLaVue() {
+    const b = app.emprise(0.05);
+    if (b[0] >= SEMNOZ[0] && b[1] >= SEMNOZ[1] && b[2] <= SEMNOZ[2] && b[3] <= SEMNOZ[3] && cleForet === 'semnoz') return;
+    const cle = b.map(v => v.toFixed(2)).join(); if (cle === cleForet) return;
+    if (map.getZoom() < 11) return;   // trop large : on garde ce qui est chargé
+    app.occupe(true, 'Lecture des forêts…');
+    try {
+      const r = await fetch(`${Socle.GEOPF}/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=LANDCOVER.FORESTINVENTORY.V2:formation_vegetale&OUTPUTFORMAT=application/json&SRSNAME=CRS:84&BBOX=${b.join(',')},CRS:84&COUNT=4000&PROPERTYNAME=essence,tfv,geom`);
+      const j = await r.json(); j.features.forEach(f => { f.properties = { g: groupe(f.properties), t: f.properties.tfv }; });
+      foret = j; cleForet = cle; map.getSource('foret').setData(foret); memo.cle = null;
+    } catch (e) { /* on garde les forêts déjà chargées */ }
+    app.occupe(false);
+  }
   map.addSource('foret', { type: 'geojson', data: foret });
   map.addLayer({ id: 'foret', type: 'fill', source: 'foret', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'g'], ...CODES.flatMap(c => [c, TEINTE[c]]), '#888'], 'fill-opacity': 0.55 } }, 'analyses');
 
   // ---------- Météo des 14 derniers jours, ramenée à l'altitude ----------
   const REF = { lat: 45.83, lon: 6.105, alt: 1100 };
-  let passe = null;
+  let passe = null, clePasse = null;
   async function meteoPassee() {
-    if (passe) return passe;
+    // météo du secteur regardé (au dixième de degré), ramenée à 1 100 m
+    const ct = map.getCenter(), cle = ct.lat.toFixed(1) + ',' + ct.lng.toFixed(1);
+    if (passe && cle === clePasse) return passe;
+    REF.lat = +ct.lat.toFixed(1); REF.lon = +ct.lng.toFixed(1); clePasse = cle; passe = null;
     const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${REF.lat}&longitude=${REF.lon}&elevation=${REF.alt}&timezone=Europe%2FParis&past_days=14&forecast_days=1&daily=precipitation_sum,temperature_2m_mean,temperature_2m_min`);
     if (!j || !j.daily) return null;
     const d = j.daily, n = d.time.length, som = (a, i0, i1) => a.slice(i0, i1).reduce((s, v) => s + (v || 0), 0);
@@ -82,6 +107,7 @@
   // ---------- Grille : altitude, pente, exposition et type de forêt par maille ----------
   const memo = {};
   async function terrain() {
+    await foretDeLaVue();
     const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
     if (memo.cle === cle) return memo;
     app.occupe(true, 'Lecture du relief…'); const g = await app.grille(b, 420); const a = app.pentes(g);
@@ -115,9 +141,10 @@
         app.poser('note', g, app.peindre(g, k => { const v = notes[k]; if (v < 0.15 || masques.has(classe(v))) return null; for (let i = 1; i < R.length; i++) if (v <= R[i][0]) { const A = R[i - 1], B = R[i], u = (v - A[0]) / (B[0] - A[0]); return [A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u, A[3] + (B[3] - A[3]) * u, 215]; } return [255, 243, 176, 215]; }));
       };
       const masques = app.legende(c, [{ cle: 'p', couleur: '#3b2f63', texte: 'possible' }, { cle: 'b', couleur: '#b5446e', texte: 'bon' }, { cle: 't', couleur: '#f4a261', texte: 'très bon' }, { cle: 'm', couleur: '#fff3b0', texte: 'le meilleur' }], peindreNotes, masquesNotes);
-      const p = await meteoPassee();
+      let p = await meteoPassee();
       const dessiner = async () => {
         const { g, a, type } = await terrain(); if (app.active !== q1) return;
+        p = await meteoPassee();
         const ch = CHAMPIGNONS[choisi], mois = new Date().getMonth() + 1, sec = p ? p.pluie14 < ch.pluie * 0.6 : false;
         const note = k => {
           const z = g.z[k], t = CODES[type[k] - 1]; if (!(z === z) || !t) return 0;
@@ -173,7 +200,9 @@
   const q3 = {
     theme: 'Forêt', libelle: 'Quelle forêt ici ?',
     async ouvrir(app) {
+      q3.fondAvant = app.fond; if (app.fond !== 'ombrage') app.mettreFond('ombrage');
       map.setLayoutProperty('foret', 'visibility', 'visible');
+      app.suivre(q3, foretDeLaVue); foretDeLaVue();
       const c3 = app.repondre(q3.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement, ou un type de la légende pour le masquer.</p><div class="legende"></div>
         <p class="petit">La BD Forêt décrit des peuplements, pas des arbres : sur le Semnoz, les « feuillus » sont surtout des hêtres, et les mélanges associent hêtre, sapin et épicéa.</p>`);
       const filtrer = m => map.setFilter('foret', m.size ? ['!', ['in', ['get', 'g'], ['literal', [...m]]]] : null);
@@ -183,9 +212,10 @@
       const f = map.queryRenderedFeatures(map.project(ll), { layers: ['foret'] })[0];
       document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(f.properties.t)}</span>. Champignons qui s'y plaisent : ${Object.values(CHAMPIGNONS).filter(c => (c.arbres[f.properties.g] || 0) >= 0.8).map(c => c.nom.toLowerCase()).join(', ') || 'aucun de la liste'}.` : 'Ce point n\'est pas en forêt.';
     },
-    fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); }
+    fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); if (q3.fondAvant && q3.fondAvant !== app.fond) app.mettreFond(q3.fondAvant); }
   };
   [q1, q2, q3].forEach(q => app.question(q));
+  app.question(Socle.formes());
 })();
 </script>
 </body>

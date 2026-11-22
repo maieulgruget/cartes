@@ -28,7 +28,10 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
   backdrop-filter: blur(8px); font-size: 14px; line-height: 1.4; max-height: 42vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .reponse[hidden] { display: none; }
 .reponse h2 { font-family: var(--display); font-size: 17px; font-weight: 600; margin: 0 0 4px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.reponse h2 button { border: 0; background: none; color: var(--muted); padding: 0 2px; font-size: 20px; line-height: 1; }
+.reponse h2 { align-items: center; }
+.reponse h2 > span { flex: 1; }
+.reponse h2 button.x { border: 0; background: none; color: var(--muted); padding: 0 2px; font-size: 22px; line-height: 1; }
+.reponse h2 button.oeil { font-family: var(--body); font-size: 12px; padding: 4px 10px; font-weight: 400; }
 .reponse p { margin: 4px 0; }
 .reponse .fort { color: var(--gold); font-weight: 600; }
 .reponse .petit { color: var(--muted); font-size: 12px; }
@@ -91,3 +94,11 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
   #fiche .legende { display: none; }
   @page { size: A4; margin: 14mm; }
 }
+
+/* Explications repliées : ce que la carte calcule, comment, avec quelle fiabilité. */
+details.aide { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+details.aide summary { color: var(--gold); font-size: 13px; cursor: pointer; list-style: none; }
+details.aide summary::-webkit-details-marker { display: none; }
+details.aide summary::before { content: 'ⓘ '; }
+details.aide p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+.reponse.replie details.aide { display: none; }

@@ -20,6 +20,7 @@
 <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
 <script src="../socle/socle.js"></script>
 <script src="../socle/soleil.js"></script>
+<script src="../socle/formes.js"></script>
 </head>
 <body>
 <script>
@@ -46,6 +47,7 @@
   app.question(Socle.lumiere.versant({ fuseau: F }));
   app.question(Socle.lumiere.duree({ fuseau: F, noteDuree: 'Les fonds de cirque et les pieds de rempart ne voient le soleil que quelques heures.' }));
   app.question(Socle.lumiere.leverCoucher({ fuseau: F }));
+  app.question(Socle.formes());
 })();
 </script>
 </body>

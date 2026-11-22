@@ -73,20 +73,29 @@
     return q;
   }
 
+  // Relief lointain autour d'un point : une grille large (25 km de part et d'autre, maille d'une centaine de mètres),
+  // lue une fois par secteur, pour que les crêtes hors de la vue comptent dans les heures de soleil.
+  const lointain = new Map();
+  async function horizon(app, ll) {
+    const cle = ll.lng.toFixed(1) + ',' + ll.lat.toFixed(1);
+    if (!lointain.has(cle)) lointain.set(cle, app.grille([ll.lng - 0.36, ll.lat - 0.25, ll.lng + 0.36, ll.lat + 0.25], 560).catch(() => null));
+    return lointain.get(cle);
+  }
   // Heures de soleil d'un point sur la journée choisie, par pas de 5 minutes.
-  function heuresDeSoleil(app, g, ll, opts, cible) {
+  async function heuresDeSoleil(app, g, ll, opts, cible) {
     if (!g || !cible) return;
     const k = app.indice(g, ll.lng, ll.lat); if (k < 0) { cible.textContent = 'Ce point est hors de la zone calculée : recentre la carte.'; return; }
+    app.occupe(true, 'Lecture des crêtes alentour…'); const gl = await horizon(app, ll), kl = gl ? app.indice(gl, ll.lng, ll.lat) : -1; app.occupe(false);
     const plages = []; let debut = null, total = 0;
     for (let m = 0; m <= 1440; m += 5) {
-      const s = app.soleil(instant(opts.fuseau, etat.jour, m), ll.lat, ll.lng), oui = m < 1440 && app.eclaire(g, k, s.azimut, s.hauteur);
+      const s = app.soleil(instant(opts.fuseau, etat.jour, m), ll.lat, ll.lng), oui = m < 1440 && app.eclaire(g, k, s.azimut, s.hauteur) && (kl < 0 || app.eclaire(gl, kl, s.azimut, s.hauteur));
       if (oui && debut == null) debut = m; if (!oui && debut != null) { plages.push([debut, m]); total += m - debut; debut = null; }
     }
     const d = { type: 'Feature', geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] } };
     if (app.map.getSource('pointsoleil')) app.map.getSource('pointsoleil').setData(d);
     else { app.map.addSource('pointsoleil', { type: 'geojson', data: d }); app.map.addLayer({ id: 'pointsoleil', type: 'circle', source: 'pointsoleil', paint: { 'circle-radius': 7, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
     cible.innerHTML = plages.length
-      ? `Ce point (${Math.round(g.z[k])} m) est au soleil ${plages.map(p => `de <span class="fort">${hm(p[0])}</span> à <span class="fort">${hm(p[1])}</span>`).join(', puis ')}, soit ${hm(total)} le ${etat.jour.split('-').reverse().join('/')}. <span class="petit">Le relief hors de la vue n'est pas compté : dézoome pour inclure les crêtes lointaines.</span>`
+      ? `Ce point (${Math.round(g.z[k])} m) est au soleil ${plages.map(p => `de <span class="fort">${hm(p[0])}</span> à <span class="fort">${hm(p[1])}</span>`).join(', puis ')}, soit ${hm(total)} le ${etat.jour.split('-').reverse().join('/')}. <span class="petit">${gl ? 'Crêtes comptées jusqu\'à 25 km.' : 'Les crêtes lointaines n\'ont pas pu être lues.'}</span>`
       : `Ce point ne reçoit pas le soleil le ${etat.jour.split('-').reverse().join('/')}.`;
   }
 
@@ -112,10 +121,10 @@
     const q = {
       theme: opts.theme || 'Lever et coucher', libelle: opts.libelle || 'Où se lève et se couche le soleil ?',
       async ouvrir(app) {
-        const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat"></p><div class="legende"><span><i style="background:#f4a261"></i>lever</span><span><i style="background:#e76f51"></i>coucher</span><span><i style="background:#e9c46a"></i>midi solaire</span></div><p class="petit">Directions tracées depuis le centre de la carte, sur un horizon plat : une crête retarde le lever et avance le coucher. Déplace la carte pour changer de point.</p>`);
+        const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat"></p><div class="legende"><span><i style="background:#f4a261"></i>lever</span><span><i style="background:#e76f51"></i>coucher</span><span><i style="background:#e9c46a"></i>midi solaire</span></div><p class="petit">Touche la carte pour choisir le point d'où partent les directions ; sans cela, elles partent du centre. Elles sont tracées sur un horizon plat : une crête retarde le lever et avance le coucher (le thème Versant donne les heures réelles).</p>`);
         c.querySelector('.heure').textContent = '';
         const dessiner = () => {
-          const ct = app.map.getCenter(); let lever = null, coucher = null, midi = null, hmax = -90, dore = [];
+          const ct = q.point || app.map.getCenter(); let lever = null, coucher = null, midi = null, hmax = -90, dore = [];
           let avant = app.soleil(instant(opts.fuseau, etat.jour, 0), ct.lat, ct.lng);
           for (let m = 2; m <= 1440; m += 2) {
             const s = app.soleil(instant(opts.fuseau, etat.jour, m), ct.lat, ct.lng);
@@ -137,10 +146,12 @@
             : 'Pas de lever ni de coucher ce jour-là à cet endroit.';
         };
         c.querySelector('.jour').onchange = e => { if (e.target.value) { etat.jour = e.target.value; dessiner(); } };
+        q.redessiner = dessiner;
         brancherMaintenant(c, opts.fuseau, dessiner);
         app.suivre(q, dessiner); dessiner();
       },
-      fermer(app) { app.retirer('axes'); }
+      toucher(app, ll) { q.point = ll; q.redessiner && q.redessiner(); },
+      fermer(app) { q.point = null; app.retirer('axes'); }
     };
     return q;
   }
