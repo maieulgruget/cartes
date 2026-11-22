@@ -1,0 +1,24 @@
+{
+ "name": "Où est la lumière",
+ "short_name": "La Réunion",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#0e1622",
+ "theme_color": "#0e1622",
+ "lang": "fr",
+ "icons": [
+  {
+   "src": "../socle/icone-180.png",
+   "sizes": "180x180",
+   "type": "image/png"
+  },
+  {
+   "src": "../socle/icone-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any maskable"
+  }
+ ]
+}

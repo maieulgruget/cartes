@@ -9,7 +9,7 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Où est la lumière (La Réunion) | `reunion/` | ombres à l'heure choisie, heures de soleil d'un versant, carte d'ensoleillement, lever et coucher |
 | Où chercher (Semnoz, champignons) | `semnoz/` | note par champignon, pluie des 14 jours, peuplements |
 
-`socle/` porte ce qui est commun : style sombre dérivé du Plan IGN, relief LiDAR HD lu à la volée,
+`socle/` porte ce qui est commun : fonds gris, Plan IGN HD et photo, relief LiDAR HD lu à la volée, bâtiments en volume,
 interface à questions, signets, recherche, calculs (pentes, soleil, ombres portées).
 
 Données : IGN (Géoplateforme), Open-Meteo. Versions de travail, à vérifier sur le terrain.

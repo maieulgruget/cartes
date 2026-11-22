@@ -10,6 +10,7 @@
 <meta name="theme-color" content="#0e1622">
 <meta name="robots" content="noindex">
 <link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="../socle/icone-180.png">
 <title>Versant du soleil — Les Chapelles, Tarentaise</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,6 +20,7 @@
 <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
 <script src="../socle/socle.js"></script>
 <script src="../socle/soleil.js"></script>
+<script src="../socle/foret.js"></script>
 </head>
 <body>
 <script>
@@ -54,7 +56,7 @@
         <div class="ligne"><label>Au-dessus de <span class="fort alt">${choix.altMin} m</span></label></div>
         <input type="range" class="altmin" min="800" max="3200" step="100" value="${choix.altMin}">
         <p class="etat"></p>
-        <div class="legende"><span><i style="background:#f4d35e"></i>30-35°</span><span><i style="background:#ee964b"></i>35-40°</span><span><i style="background:#e63946"></i>40-45°</span><span><i style="background:#9d4edd"></i>plus de 45°</span><span><i style="background:rgba(255,255,255,.35)"></i>raide, hors critères</span></div>`);
+        <div class="legende"><span><i style="background:#f4d35e"></i>30-35°</span><span><i style="background:#ee964b"></i>35-40°</span><span><i style="background:#e63946"></i>40-45°</span><span><i style="background:#9d4edd"></i>plus de 45°</span><span><i style="background:rgba(40,50,70,.6)"></i>raide, hors critères</span></div>`);
       const dessiner = () => {
         const g = memoP.g, a = memoP.a; if (!g || app.active !== qPentes) return;
         let n = 0, tot = 0;
@@ -62,7 +64,7 @@
           const p = a.pente[k]; if (!(p >= 0)) return null; tot++;
           if (p < choix.seuil) return null;
           const dans = g.z[k] >= choix.altMin && choix.expos.has(ROSE[Math.round(a.expo[k] / 45) % 8]);
-          if (!dans) return [255, 255, 255, 45];
+          if (!dans) return [40, 50, 70, 70];
           n++; return p < 35 ? [244, 211, 94, 200] : p < 40 ? [238, 150, 75, 210] : p < 45 ? [230, 57, 70, 215] : [157, 78, 221, 220];
         });
         app.poser('pentes', g, url);
@@ -151,6 +153,7 @@
   app.question(Socle.lumiere.duree({ fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide.' }));
   app.question(qGel);
   app.question(qTemps);
+  app.question(Socle.foret({ note: 'En lisière haute, les mélèzes et les aulnes verts signalent souvent les couloirs.' }));
 })();
 </script>
 </body>

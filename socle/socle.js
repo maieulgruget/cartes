@@ -1,5 +1,5 @@
 /* Socle commun des cartes.
-   - Carte MapLibre plein écran : fond sombre (Plan IGN vectoriel recoloré), ortho et plan IGN en bascule.
+   - Carte MapLibre plein écran : fond gris (Plan IGN vectoriel), Plan IGN HD et photo aérienne en bascule ; bâtiments en volume en vue 3D rapprochée.
    - Relief : MNT LiDAR HD de l'IGN, lu à la volée (WMS raster, flottants 32 bits) et converti en tuiles de relief ;
      repli sur les tuiles Terrarium là où l'IGN n'a pas de valeur (hors de France).
    - Interface : une rangée de questions, une réponse à la fois ; signets (des vues), recherche de lieux, 2D/3D.
@@ -20,13 +20,29 @@
   const wmts = (couche, fmt, style) => `${GEOPF}/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${couche}&STYLE=${style || 'normal'}&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=${fmt}`;
 
   // ---------- Altitudes : lecture d'une grille auprès de l'IGN ----------
+  /* Lit une grille d'altitudes sur une emprise en Mercator (x0, y0, x1, y1), en w × h mailles.
+     Le service de l'IGN rééchantillonne au plus proche voisin : demandé directement en Mercator, il répète une ligne
+     sur cinq ou six (son relief est rangé en degrés), ce qui crée de fausses marches. On le demande donc dans sa
+     géométrie d'origine (mailles carrées en degrés), puis on recale les lignes en Mercator par interpolation. */
   async function lireBil(couche, x0, y0, x1, y1, w, h, signal) {
-    const u = `${GEOPF}/wms-r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${couche}&STYLES=&FORMAT=image/x-bil;bits=32&CRS=EPSG:3857&BBOX=${x0},${y0},${x1},${y1}&WIDTH=${w}&HEIGHT=${h}`;
-    const r = await fetch(u, { signal });
+    const [lon0, lat0] = versGeo(x0, y0), [lon1, lat1] = versGeo(x1, y1);
+    const hs = Math.max(2, Math.round(w * (lat1 - lat0) / (lon1 - lon0)));
+    const u = `${GEOPF}/wms-r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${couche}&STYLES=&FORMAT=image/x-bil;bits=32&CRS=EPSG:4326&BBOX=${lat0},${lon0},${lat1},${lon1}&WIDTH=${w}&HEIGHT=${hs}`;
+    let r = await fetch(u, { signal });
+    if (!r.ok && r.status !== 400) { await new Promise(res => setTimeout(res, 500)); r = await fetch(u, { signal }); }   // un second essai si le service est occupé
     if (!r.ok) throw new Error('Altitudes IGN : ' + r.status);
     const buf = await r.arrayBuffer();
-    if (buf.byteLength < w * h * 4) throw new Error('Altitudes IGN : réponse incomplète');
-    return new Float32Array(buf, 0, w * h);
+    if (buf.byteLength < w * hs * 4) throw new Error('Altitudes IGN : réponse incomplète');
+    const src = new Float32Array(buf, 0, w * hs), out = new Float32Array(w * h);
+    for (let j = 0; j < h; j++) {
+      const lat = versGeo(0, y1 - (j + 0.5) * (y1 - y0) / h)[1];
+      const f = Math.min(hs - 1, Math.max(0, (lat1 - lat) / (lat1 - lat0) * hs - 0.5)), ja = Math.floor(f), jb = Math.min(hs - 1, ja + 1), u2 = f - ja;
+      for (let i = 0; i < w; i++) {
+        const a = src[ja * w + i], b = src[jb * w + i];
+        out[j * w + i] = absent(a) ? b : absent(b) ? a : a + (b - a) * u2;
+      }
+    }
+    return out;
   }
   const absent = v => !(v > -500 && v < 9000);   // valeurs « sans donnée » de l'IGN (-9999, -99999 et leurs interpolations)
 
@@ -75,18 +91,22 @@
   }
 
   // Le point k de la grille reçoit-il le soleil ? On remonte le rayon vers le soleil jusqu'à sortir de la grille ou dépasser le plus haut relief.
+  // Le relief est lu par interpolation entre mailles : au plus proche voisin, un rayon rasant qui longe un versant
+  // accroche une maille plus haute une fois sur deux et dessine de fausses bandes d'ombre.
   function eclaire(g, k, azimut, hauteur) {
     if (hauteur <= 0) return false;
     const { z, w, h, pas, zmax } = g, z0 = z[k];
     if (z0 !== z0) return true;
     const dx = Math.sin(azimut * RAD), dy = -Math.cos(azimut * RAD), tan = Math.tan(hauteur * RAD) * pas;
-    const i0 = k % w, j0 = (k - i0) / w, marge = g.surface ? 1.5 : 0.5;
-    for (let t = 1.5; ; t += (t < 12 ? 1 : t * 0.08)) {
-      const i = Math.round(i0 + dx * t), j = Math.round(j0 + dy * t);
-      if (i < 0 || j < 0 || i >= w || j >= h) return true;
+    const i0 = k % w, j0 = (k - i0) / w, marge = (g.surface ? 1.5 : 0.3) + 0.04 * pas;
+    for (let t = 1; ; t += (t < 16 ? 1 : t * 0.06)) {
+      const x = i0 + dx * t, y = j0 + dy * t;
+      if (x < 0 || y < 0 || x > w - 1 || y > h - 1) return true;
       const rayon = z0 + marge + t * tan;
       if (rayon > zmax) return true;
-      if (z[j * w + i] > rayon) return false;
+      const i = x | 0, jj = y | 0, fx = x - i, fy = y - jj, a = jj * w + i, i1 = i < w - 1 ? 1 : 0, j1 = jj < h - 1 ? w : 0;
+      const zi = (z[a] * (1 - fx) + z[a + i1] * fx) * (1 - fy) + (z[a + j1] * (1 - fx) + z[a + j1 + i1] * fx) * fy;
+      if (zi > rayon) return false;
     }
   }
   function ombres(g, azimut, hauteur) {
@@ -164,22 +184,26 @@
   // ---------- Création d'une carte ----------
   async function creer(cfg) {
     brancherRelief();
-    const style = await (await fetch(cfg.racine + 'socle/style-sombre.json')).json();
+    const style = await (await fetch(cfg.racine + 'socle/style-gris.json')).json();
     // Les étiquettes passent toutes au-dessus : les analyses se glissent entre les surfaces et les noms.
     style.layers = [...style.layers.filter(l => l.type !== 'symbol'), ...style.layers.filter(l => l.type === 'symbol')];
     const premierTexte = style.layers.findIndex(l => l.type === 'symbol');
     Object.assign(style.sources, {
       ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
-      plan: { type: 'raster', tiles: [wmts('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png')], tileSize: 256, maxzoom: 18, attribution: '© IGN' },
+      plan: { type: 'raster', tiles: [`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/{z}/{x}/{y}.jpeg`], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN HD © IGN' },
+      bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
       relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
       estompe: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium' }
     });
     style.layers.splice(premierTexte, 0,
       { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
       { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
-      { id: 'estompe', type: 'hillshade', source: 'estompe', paint: { 'hillshade-exaggeration': 0.45, 'hillshade-shadow-color': '#02060c', 'hillshade-highlight-color': '#9fb4d0', 'hillshade-accent-color': '#0b1524' } },
+      { id: 'estompe', type: 'hillshade', source: 'estompe', paint: { 'hillshade-exaggeration': 0.4, 'hillshade-shadow-color': '#2b3545', 'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#55617a' } },
       { id: 'analyses', type: 'background', paint: { 'background-opacity': 0 } });   // repère : les analyses se glissent sous les étiquettes
     const textes = style.layers.filter(l => l.type === 'symbol').map(l => l.id);
+    style.layers.splice(style.layers.findIndex(l => l.id === 'analyses') + 1, 0,
+      { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15, layout: { visibility: 'none' },
+        paint: { 'fill-extrusion-height': ['coalesce', ['get', 'hauteur'], 4], 'fill-extrusion-color': '#e9e4d8', 'fill-extrusion-opacity': 0.92, 'fill-extrusion-vertical-gradient': true } });
 
     document.body.append(el('div', { id: 'carte' }));
     const map = new maplibregl.Map({
@@ -191,27 +215,26 @@
     await new Promise(res => map.once('load', res));
     const exag = cfg.exageration || 1;
     let relief3d = false;
-    const mettre3d = oui => { relief3d = oui; map.setTerrain(oui ? { source: 'relief', exaggeration: exag } : null); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
+    const mettre3d = oui => { relief3d = oui; map.setTerrain(oui ? { source: 'relief', exaggeration: exag } : null); map.setLayoutProperty('batiments3d', 'visibility', oui ? 'visible' : 'none'); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
 
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', {}, 'Nuit'), b3d = el('button', { 'aria-pressed': 'false' }, '3D');
-    outils.append(bFond, b3d);
+    const bFond = el('button', {}, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher');
+    outils.append(bFond, b3d, bRech);
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' });
     bas.append(reponse, rang);
     const attente = el('div', { class: 'attente', hidden: '' }, 'Calcul…');
     const menu = el('div', { class: 'menu', hidden: '' });
     document.body.append(bTitre, outils, bas, attente, menu);
 
-    const fonds = ['nuit', 'ortho', 'plan'], noms = { nuit: 'Nuit', ortho: 'Photo', plan: 'Plan' };
-    let fond = 'nuit';
+    const fonds = ['gris', 'plan', 'ortho'], noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo' };
+    let fond = 'gris';
     function mettreFond(f) {
       fond = f; bFond.textContent = noms[f];
       map.setLayoutProperty('ortho', 'visibility', f === 'ortho' ? 'visible' : 'none');
       map.setLayoutProperty('plan', 'visibility', f === 'plan' ? 'visible' : 'none');
-      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'nuit' ? 0.45 : 0.15);
-      for (const id of textes) map.setLayoutProperty(id, 'visibility', f === 'plan' ? 'none' : 'visible');
+      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'plan' ? 0 : 0.12);
     }
     bFond.onclick = () => mettreFond(fonds[(fonds.indexOf(fond) + 1) % 3]);
     b3d.onclick = () => mettre3d(!relief3d);
@@ -310,8 +333,10 @@
       menu.querySelector('.q').onkeydown = e => { if (e.key === 'Enter') chercher(); };
     }
     bTitre.onclick = () => { dessinerMenu(); menu.hidden = false; };
+    bRech.onclick = () => { dessinerMenu(); menu.hidden = false; const q = menu.querySelector('.q'); q.scrollIntoView({ block: 'center' }); q.focus(); };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
-    if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); b3d.setAttribute('aria-pressed', 'true'); }
+    if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); map.setLayoutProperty('batiments3d', 'visibility', 'visible'); b3d.setAttribute('aria-pressed', 'true'); }
+    if (cfg.fond && cfg.fond !== 'gris') mettreFond(cfg.fond);
     window.carteApp = app;
     return app;
   }

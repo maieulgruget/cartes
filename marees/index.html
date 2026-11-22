@@ -10,6 +10,7 @@
 <meta name="theme-color" content="#0e1622">
 <meta name="robots" content="noindex">
 <link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="../socle/icone-180.png">
 <title>Marées — de Bréhat au cap Fréhel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -55,7 +56,8 @@
   }
   function niveau(s, t) {
     const i = Math.floor((t - s.t[0]) / 36e5); if (i < 0 || i >= s.h.length - 1) return NaN;
-    const f = (t - s.t[i]) / 36e5; return s.h[i] + (s.h[i + 1] - s.h[i]) * f;
+    const f = (t - s.t[i]) / 36e5, p0 = s.h[Math.max(0, i - 1)], p1 = s.h[i], p2 = s.h[i + 1], p3 = s.h[Math.min(s.h.length - 1, i + 2)];
+    return 0.5 * (2 * p1 + (p2 - p0) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f * f + (3 * p1 - p0 - 3 * p2 + p3) * f * f * f);   // courbe lissée passant par les valeurs horaires
   }
   function extremes(s, t0, t1) {
     const r = []; let av = niveau(s, t0), sens = 0;
