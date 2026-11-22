@@ -8,11 +8,11 @@
     ['Pin sylvestre', '#c9a227', 'pin sylvestre'], ['Pins mélangés', '#d4b943', 'pins'], ['Conifères', '#3a7ca5', 'autres conifères'], ['Douglas', '#5b7fb5', 'douglas'], ['NC', '#8d7b68', 'lande, pelouse, formation ouverte']
   ];
   function foret(opts) {
-    opts = opts || {}; let cle = null;
+    opts = opts || {}; let cle = null; const masques = new Set();
     const q = {
       theme: 'Forêt', libelle: opts.libelle || 'Quelle forêt ici ?',
       async ouvrir(app) {
-        const c = app.repondre(q.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement.</p><div class="legende"></div><p class="petit">BD Forêt de l'IGN : elle décrit des peuplements, pas des arbres un par un. ${opts.note || ''}</p>`);
+        const c = app.repondre(q.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement, ou un type de la légende pour le masquer.</p><div class="legende"></div><p class="petit">BD Forêt de l'IGN : elle décrit des peuplements, pas des arbres un par un. ${opts.note || ''}</p>`);
         const charger = async () => {
           if (app.map.getZoom() < 11) { c.querySelector('.etat').textContent = 'Zoome un peu pour afficher les forêts.'; return; }
           const b = app.emprise(0.1), k = b.map(v => v.toFixed(3)).join(); if (k === cle) return; cle = k;
@@ -26,7 +26,8 @@
               app.map.addLayer({ id: 'bdforet', type: 'fill', source: 'bdforet', paint: { 'fill-color': ['match', ['get', 'essence'], ...GROUPES.flatMap(g => [g[0], g[1]]), '#6b8f71'], 'fill-opacity': 0.6 } }, 'analyses');
             }
             const vus = new Set(j.features.map(f => f.properties.essence));
-            c.querySelector('.legende').innerHTML = GROUPES.filter(g => vus.has(g[0])).map(g => `<span><i style="background:${g[1]}"></i>${g[2]}</span>`).join('') + ([...vus].some(v => !GROUPES.some(g => g[0] === v)) ? '<span><i style="background:#6b8f71"></i>autres</span>' : '');
+            const filtrer = m => app.map.setFilter('bdforet', m.size ? ['!', ['in', ['get', 'essence'], ['literal', [...m]]]] : null);
+            app.legende(c, GROUPES.filter(g => vus.has(g[0])).map(g => ({ cle: g[0], couleur: g[1], texte: g[2] })), filtrer, masques); filtrer(masques);
             if (!j.features.length) c.querySelector('.etat').textContent = 'Pas de forêt décrite dans cette vue.';
           } catch (e) { c.querySelector('.etat').textContent = 'Les forêts ne répondent pas pour l\'instant.'; }
           app.occupe(false);

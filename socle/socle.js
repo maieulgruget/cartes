@@ -268,6 +268,15 @@
         reponse.querySelector('h2 span').onclick = () => reponse.classList.toggle('replie');
         return reponse.querySelector('.corps');
       },
+      /* Légende interactive : chaque niveau se masque ou se rétablit d'un toucher. items = [{ cle, couleur, texte }].
+         Renvoie l'ensemble des clés masquées ; surChange est appelé à chaque bascule. */
+      legende(c, items, surChange, masques) {
+        masques = masques || new Set(); const div = c.querySelector('.legende');
+        div.classList.add('active');
+        div.innerHTML = items.map(it => `<span data-c="${propre(it.cle)}" role="button" class="${masques.has(String(it.cle)) ? 'off' : ''}"><i style="background:${it.couleur}"></i>${propre(it.texte)}</span>`).join('');
+        div.onclick = e => { const s = e.target.closest('span[data-c]'); if (!s) return; const k = s.dataset.c; masques.has(k) ? masques.delete(k) : masques.add(k); s.classList.toggle('off', masques.has(k)); surChange(masques); };
+        return masques;
+      },
       questions: [], active: null,
       question(q) {
         const b = el('button', { 'aria-pressed': 'false', title: q.libelle }, propre(q.theme || q.libelle));   // la puce porte le thème, la réponse porte la question

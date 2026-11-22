@@ -70,3 +70,8 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
 .reponse.replie .legende { margin: 4px 0 0; }
 .reponse.replie h2 { margin: 0; }
 .reponse.replie h2 span::after { content: ' ▸'; }
+
+/* Légende interactive : un toucher masque ou rétablit un niveau sur la carte. */
+.legende.active { gap: 5px 6px; }
+.legende.active span { cursor: pointer; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px 3px 7px; color: var(--ink); user-select: none; -webkit-user-select: none; }
+.legende.active span.off { opacity: 0.4; text-decoration: line-through; border-style: dashed; }

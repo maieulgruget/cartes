@@ -69,7 +69,7 @@
   const m = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1).replace('.', ',') + ' m';
   const sansMaree = '<p>Le modèle de marée ne répond pas pour l\'instant. Le thème « Niveau » fonctionne sans lui.</p>';
 
-  const memo = {};
+  const memo = {}, masquesEstran = new Set();
   async function estran() {
     const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
     if (memo.cle !== cle) { app.occupe(true, 'Lecture de l\'estran…'); memo.g = await app.grille(b, 520, { couche: Socle.RGEALTI }); memo.cle = cle; app.occupe(false); }
@@ -127,18 +127,20 @@
     async ouvrir(app) {
       const s = await maree(); if (!s) { app.repondre(q3.libelle, sansMaree); return; }
       const c = app.repondre(q3.libelle, `<p class="etat"></p>
-        <div class="legende"><span><i style="background:#1d4e89"></i>toujours sous l'eau</span><span><i style="background:#4f9d8e"></i>à sec 25 % du temps</span><span><i style="background:#e9c46a"></i>50 %</span><span><i style="background:#f4a261"></i>75 %</span><span><i style="background:#f1e3c0"></i>presque toujours à sec</span></div>
+        <div class="legende"></div>
         <p class="petit">Part du temps où chaque point de l'estran est découvert sur les deux prochaines marées (environ 25 heures). C'est ce qui sépare les vasières, les herbiers et le haut de plage. Touche un point pour ses heures de passage.</p>`);
       const R = [[0, 29, 78, 137], [0.25, 79, 157, 142], [0.5, 233, 196, 106], [0.75, 244, 162, 97], [1, 241, 227, 192]];
+      const masques = app.legende(c, [{ cle: 'e', couleur: '#1d4e89', texte: 'toujours sous l\'eau' }, { cle: '1', couleur: '#4f9d8e', texte: 'à sec 25 % du temps' }, { cle: '2', couleur: '#e9c46a', texte: '50 %' }, { cle: '3', couleur: '#f4a261', texte: '75 %' }, { cle: '4', couleur: '#f1e3c0', texte: 'presque toujours à sec' }], () => dessiner(), masquesEstran);
       const dessiner = async () => {
         const g = await estran(); if (app.active !== q3) return;
         const t0 = Date.now(), niv = []; for (let t = t0; t <= t0 + 25 * 36e5; t += 6e5) niv.push(niveau(s, t));
         niv.sort((a, b) => a - b); const bas = niv[0], haut = niv[niv.length - 1];
         let surf = 0;
         app.poser('mer', g, app.peindre(g, k => {
-          const z = g.z[k]; if (!(z === z) || z <= bas) return [29, 78, 137, 170]; if (z >= haut) return null;
+          const z = g.z[k]; if (!(z === z) || z <= bas) return masques.has('e') ? null : [29, 78, 137, 170]; if (z >= haut) return null;
           let lo = 0, hi = niv.length; while (lo < hi) { const mi = (lo + hi) >> 1; if (niv[mi] < z) lo = mi + 1; else hi = mi; }
           const f = lo / niv.length; surf++;
+          if (masques.has(f < 0.375 ? '1' : f < 0.625 ? '2' : f < 0.875 ? '3' : '4')) return null;
           for (let i = 1; i < R.length; i++) if (f <= R[i][0]) { const a = R[i - 1], b2 = R[i], u = (f - a[0]) / (b2[0] - a[0]); return [a[1] + (b2[1] - a[1]) * u, a[2] + (b2[2] - a[2]) * u, a[3] + (b2[3] - a[3]) * u, 200]; }
         }));
         const km2 = surf * g.pas * g.pas / 1e6;

@@ -151,11 +151,14 @@
       theme: opts.theme || 'Ensoleillement', libelle: opts.libelle || 'Combien d\'heures de soleil ?',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat"></p>
-          <div class="legende"><span><i style="background:#0b1730"></i>jamais</span><span><i style="background:#3d5a80"></i>2 h</span><span><i style="background:#98c1d9"></i>4 h</span><span><i style="background:#e9c46a"></i>6 h</span><span><i style="background:#f4a261"></i>8 h</span><span><i style="background:#fff3c4"></i>10 h et plus</span></div>
+          <div class="legende"></div>
           <p class="petit">${opts.noteDuree || ''} Calcul par pas de 20 minutes sur la vue affichée ; le relief hors de la vue n'est pas compté. Touche un point pour ses heures exactes.</p>`);
         c.querySelector('.heure').textContent = '';
         const RAMPE = [[0, 11, 23, 48], [2, 61, 90, 128], [4, 152, 193, 217], [6, 233, 196, 106], [8, 244, 162, 97], [10, 255, 243, 196]];
         const teinte = h => { for (let i = 1; i < RAMPE.length; i++) if (h <= RAMPE[i][0]) { const a = RAMPE[i - 1], b = RAMPE[i], f = (h - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f, 185]; } return [255, 243, 196, 185]; };
+        const tranche = h => String(Math.min(10, Math.round(h / 2) * 2));
+        const peindreDuree = () => { const g = memo.g; if (g && app.active === q) app.poser('duree', g, app.peindre(g, k => (g.z[k] === g.z[k] && !masques.has(tranche(memo.cumul[k]))) ? teinte(memo.cumul[k]) : null)); };
+        const masques = app.legende(c, [['0', '#0b1730', 'moins d\'1 h'], ['2', '#3d5a80', '2 h'], ['4', '#98c1d9', '4 h'], ['6', '#e9c46a', '6 h'], ['8', '#f4a261', '8 h'], ['10', '#fff3c4', '9 h et plus']].map(x => ({ cle: x[0], couleur: x[1], texte: x[2] })), peindreDuree, memo.masques || (memo.masques = new Set()));
         const calculer = async () => {
           const b = app.emprise(0.15), surface = app.map.getZoom() >= 13.3, cle = b.map(v => v.toFixed(4)).join() + surface + etat.jour;
           if (memo.cle === cle) return;
@@ -169,7 +172,7 @@
           if (app.active !== q) { app.occupe(false); return; }
           let max = 0, som = 0, nb = 0; for (let k = 0; k < n; k++) if (g.z[k] === g.z[k]) { if (cumul[k] > max) max = cumul[k]; som += cumul[k]; nb++; }
           memo.g = g; memo.cumul = cumul; memo.cle = cle;
-          app.poser('duree', g, app.peindre(g, k => g.z[k] === g.z[k] ? teinte(cumul[k]) : null));
+          peindreDuree();
           c.querySelector('.etat').innerHTML = `Le ${etat.jour.split('-').reverse().join('/')} : jusqu'à <span class="fort">${hm(max * 60)}</span> de soleil sur les points les mieux exposés, ${hm(som / Math.max(1, nb) * 60)} en moyenne sur la vue${g.surface ? ' (arbres et bâtiments compris)' : ''}.`;
           app.occupe(false);
         };

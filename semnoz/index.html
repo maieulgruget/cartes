@@ -100,13 +100,21 @@
 
   // ---------- 1. Où chercher tel champignon ----------
   let choisi = 'cepe';
+  const masquesNotes = new Set(), masquesForet = new Set();   // niveaux masqués, gardés d'une ouverture à l'autre
   const q1 = {
     theme: 'Champignons', libelle: 'Où chercher ?',
     async ouvrir(app) {
       const c = app.repondre(q1.libelle, `<div class="ligne"><select class="esp">${Object.entries(CHAMPIGNONS).map(([k, v]) => `<option value="${k}"${k === choisi ? ' selected' : ''}>${v.nom}</option>`).join('')}</select></div>
         <p class="mot"></p><p class="etat"></p>
-        <div class="legende"><span><i style="background:#3b2f63"></i>possible</span><span><i style="background:#b5446e"></i>bon</span><span><i style="background:#f4a261"></i>très bon</span><span><i style="background:#fff3b0"></i>le meilleur de la vue</span></div>
-        <p class="petit">Note de chaque maille : type de forêt × altitude où la température de la semaine convient × fraîcheur du versant. Touche la carte pour le détail d'un point.</p>`);
+        <div class="legende"></div>
+        <p class="petit">Note de chaque maille : type de forêt × altitude où la température de la semaine convient × fraîcheur du versant. Touche un niveau de la légende pour le masquer, la carte pour le détail d'un point.</p>`);
+      const R = [[0.15, 59, 47, 99], [0.4, 181, 68, 110], [0.7, 244, 162, 97], [1, 255, 243, 176]];
+      const classe = v => v < 0.4 ? 'p' : v < 0.7 ? 'b' : v < 0.9 ? 't' : 'm';
+      const peindreNotes = () => {
+        const g = memo.g, notes = memo.notes; if (!g || !notes || app.active !== q1) return;
+        app.poser('note', g, app.peindre(g, k => { const v = notes[k]; if (v < 0.15 || masques.has(classe(v))) return null; for (let i = 1; i < R.length; i++) if (v <= R[i][0]) { const A = R[i - 1], B = R[i], u = (v - A[0]) / (B[0] - A[0]); return [A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u, A[3] + (B[3] - A[3]) * u, 215]; } return [255, 243, 176, 215]; }));
+      };
+      const masques = app.legende(c, [{ cle: 'p', couleur: '#3b2f63', texte: 'possible' }, { cle: 'b', couleur: '#b5446e', texte: 'bon' }, { cle: 't', couleur: '#f4a261', texte: 'très bon' }, { cle: 'm', couleur: '#fff3b0', texte: 'le meilleur' }], peindreNotes, masquesNotes);
       const p = await meteoPassee();
       const dessiner = async () => {
         const { g, a, type } = await terrain(); if (app.active !== q1) return;
@@ -124,8 +132,7 @@
         };
         const notes = new Float32Array(g.w * g.h); let max = 0; for (let k = 0; k < notes.length; k++) { notes[k] = note(k); if (notes[k] > max) max = notes[k]; }
         memo.notes = notes; memo.max = max;
-        const R = [[0.15, 59, 47, 99], [0.4, 181, 68, 110], [0.7, 244, 162, 97], [1, 255, 243, 176]];
-        app.poser('note', g, app.peindre(g, k => { const v = notes[k]; if (v < 0.15) return null; for (let i = 1; i < R.length; i++) if (v <= R[i][0]) { const A = R[i - 1], B = R[i], u = (v - A[0]) / (B[0] - A[0]); return [A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u, A[3] + (B[3] - A[3]) * u, 215]; } return [255, 243, 176, 215]; }));
+        peindreNotes();
         c.querySelector('.mot').textContent = ch.mot;
         let avis = !ch.mois.includes(mois) ? `<span class="fort">Hors saison</span> (elle va de ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[0] - 1]} à ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[ch.mois.length - 1] - 1]}) : la carte montre les secteurs, pas une pousse en cours.` : '';
         if (p) {
@@ -167,8 +174,10 @@
     theme: 'Forêt', libelle: 'Quelle forêt ici ?',
     async ouvrir(app) {
       map.setLayoutProperty('foret', 'visibility', 'visible');
-      app.repondre(q3.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement.</p><div class="legende">${CODES.map(c => `<span><i style="background:${TEINTE[c]}"></i>${LIB[c]}</span>`).join('')}</div>
+      const c3 = app.repondre(q3.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement, ou un type de la légende pour le masquer.</p><div class="legende"></div>
         <p class="petit">La BD Forêt décrit des peuplements, pas des arbres : sur le Semnoz, les « feuillus » sont surtout des hêtres, et les mélanges associent hêtre, sapin et épicéa.</p>`);
+      const filtrer = m => map.setFilter('foret', m.size ? ['!', ['in', ['get', 'g'], ['literal', [...m]]]] : null);
+      app.legende(c3, CODES.map(c => ({ cle: c, couleur: TEINTE[c], texte: LIB[c] })), filtrer, masquesForet); filtrer(masquesForet);
     },
     toucher(app, ll) {
       const f = map.queryRenderedFeatures(map.project(ll), { layers: ['foret'] })[0];

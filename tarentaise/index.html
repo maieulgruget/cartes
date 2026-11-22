@@ -45,7 +45,7 @@
 
   // ---------- 1. Pentes croisées avec l'orientation et l'altitude ----------
   const choix = { seuil: 30, expos: new Set(['N', 'NE', 'E']), altMin: 1800 };
-  const memoP = {};
+  const memoP = {}, masquesPentes = new Set();
   const qPentes = {
     theme: 'Avalanche', libelle: 'Quelles pentes éviter ?',
     async ouvrir(app) {
@@ -56,7 +56,8 @@
         <div class="ligne"><label>Au-dessus de <span class="fort alt">${choix.altMin} m</span></label></div>
         <input type="range" class="altmin" min="800" max="3200" step="100" value="${choix.altMin}">
         <p class="etat"></p>
-        <div class="legende"><span><i style="background:#f4d35e"></i>30-35°</span><span><i style="background:#ee964b"></i>35-40°</span><span><i style="background:#e63946"></i>40-45°</span><span><i style="background:#9d4edd"></i>plus de 45°</span><span><i style="background:rgba(40,50,70,.6)"></i>raide, hors critères</span></div>`);
+        <div class="legende"></div>`);
+      const masques = app.legende(c, [{ cle: 'a', couleur: '#f4d35e', texte: '30-35°' }, { cle: 'b', couleur: '#ee964b', texte: '35-40°' }, { cle: 'c', couleur: '#e63946', texte: '40-45°' }, { cle: 'd', couleur: '#9d4edd', texte: 'plus de 45°' }, { cle: 'h', couleur: 'rgba(40,50,70,.6)', texte: 'raide, hors critères' }], () => dessiner(), masquesPentes);
       const dessiner = () => {
         const g = memoP.g, a = memoP.a; if (!g || app.active !== qPentes) return;
         let n = 0, tot = 0;
@@ -64,8 +65,9 @@
           const p = a.pente[k]; if (!(p >= 0)) return null; tot++;
           if (p < choix.seuil) return null;
           const dans = g.z[k] >= choix.altMin && choix.expos.has(ROSE[Math.round(a.expo[k] / 45) % 8]);
-          if (!dans) return [40, 50, 70, 70];
-          n++; return p < 35 ? [244, 211, 94, 200] : p < 40 ? [238, 150, 75, 210] : p < 45 ? [230, 57, 70, 215] : [157, 78, 221, 220];
+          if (!dans) return masques.has('h') ? null : [40, 50, 70, 70];
+          n++; if (masques.has(p < 35 ? 'a' : p < 40 ? 'b' : p < 45 ? 'c' : 'd')) return null;
+          return p < 35 ? [244, 211, 94, 200] : p < 40 ? [238, 150, 75, 210] : p < 45 ? [230, 57, 70, 215] : [157, 78, 221, 220];
         });
         app.poser('pentes', g, url);
         const ha = n * g.pas * g.pas / 1e4;
