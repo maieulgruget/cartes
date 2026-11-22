@@ -102,3 +102,5 @@ details.aide summary::-webkit-details-marker { display: none; }
 details.aide summary::before { content: 'ⓘ '; }
 details.aide p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 .reponse.replie details.aide { display: none; }
+
+.reponse .petit2 { color: var(--muted); font-size: 12px; }

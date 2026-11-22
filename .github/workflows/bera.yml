@@ -1,0 +1,27 @@
+name: Bulletin d'avalanche
+# Lit le bulletin de Météo-France deux fois par jour (il paraît vers 16 h) et le dépose à côté de la carte.
+on:
+  schedule:
+    - cron: "40 15 * * *"   # 16 h 40 en hiver (heure de Paris)
+    - cron: "10 6 * * *"    # 7 h 10, pour une éventuelle mise à jour du matin
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bera:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Lire le bulletin
+        env:
+          METEOFRANCE_BRA: ${{ secrets.METEOFRANCE_BRA }}
+        run: python relais/bera.py
+      - name: Déposer le fichier
+        if: always()
+        run: |
+          git config user.name "relais-bera"
+          git config user.email "actions@users.noreply.github.com"
+          git add tarentaise/bera.json || true
+          git diff --cached --quiet || (git commit -m "Bulletin d'avalanche du jour" && git push)

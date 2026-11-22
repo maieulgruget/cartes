@@ -48,12 +48,32 @@
   // ---------- 1. Pentes croisées avec l'orientation et l'altitude ----------
   const choix = { seuil: 30, expos: new Set(['N', 'NE', 'E']), altMin: 1800 };
   const memoP = {}, masquesPentes = new Set();
+  // Bulletin d'avalanche du jour, déposé par le relais (bera.json). Absent ou trop ancien : on reste en saisie à la main.
+  let bera = null, massif = '5', beraLu = false;
+  async function lireBera() {
+    if (beraLu) return bera; beraLu = true;
+    try { const r = await fetch('bera.json?' + Math.floor(Date.now() / 6e5)); if (r.ok) { const j = await r.json(); if (j && j.massifs && Object.keys(j.massifs).length) bera = j; } } catch (e) { bera = null; }
+    return bera;
+  }
+  const NIVEAUX = ['', 'faible', 'limité', 'marqué', 'fort', 'très fort'];
+  function appliquerBera() {
+    const b = bera && bera.massifs[massif]; if (!b) return false;
+    if (b.pentes && b.pentes.length) choix.expos = new Set(b.pentes);
+    // l'altitude du bulletin sépare deux niveaux de risque : on retient la tranche la plus exposée
+    choix.altMin = b.altitude && b.risque2 != null ? (b.risque2 >= b.risque1 ? Math.round(b.altitude / 100) * 100 : 800) : 800;
+    return true;
+  }
   const qPentes = {
     theme: 'Avalanche', libelle: 'Quelles pentes éviter ?',
-    aide: 'Le bulletin d\'avalanche du jour dit sur quelles orientations de versant et à partir de quelle altitude le danger est le plus marqué. L\'orientation est la direction vers laquelle la pente regarde : un versant nord tourne le dos au soleil. Elle compte parce que le vent dépose la neige sur les versants abrités de lui, et parce que le soleil transforme la neige des versants sud bien plus vite que celle des versants nord. L\'altitude compte parce que la quantité de neige et le froid changent avec elle. La pente, enfin : une plaque part surtout au-dessus de 30°. La carte colore donc les pentes qui cumulent les trois critères. Les pentes sont calculées sur le relevé LiDAR de l\'IGN ; de loin, elles sont lissées et sous-estimées, il faut zoomer sur le secteur visé. La carte ne sait rien de la neige elle-même.',
+    aide: 'Le bulletin d\'avalanche du jour dit sur quelles orientations de versant et à partir de quelle altitude le danger est le plus marqué. L\'orientation est la direction vers laquelle la pente regarde : un versant nord tourne le dos au soleil. Elle compte parce que le vent dépose la neige sur les versants abrités de lui, et parce que le soleil transforme la neige des versants sud bien plus vite que celle des versants nord. L\'altitude compte parce que la quantité de neige et le froid changent avec elle. La pente, enfin : une plaque part surtout au-dessus de 30°. La carte colore donc les pentes qui cumulent les trois critères. Les pentes sont calculées sur le relevé LiDAR de l\'IGN ; de loin, elles sont lissées et sous-estimées, il faut zoomer sur le secteur visé. La carte ne sait rien de la neige elle-même. Quand le bulletin du jour est disponible, ses orientations et son altitude sont reportées automatiquement (versant des Chapelles : massif du Beaufortain ; en face, Haute-Tarentaise) ; tu peux toujours les modifier à la main.',
     async ouvrir(app) {
+      await lireBera(); if (bera && !qPentes.dejaApplique) { if (!bera.massifs[massif]) massif = Object.keys(bera.massifs)[0]; appliquerBera(); qPentes.dejaApplique = true; }
+      const b = bera && bera.massifs[massif];
+      const texteBera = b => { const d = new Date(b.valable || b.redige), vieux = Date.now() - d.getTime() > 36 * 36e5;
+        return `Risque <span class="fort">${b.risquemaxi || b.risque1} sur 5 (${NIVEAUX[b.risquemaxi || b.risque1] || '?'})</span>` + (b.altitude && b.risque2 != null ? ` : ${b.risque1} en dessous de ${b.altitude} m, ${b.risque2} au-dessus` : '') + `. Pentes les plus exposées : ${b.pentes && b.pentes.length ? b.pentes.join(', ') : 'non précisées'}. <span class="petit2">Bulletin valable jusqu'au ${d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}${vieux ? ' — <b>périmé</b>, le relais n\'a pas tourné' : ''}.</span>`; };
       const c = app.repondre(qPentes.libelle, `
-        <p>Reporte ici le bulletin d'avalanche du jour : les orientations exposées, et l'altitude à partir de laquelle il s'applique.</p>
+        ${b ? `<div class="ligne"><label>Bulletin Météo-France</label><div class="puces massifs">${Object.entries(bera.massifs).map(([id, m]) => `<button data-m="${id}" aria-pressed="${id === massif}">${app.propre(m.nom.toLowerCase().replace(/(^|[-\s])(\S)/g, (x, s, l) => s + l.toUpperCase()))}</button>`).join('')}</div></div><p class="bera">${texteBera(b)}</p>`
+          : `<p>Reporte ici le bulletin d'avalanche du jour : les orientations exposées, et l'altitude à partir de laquelle il s'applique.</p>`}
         <div class="ligne"><label>Orientations</label><div class="puces expos">${ROSE.map(r => `<button data-r="${r}" aria-pressed="${choix.expos.has(r)}">${r}</button>`).join('')}</div></div>
         <div class="ligne"><label>Pente à partir de</label><div class="puces seuils">${[30, 35, 40].map(s => `<button data-s="${s}" aria-pressed="${choix.seuil === s}">${s}°</button>`).join('')}</div></div>
         <div class="ligne"><label>Au-dessus de <span class="fort alt">${choix.altMin} m</span></label></div>
@@ -80,6 +100,13 @@
         const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
         if (memoP.cle !== cle) { app.occupe(true, 'Calcul des pentes…'); memoP.g = await app.grille(b, 460); memoP.a = app.pentes(memoP.g); memoP.cle = cle; app.occupe(false); }
         dessiner();
+      };
+      if (b) c.querySelector('.massifs').onclick = e => {
+        const id = e.target.dataset.m; if (!id) return; massif = id; appliquerBera();
+        c.querySelectorAll('.massifs button').forEach(x => x.setAttribute('aria-pressed', x.dataset.m === id));
+        c.querySelector('.bera').innerHTML = texteBera(bera.massifs[id]);
+        c.querySelectorAll('.expos button').forEach(x => x.setAttribute('aria-pressed', choix.expos.has(x.dataset.r)));
+        c.querySelector('.altmin').value = choix.altMin; c.querySelector('.alt').textContent = choix.altMin + ' m'; dessiner();
       };
       c.querySelector('.expos').onclick = e => { const r = e.target.dataset.r; if (!r) return; choix.expos.has(r) ? choix.expos.delete(r) : choix.expos.add(r); e.target.setAttribute('aria-pressed', choix.expos.has(r)); dessiner(); };
       c.querySelector('.seuils').onclick = e => { const s = +e.target.dataset.s; if (!s) return; choix.seuil = s; c.querySelectorAll('.seuils button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.s === s)); dessiner(); };
