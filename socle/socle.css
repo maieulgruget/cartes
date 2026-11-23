@@ -95,6 +95,8 @@ body.libre .outils button.fond { opacity: 0.85; }
 /* Panneau réduit : le titre et la phrase de réponse, sur deux lignes au plus ; la légende à la demande. */
 .reponse.replie .corps > :not(.etat) { display: none; }
 .reponse.replie .corps > .etat { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 2px 0 0; font-size: 13px; }
+/* Un thème sans phrase de réponse attitrée garde son premier paragraphe. */
+.reponse.replie .corps:not(:has(> .etat)) > p:first-of-type { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 2px 0 0; font-size: 13px; }
 .reponse.replie.aveclegende .corps > .legende { display: flex; margin: 6px 0 0; }
 .reponse.replie h2 { margin: 0; }
 .reponse.replie { padding: 8px 12px; }

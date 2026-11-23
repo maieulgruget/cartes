@@ -353,14 +353,55 @@
   };
   const TOUS_SVG = `<svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="7" fill="#c9dce8"/><rect y="31" width="40" height="9" fill="#d9c79c"/>${[[8, 27, 1], [18, 22, 1.3], [29, 27, 1]].map(([x, y, s]) => `<g transform="translate(${x} ${y}) scale(${s})"><ellipse rx="5" ry="3" fill="#5d6770"/><circle cx="4.5" cy="-3" r="1.9" fill="#5d6770"/><path d="M6 -3h4" stroke="#333" stroke-width="0.9"/><path d="M-1 3v3M2 3v3" stroke="#333" stroke-width="0.7"/></g>`).join('')}</svg>`;
   let oiseau = 'tous', moisO = new Date().getMonth() + 1; const masquesO = new Set(); let perimetres = null;
+  // Empreinte MD5 d'un texte (ASCII) : le cache d'images de GBIF range chaque photo sous l'empreinte de son adresse.
+  function md5(texte) {
+    const r = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21];
+    const k = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) >>> 0);
+    const oct = Array.from(unescape(encodeURIComponent(texte)), c => c.charCodeAt(0)), n = oct.length;
+    oct.push(128); while (oct.length % 64 !== 56) oct.push(0);
+    for (let i = 0; i < 8; i++) oct.push(i < 4 ? (n * 8 >>> (8 * i)) & 255 : 0);
+    let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+    for (let o = 0; o < oct.length; o += 64) {
+      const m = Array.from({ length: 16 }, (_, i) => oct[o + 4 * i] | oct[o + 4 * i + 1] << 8 | oct[o + 4 * i + 2] << 16 | oct[o + 4 * i + 3] << 24);
+      let a = a0, b = b0, c = c0, d = d0;
+      for (let i = 0; i < 64; i++) {
+        let f, g;
+        if (i < 16) { f = (b & c) | (~b & d); g = i; } else if (i < 32) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16; } else if (i < 48) { f = b ^ c ^ d; g = (3 * i + 5) % 16; } else { f = c ^ (b | ~d); g = (7 * i) % 16; }
+        f = (f + a + k[i] + m[g]) >>> 0; a = d; d = c; c = b; b = (b + ((f << r[i]) | (f >>> (32 - r[i])))) >>> 0;
+      }
+      a0 = (a0 + a) >>> 0; b0 = (b0 + b) >>> 0; c0 = (c0 + c) >>> 0; d0 = (d0 + d) >>> 0;
+    }
+    return [a0, b0, c0, d0].map(v => Array.from({ length: 4 }, (_, i) => ((v >>> (8 * i)) & 255).toString(16).padStart(2, '0')).join('')).join('');
+  }
+  /* Photographies d'une espèce : observations iNaturalist validées (« research grade ») faites en France, dont la photo
+     est sous licence Creative Commons sans clause « pas de modification ». L'image passe par le cache de GBIF. */
+  const INAT = '50c9509d-22c7-4a22-a47d-8c48425ef4a7', memoPhotos = new Map();
+  const licence = u => { const m = /creativecommons\.org\/(publicdomain\/zero|licenses\/([a-z-]+))/.exec(u || ''); return !m ? null : m[2] ? (m[2].includes('nd') ? null : 'CC ' + m[2].toUpperCase()) : 'CC0'; };
+  async function photosEspece(cle) {
+    if (memoPhotos.has(cle)) return memoPhotos.get(cle);
+    const liste = [], auteurs = new Set();
+    try {
+      const j = await (await fetch(`https://api.gbif.org/v1/occurrence/search?taxonKey=${cle}&mediaType=StillImage&datasetKey=${INAT}&country=FR&limit=40`)).json();
+      for (const r of j.results || []) {
+        const md = (r.media || [])[0], lic = md && licence(md.license), auteur = md && (md.rightsHolder || md.creator); if (!md || !md.identifier || !lic || !auteur || auteurs.has(auteur)) continue;
+        auteurs.add(auteur);   // un auteur par photo : des prises de vue différentes
+        liste.push({ url: `https://api.gbif.org/v1/image/cache/300x/occurrence/${r.key}/media/${md5(md.identifier)}`, auteur, lic, lien: 'https://www.gbif.org/occurrence/' + r.key });
+        if (liste.length === 3) break;
+      }
+    } catch (e) { /* pas de photo : les silhouettes restent */ }
+    memoPhotos.set(cle, liste); return liste;
+  }
+  // Cercle de rayon r (km) autour d'un point, pour montrer la zone d'un site.
+  const cercle = (ll, r) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [Array.from({ length: 49 }, (_, i) => { const a = i / 48 * 2 * Math.PI; return [ll.lng + r / (111.2 * Math.cos(ll.lat * Math.PI / 180)) * Math.sin(a), ll.lat + r / 111.2 * Math.cos(a)]; })] } });
   const q6 = {
-    theme: 'Oiseaux', libelle: 'Quels oiseaux, où et quand ?',
-    aide: 'Chaque point est une observation publiée en données ouvertes (base GBIF, qui rassemble eBird, iNaturalist et des suivis français), pour quatorze espèces d\'oiseaux d\'eau de l\'estran. Ce sont des présences signalées, pas des effectifs : les points suivent les chemins et les observatoires, et janvier est gonflé par les comptages d\'hiver. Un mois sans point ne veut pas dire sans oiseau. Les vignettes sont des silhouettes dessinées pour se repérer dans la liste, pas des planches d\'identification. Le fond bleu et sable est la marée du moment choisi : les limicoles se nourrissent sur la vasière découverte et se replient en haut d\'estran à marée haute, d\'où le créneau d\'affût conseillé avant la pleine mer (règle d\'observateur, à adapter au site). Les contours sont la réserve naturelle nationale et les zones de protection spéciale des oiseaux (Natura 2000). Dans la réserve, rester sur les sentiers et à distance : un envol fait perdre aux oiseaux l\'énergie de leur hivernage.',
+    theme: 'Oiseaux', libelle: 'Où voir des oiseaux, et quand ?',
+    aide: 'Chaque point est un signalement publié en données ouvertes (base GBIF, qui rassemble eBird, iNaturalist et des suivis français), pour quatorze espèces d\'oiseaux d\'eau de l\'estran. Un point dit où se tenait l\'observateur, ou le lieu qu\'il a déclaré, pas où était l\'oiseau : les points se serrent autour des observatoires, des sentiers et de la Maison de la Baie. La carte ne répond donc pas à « où sont les oiseaux » mais à « où aller pour en voir » : un endroit où beaucoup de monde a noté beaucoup d\'espèces est un bon poste. Touche la carte : dans un cercle autour du point, elle donne la part de chaque espèce dans les signalements du mois choisi, toutes années confondues, et les mois où l\'on y signale le plus. Une part n\'est pas une chance de voir : elle compare les espèces entre elles, ce qui gomme en bonne partie le poids des observateurs, mais janvier reste gonflé par les comptages d\'hiver, et un mois sans signalement ne veut pas dire sans oiseau. Quand une espèce est choisie, trois photographies la montrent : elles viennent d\'observations iNaturalist validées, sous licence Creative Commons, choisies automatiquement, donc de qualité inégale ; leur auteur est cité. Les vignettes de la liste restent des silhouettes dessinées. Le fond bleu et sable est la marée du moment : les limicoles se nourrissent sur la vasière découverte et se replient en haut d\'estran à marée haute, d\'où le créneau d\'affût conseillé avant la pleine mer (règle d\'observateur, à adapter au site). Les contours sont la réserve naturelle nationale et les zones de protection spéciale des oiseaux (Natura 2000). Dans la réserve, rester sur les sentiers et à distance : un envol fait perdre aux oiseaux l\'énergie de leur hivernage.',
     async ouvrir(app) {
-      const c = app.repondre(q6.libelle, `<div class="vignettes esp"><button data-k="tous" aria-pressed="${oiseau === 'tous'}">${TOUS_SVG}<span>Toutes</span></button>${OISEAUX.map(o => `<button data-k="${o[0]}" aria-pressed="${String(o[0]) === String(oiseau)}">${dessinOiseau(TRAITS[o[0]])}<span>${o[1]}</span></button>`).join('')}</div>
+      const c = app.repondre(q6.libelle, `<div class="vignettes esp"><button data-k="tous" aria-pressed="${oiseau === 'tous'}">${TOUS_SVG}<span>Toutes</span></button>${OISEAUX.map(o => `<button data-k="${o[0]}" aria-pressed="${String(o[0]) === String(oiseau)}">${dessinOiseau(TRAITS[o[0]])}<span>${o[1]}</span></button>`).join('')}</div><div class="photos"></div>
         <div class="ligne"><label>Mois</label><button class="annee" aria-pressed="${moisO === 0}" style="padding:4px 10px;font-size:12px">Toute l'année</button></div>
         <div class="hist" style="display:flex;gap:2px;align-items:flex-end;height:64px;margin:6px 0 2px"></div>
-        <p class="etat"></p><p class="maree"></p><div class="legende"></div>`);
+        <p class="etat"></p><div class="site"></div><p class="maree"></p><div class="legende"></div>`);
+      q6._c = c;
       const m2 = map, vide = { type: 'FeatureCollection', features: [] };
       // De loin, les observations voisines se regroupent en une pastille qui porte leur nombre ; elle se défait en zoomant.
       m2.addSource('oiseaux', { type: 'geojson', data: vide, cluster: true, clusterRadius: 42, clusterMaxZoom: 13 });
@@ -403,7 +444,7 @@
           }
           m2.getSource('oiseaux').setData({ type: 'FeatureCollection', features: feats.filter(f => !masquesO.has(f.properties.g)) }); q6.feats = feats;
           const quoi = oiseau === 'tous' ? 'des quatorze espèces' : 'de ' + NOMO.get(+oiseau)[1].toLowerCase();
-          c.querySelector('.etat').innerHTML = total ? `<span class="fort">${total}</span> observation${total > 1 ? 's' : ''} ${quoi} dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : 'sur l\'année'}${total > feats.length ? `, dont ${feats.length} affichées (zoome pour les voir toutes)` : ''}. Touche un point pour son détail.` : `Aucune observation ${quoi} publiée dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : ''}. Essaie un autre mois dans le graphique.`;
+          c.querySelector('.etat').innerHTML = total ? `<span class="fort">${total}</span> observation${total > 1 ? 's' : ''} ${quoi} dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : 'sur l\'année'}${total > feats.length ? `, dont ${feats.length} affichées (zoome pour les voir toutes)` : ''}. Ce sont des lieux d'observation : touche la carte pour savoir quelles espèces on signale à cet endroit.` : `Aucune observation ${quoi} publiée dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : ''}. Essaie un autre mois dans le graphique.`;
         } catch (e) { if (moi === tour) c.querySelector('.etat').textContent = 'La base d\'observations ne répond pas pour l\'instant.'; }
         app.occupe(false);
         // la marée du moment, dessous
@@ -416,23 +457,48 @@
           c.querySelector('.maree').innerHTML = `${jour(t0)} ${hhmm(t0)} : mer à ${m(niv)}, elle ${monte ? 'monte' : 'descend'}.` + (pm ? ` Créneau d'affût conseillé : de <span class="fort">${hhmm(pm.t - 2.5 * 36e5)}</span> à <span class="fort">${hhmm(pm.t - 36e5)}</span>, avant la pleine mer de ${hhmm(pm.t)}, quand la mer montante rapproche les oiseaux du bord.` : '');
         } catch (e) { /* la marée est un complément : les observations restent affichées */ }
       };
-      c.querySelector('.esp').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; oiseau = b.dataset.k; c.querySelectorAll('.esp button').forEach(x => x.setAttribute('aria-pressed', x === b)); charger(); };
+      const montrerPhotos = async () => {
+        const cible = c.querySelector('.photos'), cle = oiseau; if (cle === 'tous') { cible.innerHTML = ''; return; }
+        const ph = await photosEspece(+cle); if (oiseau !== cle || app.active !== q6) return;
+        cible.innerHTML = ph.length ? `<div style="display:flex;gap:6px;margin:8px 0 2px">${ph.map(x => `<a href="${x.lien}" target="_blank" rel="noopener" style="flex:1;min-width:0;color:inherit;text-decoration:none"><img src="${x.url}" alt="${app.propre(NOMO.get(+cle)[1])}" loading="lazy" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;background:#16233a"><small style="display:block;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${app.propre(x.auteur)} · ${x.lic}</small></a>`).join('')}</div><p class="petit2" style="margin:0">${app.propre(NOMO.get(+cle)[1])} : photos d'observations iNaturalist, via GBIF.</p>` : '';
+      };
+      c.querySelector('.esp').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; oiseau = b.dataset.k; c.querySelectorAll('.esp button').forEach(x => x.setAttribute('aria-pressed', x === b)); charger(); montrerPhotos(); if (q6.dernier) q6.site(app, q6.dernier); };
+      montrerPhotos();
       const actif = c.querySelector('.esp button[aria-pressed="true"]'); if (actif) actif.scrollIntoView({ inline: 'center', block: 'nearest' });
-      c.querySelector('.hist').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; moisO = +b.dataset.m; c.querySelector('.annee').setAttribute('aria-pressed', 'false'); charger(); };
-      c.querySelector('.annee').onclick = e => { moisO = moisO === 0 ? new Date().getMonth() + 1 : 0; e.target.setAttribute('aria-pressed', moisO === 0); charger(); };
+      c.querySelector('.hist').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; moisO = +b.dataset.m; c.querySelector('.annee').setAttribute('aria-pressed', 'false'); charger(); if (q6.dernier) q6.site(app, q6.dernier); };
+      c.querySelector('.annee').onclick = e => { moisO = moisO === 0 ? new Date().getMonth() + 1 : 0; e.target.setAttribute('aria-pressed', moisO === 0); charger(); if (q6.dernier) q6.site(app, q6.dernier); };
       app.suivre(q6, charger); await charger();
     },
-    toucher(app, ll) {
-      const p = map.project(ll), boite = [[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]];
-      // Une pastille de groupe : on s'en approche, elle se défait.
-      const gr = map.getLayer('oiseaux-groupes') ? map.queryRenderedFeatures(boite, { layers: ['oiseaux-groupes'] }) : [];
-      if (gr.length) { map.easeTo({ center: gr[0].geometry.coordinates, zoom: Math.min(15, map.getZoom() + 1.6), duration: 700 }); return; }
-      const f = map.getLayer('oiseaux') ? map.queryRenderedFeatures(boite, { layers: ['oiseaux'] }) : [];
-      if (!f.length) return;
-      const lignes = f.slice(0, 5).map(x => { const o = x.properties; return `<span class="fort">${app.propre(o.nom)}</span>${o.nb > 1 ? ' (' + o.nb + ' individus)' : ''}, ${o.jour ? o.jour + ' ' : ''}${o.mois ? MOIS[o.mois - 1] + ' ' : ''}${o.an || ''}${o.src ? ' <span class="petit2">· ' + app.propre(o.src) + '</span>' : ''}`; });
-      document.querySelector('.reponse .etat').innerHTML = lignes.join('<br>') + (f.length > 5 ? `<br><span class="petit2">et ${f.length - 5} autres au même endroit</span>` : '');
+    toucher(app, ll) { q6.dernier = ll; q6.site(app, ll); },
+    /* Fiche d'un site : dans un cercle autour du point touché, la part de chaque espèce dans les signalements du mois
+       choisi, toutes années confondues, et les mois où l'on y signale le plus. Deux requêtes à GBIF, sans rien télécharger
+       que des décomptes. Le rayon suit l'échelle (une cinquantaine de pixels, de quoi couvrir une pastille), entre 400 m et 3 km. */
+    async site(app, ll) {
+      const c = q6._c, cible = c.querySelector('.site'), moi = q6.tourSite = (q6.tourSite || 0) + 1;
+      const r = Math.max(0.4, Math.min(3, 40075 * Math.cos(ll.lat * Math.PI / 180) / (512 * Math.pow(2, map.getZoom())) * 48)), dLat = r / 111.2, dLon = dLat / Math.cos(ll.lat * Math.PI / 180);
+      const zone = { type: 'FeatureCollection', features: [cercle(ll, r)] };
+      if (map.getSource('oiseaux-site')) map.getSource('oiseaux-site').setData(zone);
+      else { map.addSource('oiseaux-site', { type: 'geojson', data: zone }); map.addLayer({ id: 'oiseaux-site', type: 'line', source: 'oiseaux-site', paint: { 'line-color': '#b8963e', 'line-width': 2.5, 'line-dasharray': [2, 1.5] } }); }
+      cible.innerHTML = '<p class="petit2">Lecture du site…</p>';
+      const base = `${GBIF}&${OISEAUX.map(o => 'taxonKey=' + o[0]).join('&')}&decimalLatitude=${(ll.lat - dLat).toFixed(4)},${(ll.lat + dLat).toFixed(4)}&decimalLongitude=${(ll.lng - dLon).toFixed(4)},${(ll.lng + dLon).toFixed(4)}&limit=0`;
+      try {
+        const [a, b] = await Promise.all([fetch(base + '&facet=speciesKey&facetLimit=30' + (moisO ? '&month=' + moisO : '')).then(x => x.json()), fetch(base + '&facet=month&facetLimit=12').then(x => x.json())]);
+        if (moi !== q6.tourSite || app.active !== q6) return;
+        const total = a.count || 0, quand = moisO ? 'en ' + MOIS[moisO - 1] : 'sur l\'année', rayon = r < 1 ? Math.round(r * 100) * 10 + ' m' : r.toFixed(1).replace('.', ',') + ' km';
+        const parMois = ((b.facets || [])[0] || { counts: [] }).counts.map(x => [+x.name, x.count]).sort((x, y) => y[1] - x[1]);
+        const meilleurs = parMois.slice(0, 3).filter(x => x[1] > 0).map(x => MOIS[x[0] - 1]);
+        if (total < 5) {
+          cible.innerHTML = `<p style="margin:6px 0 2px"><span class="fort">Dans ${rayon} autour du point</span>, ${quand} : ${total ? 'seulement ' + total + ' signalement' + (total > 1 ? 's' : '') : 'aucun signalement'} des quatorze espèces. Trop peu pour en tirer quelque chose.${meilleurs.length ? ` On y signale surtout en ${meilleurs.join(', ')}.` : ' Essaie une pastille, là où les observateurs se tiennent.'}</p>`;
+          return;
+        }
+        const esp = ((a.facets || [])[0] || { counts: [] }).counts.map(x => [NOMO.get(+x.name), x.count]).filter(x => x[0]).sort((x, y) => y[1] - x[1]);
+        const max = esp.length ? esp[0][1] : 1, teinte = { o: '#2a6fdb', l: '#f08a24', h: '#ffffff' };
+        cible.innerHTML = `<p style="margin:6px 0 4px"><span class="fort">Dans ${rayon} autour du point</span>, ${quand}, toutes années confondues : <span class="fort">${total} signalements</span> de ${esp.length} des quatorze espèces. Part de chacune :</p>
+          <div style="display:grid;grid-template-columns:auto 1fr auto;gap:3px 8px;align-items:center;font-size:12.5px">${esp.slice(0, 8).map(x => `<span${String(x[0][0]) === String(oiseau) ? ' class="fort"' : ''}>${app.propre(x[0][1])}</span><span style="height:8px;border-radius:4px;background:rgba(255,255,255,0.08)"><i style="display:block;height:8px;border-radius:4px;width:${Math.max(3, Math.round(100 * x[1] / max))}%;background:${teinte[x[0][2]]}"></i></span><span style="color:var(--muted)">${Math.round(100 * x[1] / total)} %</span>`).join('')}</div>
+          <p class="petit2" style="margin:5px 0 0">${meilleurs.length ? `Ici, on signale le plus en ${meilleurs.join(', ')}. ` : ''}Une part compare les espèces entre elles : ce n'est pas une chance de les voir.</p>`;
+      } catch (e) { if (moi === q6.tourSite) cible.innerHTML = '<p class="petit2">Le site n\'a pas pu être lu (la base d\'observations ne répond pas).</p>'; }
     },
-    fermer(app) { app.retirer('oiseaux-nombre', 'oiseaux-groupes', 'oiseaux', 'rnn', 'zps', 'mer'); if (map.getSource('oiseaux')) map.removeSource('oiseaux'); }
+    fermer(app) { q6.dernier = null; q6.tourSite = (q6.tourSite || 0) + 1; app.retirer('oiseaux-site', 'oiseaux-nombre', 'oiseaux-groupes', 'oiseaux', 'rnn', 'zps', 'mer'); if (map.getSource('oiseaux')) map.removeSource('oiseaux'); }
   };
   // Familles : la mer (marée, estran, passage en un point, niveau libre), la traversée, les oiseaux, le vent.
   const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
