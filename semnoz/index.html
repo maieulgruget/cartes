@@ -47,19 +47,19 @@
   /* Règles par champignon. arbres : poids de chaque type de peuplement (0 à 1). alt : plage d'altitude habituelle.
      temp : plage de température moyenne de l'air favorable. mois : saison. pluie : cumul utile sur 14 jours (mm). frais : préfère les versants frais. */
   const CHAMPIGNONS = {
-    cepe: { nom: 'Cèpe de Bordeaux', mois: [7, 8, 9, 10], alt: [500, 1700], temp: [10, 19], pluie: 30, frais: 0.3,
+    cepe: { gbif: 5954958, nom: 'Cèpe de Bordeaux', mois: [7, 8, 9, 10], alt: [500, 1700], temp: [10, 19], pluie: 30, frais: 0.3,
       arbres: { sapin: 1, mixte_c: 1, mixte_f: 0.9, hetre: 0.9, feuillus: 0.7, coniferes: 0.7, pin: 0.5 }, mot: 'Hêtres, épicéas et sapins, lisières et bords de chemin ; pousse une dizaine de jours après une bonne pluie, tant que le sol reste doux.' },
-    girolle: { nom: 'Girolle', mois: [6, 7, 8, 9, 10], alt: [500, 1600], temp: [11, 20], pluie: 30, frais: 0.5,
+    girolle: { gbif: 5249504, nom: 'Girolle', mois: [6, 7, 8, 9, 10], alt: [500, 1600], temp: [11, 20], pluie: 30, frais: 0.5,
       arbres: { hetre: 1, mixte_f: 1, mixte_c: 0.9, sapin: 0.8, feuillus: 0.8, coniferes: 0.6, pin: 0.5 }, mot: 'Sols moussus et frais, sous hêtres comme sous épicéas ; revient aux mêmes endroits d\'une année à l\'autre.' },
-    trompette: { nom: 'Trompette de la mort', mois: [8, 9, 10, 11], alt: [400, 1200], temp: [6, 15], pluie: 40, frais: 0.7,
+    trompette: { gbif: 2554662, nom: 'Trompette de la mort', mois: [8, 9, 10, 11], alt: [400, 1200], temp: [6, 15], pluie: 40, frais: 0.7,
       arbres: { hetre: 1, feuillus: 0.9, mixte_f: 0.8, mixte_c: 0.3 }, mot: 'Hêtraies et chênaies humides, en troupes dans les feuilles mortes, souvent dans les creux et les bas de pente.' },
-    mouton: { nom: 'Pied-de-mouton', mois: [8, 9, 10, 11, 12], alt: [500, 1600], temp: [4, 14], pluie: 25, frais: 0.5,
-      arbres: { hetre: 1, mixte_f: 1, mixte_c: 1, sapin: 0.9, feuillus: 0.7, coniferes: 0.6 }, mot: 'Feuillus et conifères mêlés ; tardif, il tient jusqu\'aux premières gelées.' },
-    tube: { nom: 'Chanterelle en tube', mois: [9, 10, 11, 12], alt: [700, 1700], temp: [2, 11], pluie: 30, frais: 0.8,
+    mouton: { gbif: 2554716, nom: 'Pied-de-mouton', mois: [8, 9, 10, 11, 12], alt: [500, 1600], temp: [4, 14], pluie: 25, frais: 0.7,
+      arbres: { hetre: 1, mixte_f: 0.8, mixte_c: 0.7, sapin: 0.6, feuillus: 0.4, coniferes: 0.3 }, mot: 'Feuillus et conifères mêlés ; tardif, il tient jusqu\'aux premières gelées.' },
+    tube: { gbif: 2554536, nom: 'Chanterelle en tube', mois: [9, 10, 11, 12], alt: [700, 1700], temp: [2, 11], pluie: 30, frais: 0.8,
       arbres: { sapin: 1, mixte_c: 1, coniferes: 0.8, mixte_f: 0.5, pin: 0.5 }, mot: 'Sous épicéas et sapins, dans la mousse et le bois pourri ; le champignon de fin de saison.' },
-    lactaire: { nom: 'Lactaire délicieux', mois: [9, 10, 11], alt: [400, 1500], temp: [6, 15], pluie: 30, frais: 0.2,
+    lactaire: { gbif: 5248629, nom: 'Lactaire délicieux', mois: [9, 10, 11], alt: [400, 1500], temp: [6, 15], pluie: 30, frais: 0.2,
       arbres: { pin: 1, coniferes: 0.7, mixte_c: 0.4 }, mot: 'Lié aux pins ; sous les épicéas et les sapins, ce sont ses cousins (lactaire de l\'épicéa, lactaire saumon).' },
-    morille: { nom: 'Morille', mois: [3, 4, 5], alt: [400, 1600], temp: [5, 13], pluie: 20, frais: 0.2,
+    morille: { gbif: 2594601, nom: 'Morille', mois: [3, 4, 5], alt: [400, 1600], temp: [5, 13], pluie: 20, frais: 0.2,
       arbres: { feuillus: 0.8, mixte_f: 0.8, mixte_c: 0.7, sapin: 0.7, ouvert: 0.4, coniferes: 0.5 }, mot: 'Lisières, frênes, bords de ruisseau, coupes récentes ; en montagne, sous épicéas après la fonte. Remonte en altitude avec le printemps.' }
   };
   // Vignettes : un dessin simple par espèce, qui en rappelle la silhouette et la couleur (ce n'est pas un guide d'identification).
@@ -132,27 +132,128 @@
     }
     const px = ctx.getImageData(0, 0, g.w, g.h).data, type = new Uint8Array(g.w * g.h);
     for (let k = 0; k < type.length; k++) type[k] = Math.round(px[4 * k] / 20);
-    Object.assign(memo, { cle, g, a, type }); app.occupe(false); return memo;
+    // Position dans le relief : un point plus bas que ses alentours (creux, bas de pente) garde mieux l'humidité.
+    const creux = new Float32Array(g.w * g.h), D = Math.max(3, Math.round(60 / g.pas));
+    for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) {
+      const k = j * g.w + i, z = g.z[k]; let som = 0, n = 0;
+      for (const [di, dj] of [[D, 0], [-D, 0], [0, D], [0, -D]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= g.w || jj >= g.h) continue; const v = g.z[jj * g.w + ii]; if (v === v) { som += v; n++; } }
+      creux[k] = (z === z && n) ? Math.max(0, Math.min(1, 0.5 + (som / n - z) / 30)) : 0.5;
+    }
+    Object.assign(memo, { cle, g, a, type, creux }); app.occupe(false); return memo;
   }
 
   // ---------- 1. Où chercher tel champignon ----------
-  let choisi = 'cepe';
+  let choisi = 'cepe', obsActif = false, sentActif = false;
+  const seuils = {}, obs = { cle: '', liste: null };
   const masquesNotes = new Set(), masquesForet = new Set();   // niveaux masqués, gardés d'une ouverture à l'autre
   const q1 = {
     theme: 'Champignons', libelle: 'Où chercher ?',
-    aide: 'Pour le champignon choisi, chaque maille reçoit une note : le type de forêt qui lui convient, multiplié par l\'altitude où la température de la semaine lui va, et par la fraîcheur du versant (nord et est favorisés, davantage par temps sec). Les préférences de chaque espèce sont des règles de cueilleur simplifiées, pas des mesures : la carte désigne des secteurs plausibles, pas des coins sûrs. Les dessins rappellent une silhouette, ils ne servent pas à identifier un champignon.',
+    aide: 'Les classes sont relatives à chaque espèce : le « meilleur » est le dixième le plus favorable de la forêt regardée en vue d\'ensemble, avec un plancher qui évite d\'annoncer un meilleur quand rien n\'est vraiment favorable. C\'est un potentiel d\'habitat, pas une garantie de cueillette. Les observations viennent de la base ouverte GBIF (iNaturalist, inventaires) : peu nombreuses, concentrées près des chemins, et les bons coins sont rarement partagés. Les sentiers sont ceux de la BD TOPO de l\'IGN. Pour le champignon choisi, chaque maille reçoit une note : le type de forêt qui lui convient, multiplié par l\'altitude où la température de la semaine lui va, et par la fraîcheur du versant (nord et est favorisés, davantage par temps sec). Les préférences de chaque espèce sont des règles de cueilleur simplifiées, pas des mesures : la carte désigne des secteurs plausibles, pas des coins sûrs. Les dessins rappellent une silhouette, ils ne servent pas à identifier un champignon.',
     async ouvrir(app) {
       const c = app.repondre(q1.libelle, `<div class="vignettes esp">${Object.entries(CHAMPIGNONS).map(([k, v]) => `<button data-k="${k}" aria-pressed="${k === choisi}">${DESSINS[k]}<span>${v.nom}</span></button>`).join('')}</div>
         <p class="mot"></p><p class="etat"></p>
         <div class="legende"></div>
-        <p class="petit">Note de chaque maille : type de forêt × altitude où la température de la semaine convient × fraîcheur du versant. Touche un niveau de la légende pour le masquer, la carte pour le détail d'un point.</p>`);
-      const R = [[0.15, 59, 47, 99], [0.4, 181, 68, 110], [0.7, 244, 162, 97], [1, 255, 243, 176]];
-      const classe = v => v < 0.4 ? 'p' : v < 0.7 ? 'b' : v < 0.9 ? 't' : 'm';
-      const peindreNotes = () => {
+        <div class="puces" style="margin-top:6px"><button class="bobs" aria-pressed="false">Observations</button><button class="bsent" aria-pressed="false">Sentiers</button></div>
+        <p class="obs petit2"></p><p class="sent petit2"></p>
+        <p class="petit">Note de chaque maille : type de forêt × altitude où la température de la semaine convient × fraîcheur du versant × creux du relief. Les classes sont relatives à l'espèce : « le meilleur » est le dixième le plus favorable de la forêt regardée, « très bon » les deux dixièmes suivants. C'est un potentiel d'habitat, pas une garantie de cueillette. Touche les niveaux de la légende pour n'en garder qu'un : il ressort alors en teinte vive.</p>`);
+      /* Classes relatives : chaque espèce est classée par rapport à elle-même. Le « meilleur » est le dixième le plus
+         favorable de la forêt regardée, le « très bon » les deux dixièmes suivants. Un plancher absolu évite d'annoncer un
+         « meilleur » quand rien n'est vraiment favorable. Les seuils sont pris sur une vue d'ensemble et gardés en zoomant. */
+      const COUL = { p: [59, 47, 99, 150], b: [181, 68, 110, 195], t: [244, 162, 97, 220], m: [255, 243, 176, 238] };
+      const VIF = { p: [124, 92, 214, 255], b: [222, 52, 118, 255], t: [255, 140, 36, 255], m: [255, 226, 64, 255] };
+      const classe = v => { const S = seuils[choisi]; return v < 0.05 || !S ? null : v >= S.m ? 'm' : v >= S.t ? 't' : v >= S.b ? 'b' : 'p'; };
+      const peindreNotes = (eclat) => {
         const g = memo.g, notes = memo.notes; if (!g || !notes || app.active !== q1) return;
-        app.poser('note', g, app.peindre(g, k => { const v = notes[k]; if (v < 0.15 || masques.has(classe(v))) return null; for (let i = 1; i < R.length; i++) if (v <= R[i][0]) { const A = R[i - 1], B = R[i], u = (v - A[0]) / (B[0] - A[0]); return [A[1] + (B[1] - A[1]) * u, A[2] + (B[2] - A[2]) * u, A[3] + (B[3] - A[3]) * u, 215]; } return [255, 243, 176, 215]; }));
+        const visibles = ['p', 'b', 't', 'm'].filter(k => !masques.has(k)), seul = visibles.length === 1 ? visibles[0] : null, w = g.w, h = g.h;
+        const cl = new Array(w * h); for (let k = 0; k < cl.length; k++) cl[k] = classe(notes[k]);
+        memo.classes = cl;
+        app.poser('note', g, app.peindre(g, k => {
+          const c0 = cl[k];
+          if (!seul) return c0 && !masques.has(c0) ? COUL[c0] : null;
+          // Une seule classe gardée : teinte vive et pleine, contour sombre, fond de carte assombri autour.
+          if (c0 !== seul) return [12, 18, 30, 125];
+          const i = k % w, j = (k - i) / w;
+          if ((i > 0 && cl[k - 1] !== seul) || (i < w - 1 && cl[k + 1] !== seul) || (j > 0 && cl[k - w] !== seul) || (j < h - 1 && cl[k + w] !== seul)) return [22, 16, 28, 255];
+          return VIF[seul];
+        }));
+        // Repères sur les petites zones, qui disparaissent en vue large : un anneau au centre de chaque pavé peu rempli.
+        const fc = { type: 'FeatureCollection', features: [] };
+        if (seul) {
+          const B = 28, nbx = Math.ceil(w / B), nby = Math.ceil(h / B), cpt = new Int32Array(nbx * nby), sx = new Float64Array(nbx * nby), sy = new Float64Array(nbx * nby);
+          for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (cl[j * w + i] === seul) { const b = Math.floor(j / B) * nbx + Math.floor(i / B); cpt[b]++; sx[b] += i; sy[b] += j; }
+          const petit = B * B * 0.04;
+          for (let bj = 0; bj < nby && fc.features.length < 30; bj++) for (let bi = 0; bi < nbx; bi++) {
+            const b = bj * nbx + bi; if (!cpt[b] || cpt[b] >= petit) continue;
+            let seule = true; for (let dj = -1; dj <= 1 && seule; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const ii = bi + di, jj = bj + dj; if (ii >= 0 && jj >= 0 && ii < nbx && jj < nby && cpt[jj * nbx + ii] >= petit) { seule = false; break; } }
+            if (seule) fc.features.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: app.versGeo(g.x0 + (sx[b] / cpt[b] + 0.5) / w * (g.x1 - g.x0), g.y1 - (sy[b] / cpt[b] + 0.5) / h * (g.y1 - g.y0)) } });
+          }
+        }
+        if (map.getSource('reperes')) map.getSource('reperes').setData(fc);
+        else { map.addSource('reperes', { type: 'geojson', data: fc }); map.addLayer({ id: 'reperes', type: 'circle', source: 'reperes', maxzoom: 13.6, paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } }); }
+        // Un bref éclat au moment où l'on change le filtre, sans clignotement ensuite.
+        if (eclat && map.getLayer('note')) { map.setPaintProperty('note', 'raster-opacity-transition', { duration: 0 }); map.setPaintProperty('note', 'raster-opacity', 0.25); setTimeout(() => { if (map.getLayer('note')) { map.setPaintProperty('note', 'raster-opacity-transition', { duration: 550 }); map.setPaintProperty('note', 'raster-opacity', 1); } }, 70); }
+        if (obsActif) verifier();
       };
-      const masques = app.legende(c, [{ cle: 'p', couleur: '#3b2f63', texte: 'possible' }, { cle: 'b', couleur: '#b5446e', texte: 'bon' }, { cle: 't', couleur: '#f4a261', texte: 'très bon' }, { cle: 'm', couleur: '#fff3b0', texte: 'le meilleur' }], peindreNotes, masquesNotes);
+      const masques = app.legende(c, [{ cle: 'p', couleur: '#3b2f63', texte: 'possible' }, { cle: 'b', couleur: '#b5446e', texte: 'bon' }, { cle: 't', couleur: '#f4a261', texte: 'très bon' }, { cle: 'm', couleur: '#fff3b0', texte: 'le meilleur' }], () => peindreNotes(true), masquesNotes);
+      // Observations réelles (GBIF) : des points datés, et un contrôle du modèle.
+      const verifier = () => {
+        const cible = c.querySelector('.obs'), g = memo.g, cl = memo.classes; if (!cible || !g || !cl) return;
+        if (!obs.liste) { cible.textContent = 'Lecture des observations…'; return; }
+        const flou = obs.total > obs.liste.length ? ` (${obs.total} publiées en tout, mais les autres sont localisées à plus d'un kilomètre près, souvent floutées exprès, et ne sont pas affichées)` : '';
+        if (!obs.liste.length) { cible.textContent = (obs.total ? 'Aucune observation localisée précisément dans la zone affichée' : 'Aucune observation publiée de cette espèce dans la zone affichée') + flou + '.'; return; }
+        let dans = 0, haut = 0, surf = 0, surfHaut = 0;
+        for (const o of obs.liste) { const k = app.indice(g, o.lon, o.lat); if (k < 0) continue; dans++; if (cl[k] === 'm' || cl[k] === 't') haut++; }
+        for (let k = 0; k < cl.length; k++) if (cl[k]) { surf++; if (cl[k] === 'm' || cl[k] === 't') surfHaut++; }
+        cible.innerHTML = `<span class="fort">${obs.liste.length} observation${obs.liste.length > 1 ? 's' : ''}</span> localisée${obs.liste.length > 1 ? 's' : ''} précisément dans la zone${flou}${dans ? ` : ${haut} sur ${dans} tombent en « meilleur » ou « très bon », des classes qui couvrent ${surf ? Math.round(100 * surfHaut / surf) : 0} % de la forêt notée` : ''}. Peu de points, souvent pris au bord des chemins : c'est un indice, pas une preuve.`;
+      };
+      const chargerObs = async () => {
+        if (!obsActif) { app.retirer('obs-mois', 'obs'); c.querySelector('.obs').textContent = ''; return; }
+        const b = app.emprise(0.1), cle = choisi + b.map(v => v.toFixed(2)).join();
+        if (obs.cle !== cle) {
+          obs.cle = cle; obs.liste = null; verifier();
+          try {
+            const r = await fetch(`https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&hasGeospatialIssue=false&limit=300&taxonKey=${CHAMPIGNONS[choisi].gbif}&decimalLatitude=${b[1].toFixed(3)},${b[3].toFixed(3)}&decimalLongitude=${b[0].toFixed(3)},${b[2].toFixed(3)}`);
+            const j = await r.json(); if (obs.cle !== cle) return;
+            obs.total = j.count || 0; obs.liste = (j.results || []).filter(o => !(o.coordinateUncertaintyInMeters > 1000)).map(o => ({ lon: o.decimalLongitude, lat: o.decimalLatitude, mois: o.month, an: o.year }));
+          } catch (e) { obs.liste = null; obs.cle = ''; c.querySelector('.obs').textContent = 'Les observations n\'ont pas pu être lues (la base GBIF ne répond pas).'; return; }
+        }
+        if (app.active !== q1 || !obsActif) return;
+        const MOIS = ['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+        const fc = { type: 'FeatureCollection', features: obs.liste.map(o => ({ type: 'Feature', properties: { t: (MOIS[o.mois] || '') + (o.an ? ' ' + o.an : '') }, geometry: { type: 'Point', coordinates: [o.lon, o.lat] } })) };
+        if (map.getSource('obs')) map.getSource('obs').setData(fc);
+        else { map.addSource('obs', { type: 'geojson', data: fc }); }
+        if (!map.getLayer('obs')) {
+          map.addLayer({ id: 'obs', type: 'circle', source: 'obs', paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-color': '#10192a', 'circle-stroke-width': 2.5 } });
+          map.addLayer({ id: 'obs-mois', type: 'symbol', source: 'obs', minzoom: 12, layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top' }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+        }
+        verifier();
+      };
+      /* Sentiers et chemins de la BD TOPO (en vue rapprochée), et tronçons qui passent à moins de 100 m d'une zone « meilleur ». */
+      const chargerSentiers = () => {
+        const cible = c.querySelector('.sent');
+        if (!sentActif) { app.retirer('sentiers-bons', 'sentiers', 'sentiers-bord'); if (map.getSource('sentiers-bons')) map.removeSource('sentiers-bons'); cible.textContent = ''; return; }
+        const filtre = ['in', ['get', 'nature'], ['literal', ['Sentier', 'Chemin']]];
+        if (!map.getLayer('sentiers')) {
+          map.addSource('sentiers-bons', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+          map.addLayer({ id: 'sentiers-bons', type: 'line', source: 'sentiers-bons', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#19e3c8', 'line-width': 9, 'line-opacity': 0.9 } });
+          map.addLayer({ id: 'sentiers-bord', type: 'line', source: 'bdtopo', 'source-layer': 'troncon_de_route', minzoom: 15, filter: filtre, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 4.5, 'line-opacity': 0.9 } });
+          map.addLayer({ id: 'sentiers', type: 'line', source: 'bdtopo', 'source-layer': 'troncon_de_route', minzoom: 15, filter: filtre, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['case', ['==', ['get', 'prive'], true], '#b3261e', '#10192a'], 'line-width': 2, 'line-dasharray': ['literal', [2, 1.5]] } });
+        }
+        if (map.getZoom() < 15) { cible.textContent = 'Approche-toi : les sentiers de l\'IGN s\'affichent en vue rapprochée (à partir du niveau 15).'; map.getSource('sentiers-bons').setData({ type: 'FeatureCollection', features: [] }); return; }
+        const g = memo.g, cl = memo.classes; if (!g || !cl) return;
+        const r = Math.max(1, Math.round(100 / g.pas)), pas = Math.max(1, Math.round(r / 6));
+        const pres = (lon, lat) => { const k = app.indice(g, lon, lat); if (k < 0) return false; const i0 = k % g.w, j0 = (k - i0) / g.w; for (let dj = -r; dj <= r; dj += pas) for (let di = -r; di <= r; di += pas) { if (di * di + dj * dj > r * r) continue; const i = i0 + di, j = j0 + dj; if (i >= 0 && j >= 0 && i < g.w && j < g.h && cl[j * g.w + i] === 'm') return true; } return false; };
+        const bons = [], vus = new Set(); let nb = 0, km = 0;
+        for (const f of map.querySourceFeatures('bdtopo', { sourceLayer: 'troncon_de_route', filter: filtre })) {
+          const id = f.properties.cleabs + '|' + JSON.stringify(f.geometry.coordinates[0]).slice(0, 40); if (vus.has(id)) continue; vus.add(id);
+          for (const ligne of (f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates)) for (let n = 1; n < ligne.length; n++) {
+            const a = ligne[n - 1], b = ligne[n]; if (pres((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) { bons.push([a, b]); km += app.distKm(a, b); }
+          }
+          nb++;
+        }
+        map.getSource('sentiers-bons').setData({ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: bons } });
+        cible.innerHTML = nb ? `Sentiers et chemins de l'IGN (en rouge : signalés privés). En turquoise, ${km >= 0.05 ? `<span class="fort">${km.toFixed(1).replace('.', ',')} km</span> de tronçons` : 'aucun tronçon'} à moins de 100 m d'une zone « meilleur ». Un chemin de la carte peut avoir disparu ou traverser une propriété.` : 'Aucun sentier de l\'IGN dans cette vue.';
+      };
       let p = await meteoPassee();
       const dessiner = async () => {
         const { g, a, type } = await terrain(); if (app.active !== q1) return;
@@ -167,11 +268,17 @@
           // fraîcheur : versants nord et est, pentes modérées ; elle compte davantage par temps sec
           const e = a.expo[k], pe = a.pente[k], nord = e === e ? (Math.cos(e * Math.PI / 180) + 1) / 2 : 0.5, poids = Math.min(1, ch.frais + (sec ? 0.3 : 0));
           const ff = (1 - poids) + poids * nord, fp = pe > 40 ? 0.3 : pe > 30 ? 0.7 : 1;
-          return n * fa * ff * fp;
+          const fh = 1 + 0.35 * ch.frais * (2 * memo.creux[k] - 1);   // creux humides favorisés pour les espèces qui aiment le frais
+          return Math.min(1, n * fa * ff * fp * fh);
         };
         const notes = new Float32Array(g.w * g.h); let max = 0; for (let k = 0; k < notes.length; k++) { notes[k] = note(k); if (notes[k] > max) max = notes[k]; }
         memo.notes = notes; memo.max = max;
-        peindreNotes();
+        if (map.getZoom() < 12.7 || !seuils[choisi]) {
+          const vals = []; for (let k = 0; k < notes.length; k++) if (notes[k] >= 0.05) vals.push(notes[k]); vals.sort((x, y) => x - y);
+          const q = f => vals.length ? vals[Math.min(vals.length - 1, Math.floor(f * vals.length))] : 1;
+          seuils[choisi] = { m: Math.max(q(0.9), 0.5), t: Math.max(q(0.7), 0.35), b: Math.max(q(0.4), 0.2), max };
+        }
+        peindreNotes(); if (obsActif) chargerObs(); if (sentActif) setTimeout(chargerSentiers, 400);
         c.querySelector('.mot').textContent = ch.mot;
         let avis = !ch.mois.includes(mois) ? `<span class="fort">Hors saison</span> (elle va de ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[0] - 1]} à ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[ch.mois.length - 1] - 1]}) : la carte montre les secteurs, pas une pousse en cours.` : '';
         if (p) {
@@ -179,8 +286,12 @@
           const lo = Math.max(ch.alt[0], zBas), hi = Math.min(ch.alt[1], zHaut);
           avis += ` Cette semaine, la température lui convient ${lo < hi ? `entre <span class="fort">${lo} et ${hi} m</span>` : (zHaut < ch.alt[0] ? 'nulle part : il fait trop froid, même en bas' : 'nulle part : il fait trop chaud, même en haut')}. Pluie des 14 derniers jours : <span class="fort">${Math.round(p.pluie14)} mm</span>${sec ? ', trop peu : les versants frais sont favorisés' : ', suffisant'}${p.tmin3 < -1 ? '. Il a gelé ces trois derniers jours, ce qui arrête la plupart des pousses' : ''}.`;
         } else avis += ' La météo des derniers jours ne répond pas : la note ne tient compte que de la forêt, de l\'altitude et du versant.';
+        if (max < 0.5) avis += ' <span class="fort">Rien n\'atteint le niveau « meilleur »</span> dans cette zone en ce moment : la carte ne montre que du possible ou du bon.';
         c.querySelector('.etat').innerHTML = avis;
       };
+      c.querySelector('.bobs').onclick = e => { obsActif = !obsActif; e.target.setAttribute('aria-pressed', obsActif); chargerObs(); };
+      c.querySelector('.bsent').onclick = e => { sentActif = !sentActif; e.target.setAttribute('aria-pressed', sentActif); chargerSentiers(); };
+      c.querySelector('.bobs').setAttribute('aria-pressed', obsActif); c.querySelector('.bsent').setAttribute('aria-pressed', sentActif);
       c.querySelector('.esp').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; choisi = b.dataset.k; c.querySelectorAll('.esp button').forEach(x => x.setAttribute('aria-pressed', x === b)); dessiner(); };
       const actif = c.querySelector('.esp button[aria-pressed="true"]'); if (actif) actif.scrollIntoView({ inline: 'center', block: 'nearest' });
       app.suivre(q1, dessiner); await dessiner();
@@ -188,9 +299,9 @@
     toucher(app, ll) {
       const { g, a, type, notes } = memo; const k = g ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0 || !notes) return;
       const t = CODES[type[k] - 1], e = a.expo[k];
-      document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, ${t ? LIB[t] : 'hors forêt'}, pente de ${Math.round(a.pente[k])}° tournée vers ${['le nord', 'le nord-est', 'l\'est', 'le sud-est', 'le sud', 'le sud-ouest', 'l\'ouest', 'le nord-ouest'][Math.round(e / 45) % 8]}${passe ? `, environ ${Math.round(tempA(passe, g.z[k]))} °C de moyenne cette semaine` : ''}. Note : <span class="fort">${Math.round(notes[k] * 100)} / 100</span> pour ${CHAMPIGNONS[choisi].nom.toLowerCase()}.`;
+      document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, ${t ? LIB[t] : 'hors forêt'}, pente de ${Math.round(a.pente[k])}° tournée vers ${['le nord', 'le nord-est', 'l\'est', 'le sud-est', 'le sud', 'le sud-ouest', 'l\'ouest', 'le nord-ouest'][Math.round(e / 45) % 8]}${passe ? `, environ ${Math.round(tempA(passe, g.z[k]))} °C de moyenne cette semaine` : ''}. Note : <span class="fort">${Math.round(notes[k] * 100)} / 100</span> pour ${CHAMPIGNONS[choisi].nom.toLowerCase()}${memo.classes && memo.classes[k] ? `, classe « ${{ p: 'possible', b: 'bon', t: 'très bon', m: 'le meilleur' }[memo.classes[k]]} »` : ''}.`;
     },
-    fermer(app) { app.retirer('note'); }
+    fermer(app) { app.retirer('note', 'reperes', 'obs-mois', 'obs', 'sentiers-bons', 'sentiers', 'sentiers-bord'); }
   };
 
   // ---------- 2. Pluie et température ----------
