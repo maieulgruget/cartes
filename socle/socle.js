@@ -175,7 +175,9 @@
         for (let yy = by * 16; yy < by * 16 + 16 && blanc; yy += 3) for (let xx = bx * 16; xx < bx * 16 + 16; xx += 3) { const k = 4 * (yy * 256 + xx); if (d[k] < 250 || d[k + 1] < 250 || d[k + 2] < 250) { blanc = false; break; } }
         if (blanc) vides.push([bx * 16, by * 16]);
       }
-      if (!vides.length) return brut;
+      // Une bande blanche plus étroite qu'un carré échappe au repérage par carrés : on compte aussi les pixels blancs.
+      let nBlancs = 0; for (let k = 0; k < d.length; k += 12) if (d[k] >= 250 && d[k + 1] >= 250 && d[k + 2] >= 250) nBlancs++;
+      if (!vides.length && nBlancs < 8) return brut;
     }
     const v2 = await imageDe(wmts('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png').replace('{z}', z).replace('{y}', y).replace('{x}', x));
     // Fond de repli sur toute la tuile : le Plan classique, dont la mer est reteinte au bleu du Plan HD pour que les
@@ -208,11 +210,14 @@
          son bleu et son blanc (une couleur à mi-chemin des deux). Le tri se fait pixel par pixel sur toute la tuile. */
       const d = hdPx.data;
       let merHd = 0; for (let k = 0; k < d.length; k += 28) if (Math.abs(d[k] - MER_RVB[0]) < 12 && Math.abs(d[k + 1] - MER_RVB[1]) < 12 && Math.abs(d[k + 2] - MER_RVB[2]) < 12) merHd++;
+      const prudent = !vides.length;
       const enMer = marin || merHd > 65536 / 7 * 0.05;   // tuile côtière : un blanc des deux plans à la fois est de la mer
       for (let k = 0; k < d.length; k += 4) {
         const r = d[k], g = d[k + 1], b = d[k + 2];
         let vide = r >= 228 && g >= 236 && b >= 236;
         if (!vide) { const t = (r - MER_RVB[0]) / (255 - MER_RVB[0]); vide = t > 0.1 && Math.abs(g - (MER_RVB[1] + (255 - MER_RVB[1]) * t)) < 22 && Math.abs(b - (MER_RVB[2] + (255 - MER_RVB[2]) * t)) < 22; }
+        const fondMer = fond[k] === MER_RVB[0] && fond[k + 1] === MER_RVB[1] && fond[k + 2] === MER_RVB[2];
+        if (vide && prudent && !fondMer && !(enMer && fond[k] >= 250 && fond[k + 1] >= 250 && fond[k + 2] >= 250)) continue;   // sans vrai trou dans la tuile, un blanc n'est repris que si le Plan classique y voit de l'eau
         if (vide) { if (enMer && fond[k] >= 250 && fond[k + 1] >= 250 && fond[k + 2] >= 250) { d[k] = MER_RVB[0]; d[k + 1] = MER_RVB[1]; d[k + 2] = MER_RVB[2]; } else { d[k] = fond[k]; d[k + 1] = fond[k + 1]; d[k + 2] = fond[k + 2]; } }
         else if (b > 140 && b > r + 35 && g > r + 10) { d[k] = MER_RVB[0]; d[k + 1] = MER_RVB[1]; d[k + 2] = MER_RVB[2]; }   // les bleus du Plan HD ramenés à un seul
       }
