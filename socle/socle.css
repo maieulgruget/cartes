@@ -15,7 +15,9 @@ button[aria-pressed="true"] { background: var(--gold); color: #10192a; border-co
 select, input[type="text"], input[type="date"] { background: #16233a; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 16px; max-width: 100%; }
 input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
 
-.titre { position: fixed; left: 10px; top: calc(10px + env(safe-area-inset-top)); z-index: 3; max-width: calc(100% - 130px);
+.cartes { position: fixed; left: 10px; top: calc(10px + env(safe-area-inset-top)); z-index: 3; width: 34px; height: 46px; padding: 0 0 3px; border-radius: 12px;
+  font-size: 24px; line-height: 1; color: var(--muted); backdrop-filter: blur(6px); }
+.titre { position: fixed; left: 50px; top: calc(10px + env(safe-area-inset-top)); z-index: 3; max-width: calc(100% - 170px);
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 7px 12px; backdrop-filter: blur(6px); text-align: left; }
 .titre b { font-family: var(--display); font-size: 17px; font-weight: 600; display: block; line-height: 1.15; }
 .titre span { color: var(--muted); font-size: 12px; }

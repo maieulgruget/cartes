@@ -149,7 +149,8 @@
     for (let k = 0; k < 65536; k++) {
       if (alt && !absent(alt[k])) {
         const v = alt[k] + 32768; d[4 * k] = Math.floor(v / 256); d[4 * k + 1] = Math.floor(v) % 256; d[4 * k + 2] = Math.floor((v - Math.floor(v)) * 256);
-      } else if (repli) { d[4 * k] = repli[4 * k]; d[4 * k + 1] = repli[4 * k + 1]; d[4 * k + 2] = repli[4 * k + 2]; }
+      } else if (repli && repli[4 * k] >= 128) { d[4 * k] = repli[4 * k]; d[4 * k + 1] = repli[4 * k + 1]; d[4 * k + 2] = repli[4 * k + 2]; }
+      else if (repli) { d[4 * k] = 128; d[4 * k + 1] = 0; d[4 * k + 2] = 0; }   // le relief mondial porte les fonds marins aux petits zooms : la mer reste plate, au niveau zéro
       else { d[4 * k] = 128; d[4 * k + 1] = 0; d[4 * k + 2] = 0; }
       d[4 * k + 3] = 255;
     }
@@ -157,18 +158,80 @@
     const blob = await new Promise(res => c.toBlob(res, 'image/png'));
     return blob.arrayBuffer();
   }
-  /* Plan IGN HD seul. Il ne couvre pas encore tout le territoire (centre de la Bretagne, large) : là où il n'a rien,
-     la carte reste blanche. Pas de repli sur un autre plan : deux dessins mêlés se lisaient mal, et un blanc pris pour
-     de la mer peignait du bleu en pleine terre. */
-  let tuileBlanche = null;
-  async function tuilePlan(z, x, y) {
-    try { const r = await fetch(`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/${z}/${x}/${y}.jpeg`); if (r.ok) return await r.arrayBuffer(); } catch (e) { /* tuile absente : blanc */ }
-    if (!tuileBlanche) {
-      const c = document.createElement('canvas'); c.width = c.height = 256;
-      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 256, 256);
-      tuileBlanche = new Promise(res => c.toBlob(res, 'image/jpeg', 0.8)).then(b => b.arrayBuffer());
+  /* Plan IGN HD seul. Il ne couvre pas tout : à terre (centre de la Bretagne) il laisse du blanc, que l'on garde tel quel ;
+     en mer il ne dessine le bleu que près des côtes et laisse le large en blanc. Ce blanc-là est repeint en bleu, mais
+     seulement là où le relief mondial donne franchement de la mer (altitude sous -2 m) : un blanc de terre reste blanc. */
+  const MER_PLAN = [64, 130, 156];
+  const planMer = { fin: null };
+  const cacheMer = new Map();
+  // Altitudes (mètres) d'une tuile du relief mondial, zoom 10 au plus : c'est à ces zooms qu'il porte les fonds marins.
+  function altiMonde(z, x, y) {
+    const cle = z + '/' + x + '/' + y;
+    if (!cacheMer.has(cle)) {
+      cacheMer.set(cle, (async () => {
+        const r = await fetch(TERRARIUM.replace('{z}', z).replace('{x}', x).replace('{y}', y)); if (!r.ok) throw new Error('relief mondial ' + r.status);
+        const bmp = await createImageBitmap(await r.blob()), c = document.createElement('canvas'); c.width = c.height = 256;
+        const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
+        const d = ctx.getImageData(0, 0, 256, 256).data, a = new Float32Array(65536);
+        for (let k = 0; k < 65536; k++) a[k] = d[4 * k] * 256 + d[4 * k + 1] + d[4 * k + 2] / 256 - 32768;
+        return a;
+      })().catch(() => null));
+      if (cacheMer.size > 60) cacheMer.delete(cacheMer.keys().next().value);
     }
-    return (await tuileBlanche).slice(0);
+    return cacheMer.get(cle);
+  }
+  // Altitude du relief mondial en un point (interpolée) ; négative en mer. Sert aussi de profondeur de repli au large.
+  async function altitudeMonde(lon, lat) {
+    const n = 1024, fx = (lon + 180) / 360 * n, fy = (1 - Math.asinh(Math.tan(lat * RAD)) / Math.PI) / 2 * n;
+    const a = await altiMonde(10, Math.floor(fx), Math.floor(fy)); if (!a) return NaN;
+    return a[Math.min(255, Math.floor((fy % 1) * 256)) * 256 + Math.min(255, Math.floor((fx % 1) * 256))];
+  }
+  // Masque de mer d'une tuile (z, x, y) : 1 là où le relief mondial est sous -2 m, interpolé depuis sa tuile parente.
+  async function masqueMer(z, x, y) {
+    const zz = Math.min(z, 10), f = 1 << (z - zz), a = await altiMonde(zz, Math.floor(x / f), Math.floor(y / f));
+    if (!a) return null;
+    const m = new Uint8Array(65536), ox = (x % f) * 256 / f, oy = (y % f) * 256 / f; let mer = 0;
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const sx = Math.min(254.999, Math.max(0, ox + (i + 0.5) / f - 0.5)), sy = Math.min(254.999, Math.max(0, oy + (j + 0.5) / f - 0.5));
+      const i0 = sx | 0, j0 = sy | 0, u = sx - i0, v = sy - j0, k = j0 * 256 + i0;
+      const alt = (a[k] * (1 - u) + a[k + 1] * u) * (1 - v) + (a[k + 256] * (1 - u) + a[k + 257] * u) * v;
+      if (alt < -0.5) { m[j * 256 + i] = 1; mer++; }
+    }
+    return mer ? m : null;
+  }
+  async function tuilePlan(z, x, y) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 256, 256);
+    let brut = null;
+    try { const r = await fetch(`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/${z}/${x}/${y}.jpeg`); if (r.ok) brut = await r.arrayBuffer(); } catch (e) { /* tuile absente : blanc */ }
+    if (brut) { try { ctx.drawImage(await createImageBitmap(new Blob([brut], { type: 'image/jpeg' })), 0, 0); } catch (e) { return brut; } }
+    const im = ctx.getImageData(0, 0, 256, 256), d = im.data;
+    // Le plan a deux bleus de mer (un clair par endroits près des côtes) : le clair est ramené au bleu courant, sinon la mer
+    // se lit en rectangles. Une tuile sans blanc ni bleu clair (moins de 1 %) est rendue telle quelle.
+    const clair = k => { const r = d[4 * k], g = d[4 * k + 1], b = d[4 * k + 2]; return r > 48 && r < 104 && g > 137 && g < 178 && b > 160 && b < 208 && b - r > 80; };   // du bleu clair du plan (76, 158, 188) à ses mélanges avec le bleu courant
+    let blancs = 0, clairs = 0; for (let k = 0; k < 65536; k += 7) { if (d[4 * k] > 243 && d[4 * k + 1] > 243 && d[4 * k + 2] > 243) blancs++; else if (clair(k)) clairs++; }
+    if (blancs < 90 && clairs < 90 && brut) return brut;
+    let m = await masqueMer(z, x, y);
+    // Un module (les fonds marins) peut donner un trait de côte bien plus fin que le relief mondial : 1 mer, 0 terre, 2 inconnu.
+    if (planMer.fin) { try { const f = await planMer.fin(z, x, y); if (f) { const g = new Uint8Array(65536); for (let k = 0; k < 65536; k++) g[k] = f[k] === 2 ? (m ? m[k] : 0) : f[k]; m = g; } } catch (e) { /* on garde le masque grossier */ } }
+    if (!m) return brut || (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer();
+    /* Seules les grandes plages blanches sont repeintes : un nom écrit en blanc sur la mer doit rester lisible. Un point
+       est au cœur d'une plage si tout son voisinage (5 × 5) est blanc ; la plage est ensuite élargie de cinq
+       points, pour reprendre sa lisière pâle jusqu'au bleu du plan. */
+    const somme = (src) => { const I = new Int32Array(257 * 257); for (let j = 0; j < 256; j++) { let l = 0; for (let i = 0; i < 256; i++) { l += src[j * 256 + i]; I[(j + 1) * 257 + i + 1] = I[j * 257 + i + 1] + l; } } return I; };
+    const compte = (I, i, j, r) => { const a = Math.max(0, i - r), b = Math.min(255, i + r), e = Math.max(0, j - r), f = Math.min(255, j + r); return [I[(f + 1) * 257 + b + 1] - I[e * 257 + b + 1] - I[(f + 1) * 257 + a] + I[e * 257 + a], (b - a + 1) * (f - e + 1)]; };
+    const blanc = new Uint8Array(65536); for (let k = 0; k < 65536; k++) blanc[k] = d[4 * k] > 236 && d[4 * k + 1] > 236 && d[4 * k + 2] > 236 ? 1 : 0;
+    const Ib = somme(blanc), coeur = new Uint8Array(65536);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { const q = compte(Ib, i, j, 2); coeur[j * 256 + i] = q[0] >= q[1] ? 1 : 0; }
+    const Ic = somme(coeur); let change = false;
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const k = j * 256 + i; if (!m[k] || d[4 * k] + d[4 * k + 1] + d[4 * k + 2] < 395 || !compte(Ic, i, j, 5)[0]) continue;   // plus clair que la mer du plan, au bord d'une plage blanche
+      d[4 * k] = MER_PLAN[0]; d[4 * k + 1] = MER_PLAN[1]; d[4 * k + 2] = MER_PLAN[2]; change = true;
+    }
+    if (clairs >= 90) for (let k = 0; k < 65536; k++) if (m[k] && clair(k)) { d[4 * k] = MER_PLAN[0]; d[4 * k + 1] = MER_PLAN[1]; d[4 * k + 2] = MER_PLAN[2]; change = true; }
+    if (!change && brut) return brut;
+    ctx.putImageData(im, 0, 0);
+    return (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer();
   }
   function brancherRelief() {
     if (brancherRelief.fait) return; brancherRelief.fait = true;
@@ -209,6 +272,7 @@
       ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
       plan: { type: 'raster', tiles: ['ignplan://{z}/{x}/{y}'], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN © IGN' },
       ombrage: { type: 'raster', tiles: [wmts('IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'LiDAR HD © IGN' },
+      geologie: { type: 'raster', tiles: [wmts('BRGM_SCAN_D_GEOL50', 'image/jpeg')], tileSize: 256, maxzoom: 15, attribution: 'Carte géologique © BRGM' },
       bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
       relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
       estompe: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium' }
@@ -217,8 +281,18 @@
       { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
       { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
       { id: 'ombrage', type: 'raster', source: 'ombrage', layout: { visibility: 'none' } },
+      { id: 'geologie', type: 'raster', source: 'geologie', layout: { visibility: 'none' } },
       { id: 'estompe', type: 'hillshade', source: 'estompe', paint: { 'hillshade-exaggeration': 0.4, 'hillshade-shadow-color': '#2b3545', 'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#55617a' } },
       { id: 'analyses', type: 'background', paint: { 'background-opacity': 0 } });   // repère : les analyses se glissent sous les étiquettes
+    /* Noms en double. Le fond porte les noms de l'eau sous deux formes : posés en un point, et couchés le long d'une ligne.
+       Pour une même classe de nom (une passe, une anse), les deux existent souvent à la fois : on lisait deux fois
+       « Passe de l'Ouest », l'un net, l'autre couché sur la mer. Les classes déjà servies par un calque ponctuel sont
+       retirées des calques linéaires ; les noms qui n'existent qu'en ligne (rivières, canaux) restent. */
+    const classes = l => Array.isArray(l.filter) && (l.filter[0] === 'in' || l.filter[0] === '==') && l.filter[1] === 'txt_typo' ? l.filter.slice(2) : [];
+    const ponctuelles = new Set(style.layers.filter(l => l['source-layer'] === 'toponyme_hydro_ponc').flatMap(classes));
+    for (const l of style.layers) if (l['source-layer'] === 'toponyme_hydro_lin') { const c = classes(l); if (c.length) l.filter = ['in', 'txt_typo', ...c.filter(v => !ponctuelles.has(v))]; }
+    // Une carte qui apporte ses propres noms (ports, caps, anses) écarte les familles de noms du fond qui feraient doublon.
+    if (cfg.sansNoms) style.layers = style.layers.filter(l => !(l.type === 'symbol' && cfg.sansNoms.includes(l['source-layer'])));
     const textes = style.layers.filter(l => l.type === 'symbol').map(l => l.id);
     style.layers.splice(style.layers.findIndex(l => l.id === 'analyses') + 1, 0,
       { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15, layout: { visibility: 'none' },
@@ -233,8 +307,8 @@
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     map.touchZoomRotate.enableRotation(); map.touchPitch.enable();
     await new Promise(res => map.once('load', res));
-    const exag = cfg.exageration || 1;
-    let relief3d = false;
+    const exag0 = cfg.exageration || 1;
+    let exag = exag0, relief3d = false;
     // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident.
     const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' ? 'visible' : 'none');
     const mettre3d = oui => { relief3d = oui; map.setTerrain(oui ? { source: 'relief', exaggeration: exag } : null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
@@ -251,19 +325,25 @@
     bas.append(reponse, sous, rang);
     const attente = el('div', { class: 'attente', hidden: '' }, 'Calcul…');
     const menu = el('div', { class: 'menu', hidden: '' });
-    document.body.append(bTitre, outils, bas, attente, menu);
+    const bCartes = el('button', { class: 'cartes', 'aria-label': 'Revenir à toutes les cartes', title: 'Toutes les cartes' }, '‹');
+    bCartes.onclick = () => { location.href = cfg.racine; };
+    document.body.append(bCartes, bTitre, outils, bas, attente, menu);
 
-    const fonds = ['plan', 'gris', 'ortho', 'ombrage'], noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo', ombrage: 'Relief' };
+    // La carte géologique du BRGM (1/50 000) ne couvre que la métropole : une carte peut l'écarter (cfg.geologie = false).
+    const fonds = ['plan', 'gris', 'ortho', 'ombrage'].concat(cfg.geologie === false ? [] : ['geologie']), noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo', ombrage: 'Relief', geologie: 'Géologie' };
     let fond = 'gris';
+    const surFond = [];   // fonctions prévenues à chaque changement de fond
     function mettreFond(f) {
       fond = f; bFond.textContent = noms[f];
       map.setLayoutProperty('ortho', 'visibility', f === 'ortho' ? 'visible' : 'none');
       map.setLayoutProperty('plan', 'visibility', f === 'plan' ? 'visible' : 'none');
       map.setLayoutProperty('ombrage', 'visibility', f === 'ombrage' ? 'visible' : 'none');
+      map.setLayoutProperty('geologie', 'visibility', f === 'geologie' ? 'visible' : 'none');
       // L'estompage ne se superpose qu'au fond gris et à la photo. Ailleurs il est retiré pour de bon : réglé à zéro,
       // il laissait encore un voile clair par tuiles entières (bandes pâles à bords droits sur le Plan et le Relief).
-      map.setLayoutProperty('estompe', 'visibility', f === 'gris' || f === 'ortho' ? 'visible' : 'none');
-      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : 0.12);
+      map.setLayoutProperty('estompe', 'visibility', f === 'gris' || f === 'ortho' || f === 'geologie' ? 'visible' : 'none');
+      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'geologie' ? 0.25 : 0.12);
+      for (const fn of surFond) { try { fn(f); } catch (e) { console.error(e); } }
       majBatiments();
     }
     bFond.onclick = () => mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]);
@@ -272,7 +352,8 @@
 
     const app = {
       map, cfg, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, propre, versGeo, versMerc, distKm,
-      get fond() { return fond; }, mettreFond, mettre3d,
+      get fond() { return fond; }, mettreFond, mettre3d, surFond, altitudeMonde,
+      get relief3d() { return relief3d; },
       occupe(oui, texte) { attente.textContent = texte || 'Calcul…'; attente.hidden = !oui; },
       // Emprise de la vue courante, élargie d'une marge (fraction), bornée pour rester raisonnable en vue inclinée.
       emprise(marge) {
@@ -372,7 +453,7 @@
     map.on('click', e => { if (app.active && app.active.toucher) app.active.toucher(app, e.lngLat); });
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
-    const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['voile', 'Voile', 'la rade de Marseille']];
+    const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['voile', 'Voile', 'de Cerbère à Menton, et la Corse']];
     const cleSignets = 'cartes.signets.' + cfg.id;
     // Chaque saut (lieu, recherche, position) garde la vue quittée : le bouton Retour y ramène, un saut à la fois.
     const vues = [];
@@ -401,6 +482,7 @@
       menu.innerHTML = `<div><h3>Lieux</h3><ul class="lieux"></ul>
         <h3>Garder la vue actuelle</h3><div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue" maxlength="40"><button class="garder">Garder</button></div>
         <h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go">Chercher</button></div><ul class="res"></ul>
+        <h3>Relief</h3><p style="margin:0"><button class="exag" aria-pressed="${exag > exag0}">Relief accentué (hauteurs × 1,8)</button></p><p class="sources" style="margin:4px 0 0">Par défaut, le relief est à l'échelle réelle. De loin il paraît plat : l'accentuer aide à le lire, mais fausse les pentes.</p>
         <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, et avec quelle fiabilité</button></p>
         <h3>Autres cartes</h3><ul class="autres">${AUTRES.filter(a => a[0] !== cfg.id).map(a => `<li><button data-u="${cfg.racine}${a[0]}/">${a[1]}<small>${a[2]}</small></button></li>`).join('')}<li><button data-u="${cfg.racine}">Toutes les cartes<small>page d'accueil</small></button></li></ul>
         <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p>
@@ -413,6 +495,10 @@
         li.append(b); ul.append(li);
       });
       menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
+      menu.querySelector('.exag').onclick = e => {
+        exag = exag > exag0 ? exag0 : exag0 * 1.8; e.target.setAttribute('aria-pressed', exag > exag0);
+        if (!relief3d) mettre3d(true); else map.setTerrain({ source: 'relief', exaggeration: exag });
+      };
       menu.querySelector('.autres').onclick = e => { const b = e.target.closest('button[data-u]'); if (b) location.href = b.dataset.u; };
       // Page « méthode » : tous les thèmes de la carte, ce qu'ils calculent, leurs limites ; puis les sources.
       menu.querySelector('.methode').onclick = () => {
@@ -457,5 +543,5 @@
     return app;
   }
 
-  window.Socle = { RGEALTI, creer, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, versMerc, versGeo, distKm, wmts, GEOPF };
+  window.Socle = { RGEALTI, altitudeMonde, planMer, creer, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, versMerc, versGeo, distKm, wmts, GEOPF };
 })();
