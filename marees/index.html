@@ -9,9 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="Marées">
 <meta name="theme-color" content="#0e1622">
 <meta name="robots" content="noindex">
-<link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="apple-touch-icon" href="icone-180.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="../socle/icone-180.png">
+<link rel="icon" href="icone-180.png">
 <title>Marées — de Bréhat au cap Fréhel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
@@ -41,7 +41,7 @@
       { nom: 'Paimpol', centre: [-3.0300, 48.7800], zoom: 12.6, pitch: 0, bearing: 0 },
       { nom: 'Île de Bréhat', centre: [-2.9950, 48.8480], zoom: 13, pitch: 0, bearing: 0 }
     ],
-    sources: 'Relief de l\'estran et petits fonds : RGE ALTI de l\'IGN (qui intègre le relevé Litto3D), lu à la volée. Hauteur de mer : modèle de marée d\'Open-Meteo, au point de référence le plus proche de la vue. Pour un jour hors de sa fenêtre (une semaine), la marée est calculée à partir d\'un an de ce modèle ; ce n\'est pas l\'annuaire du Shom, et l\'écart peut atteindre plusieurs dizaines de centimètres et de minutes, davantage par vent fort ou basse pression. Les hauteurs sont données par rapport au niveau des cartes terrestres (NGF), pas au zéro des cartes marines. Carte de curiosité et de préparation : pour traverser un estran, se fier aux horaires officiels et garder une large marge.'
+    sources: 'Relief de l\'estran et petits fonds : RGE ALTI de l\'IGN (qui intègre le relevé Litto3D), lu à la volée. Hauteur de mer : modèle de marée d\'Open-Meteo, au point de référence le plus proche de la vue. Pour un jour hors de sa fenêtre (une semaine), la marée est calculée à partir d\'un an de ce modèle ; ce n\'est pas l\'annuaire du Shom, et l\'écart peut atteindre plusieurs dizaines de centimètres et de minutes, davantage par vent fort ou basse pression. Les hauteurs sont données par rapport au niveau des cartes terrestres (NGF), pas au zéro des cartes marines. Oiseaux : observations publiées sur GBIF.org (eBird, iNaturalist, suivis français) ; périmètres protégés : INPN. Carte de curiosité et de préparation : pour traverser un estran, se fier aux horaires officiels et garder une large marge.'
   });
   const { map } = app;
   // Points de référence au large, pour le modèle de marée.
@@ -257,7 +257,89 @@
       return txt + mention(s, t0) + '<p class="petit">Le calcul suit la ligne tracée : un chenal entre deux points n\'est vu que si la ligne le traverse. La vase, les courants et le vent ne sont pas pris en compte.</p>';
     }
   });
-  [q1, q3, q4, q5, q2].forEach(q => app.question(q));
+  // ---------- 6. Oiseaux : où et quand ils ont été vus, et où la marée les met ----------
+  /* Observations ouvertes (GBIF : eBird, iNaturalist, suivis français) des oiseaux d'eau de l'estran, lues pour la vue
+     affichée, par espèce et par mois. La marée du moment est peinte dessous : la vasière découverte est leur zone
+     d'alimentation. Les noms des observateurs ne sont pas affichés. */
+  const OISEAUX = [[5232446, 'Bernache cravant', 'o'], [2498009, 'Tadorne de Belon', 'o'], [8000602, 'Canard siffleur', 'o'],
+    [7788295, 'Huîtrier pie', 'l'], [2481792, 'Courlis cendré', 'l'], [2481681, 'Barge rousse', 'l'], [2480327, 'Pluvier argenté', 'l'], [9566659, 'Grand Gravelot', 'l'],
+    [2481759, 'Bécasseau variable', 'l'], [2481765, 'Bécasseau maubèche', 'l'], [2481748, 'Bécasseau sanderling', 'l'], [2481714, 'Chevalier gambette', 'l'], [2481776, 'Tournepierre à collier', 'l'],
+    [2480876, 'Aigrette garzette', 'h']];
+  const NOMO = new Map(OISEAUX.map(o => [o[0], o])), MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const GBIF = 'https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&hasGeospatialIssue=false';
+  let oiseau = 'tous', moisO = new Date().getMonth() + 1; const masquesO = new Set(); let perimetres = null;
+  const q6 = {
+    theme: 'Oiseaux', libelle: 'Quels oiseaux, où et quand ?',
+    aide: 'Chaque point est une observation publiée en données ouvertes (base GBIF, qui rassemble eBird, iNaturalist et des suivis français), pour quatorze espèces d\'oiseaux d\'eau de l\'estran. Ce sont des présences signalées, pas des effectifs : les points suivent les chemins et les observatoires, et janvier est gonflé par les comptages d\'hiver. Un mois sans point ne veut pas dire sans oiseau. Le fond bleu et sable est la marée du moment choisi : les limicoles se nourrissent sur la vasière découverte et se replient en haut d\'estran à marée haute, d\'où le créneau d\'affût conseillé avant la pleine mer (règle d\'observateur, à adapter au site). Les contours sont la réserve naturelle nationale et les zones de protection spéciale des oiseaux (Natura 2000). Dans la réserve, rester sur les sentiers et à distance : un envol fait perdre aux oiseaux l\'énergie de leur hivernage.',
+    async ouvrir(app) {
+      const c = app.repondre(q6.libelle, `<div class="ligne"><select class="esp"><option value="tous">Toutes les espèces de l'estran</option>${OISEAUX.map(o => `<option value="${o[0]}"${String(o[0]) === String(oiseau) ? ' selected' : ''}>${o[1]}</option>`).join('')}</select><button class="annee" aria-pressed="${moisO === 0}">Toute l'année</button></div>
+        <div class="hist" style="display:flex;gap:2px;align-items:flex-end;height:64px;margin:6px 0 2px"></div>
+        <p class="etat"></p><p class="maree"></p><div class="legende"></div>`);
+      const m2 = map, vide = { type: 'FeatureCollection', features: [] };
+      m2.addSource('oiseaux', { type: 'geojson', data: vide });
+      m2.addLayer({ id: 'oiseaux', type: 'circle', source: 'oiseaux', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 6.5], 'circle-color': ['match', ['get', 'g'], 'o', '#2a6fdb', 'h', '#ffffff', '#f08a24'], 'circle-stroke-color': '#1a2e4a', 'circle-stroke-width': 1.2, 'circle-opacity': 0.85 } });
+      // périmètres protégés, lus une fois pour toute la côte
+      if (!perimetres) {
+        const lire = async tn => { try { return await (await fetch(`${Socle.GEOPF}/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=${tn}&OUTPUTFORMAT=application/json&SRSNAME=CRS:84&BBOX=-3.15,48.45,-2.2,48.95,CRS:84&COUNT=30`)).json(); } catch (e) { return vide; } };
+        perimetres = { rnn: await lire('patrinat_rnn:rnn'), zps: await lire('patrinat_zps:zps') };
+      }
+      if (app.active !== q6) return;
+      m2.addSource('zps', { type: 'geojson', data: perimetres.zps }); m2.addSource('rnn', { type: 'geojson', data: perimetres.rnn });
+      m2.addLayer({ id: 'zps', type: 'line', source: 'zps', paint: { 'line-color': '#7a4fb5', 'line-width': 2, 'line-dasharray': [3, 2] } }, 'oiseaux');
+      m2.addLayer({ id: 'rnn', type: 'line', source: 'rnn', paint: { 'line-color': '#1f8a4c', 'line-width': 3 } }, 'oiseaux');
+      const visibilite = () => {
+        m2.setLayoutProperty('rnn', 'visibility', masquesO.has('rnn') ? 'none' : 'visible'); m2.setLayoutProperty('zps', 'visibility', masquesO.has('zps') ? 'none' : 'visible');
+        const caches = ['o', 'l', 'h'].filter(g => masquesO.has(g)); m2.setFilter('oiseaux', caches.length ? ['!', ['in', ['get', 'g'], ['literal', caches]]] : null);
+        if (m2.getLayer('mer')) m2.setLayoutProperty('mer', 'visibility', masquesO.has('mer') ? 'none' : 'visible');
+      };
+      app.legende(c, [{ cle: 'l', couleur: '#f08a24', texte: 'limicoles' }, { cle: 'o', couleur: '#2a6fdb', texte: 'oies et canards' }, { cle: 'h', couleur: '#ffffff', texte: 'aigrette' }, { cle: 'rnn', couleur: '#1f8a4c', texte: 'réserve naturelle' }, { cle: 'zps', couleur: '#7a4fb5', texte: 'zone de protection des oiseaux' }, { cle: 'mer', couleur: '#2c6aa8', texte: 'mer et vasière du moment' }], visibilite, masquesO);
+      let tour = 0;
+      const charger = async () => {
+        const moi = ++tour, b = app.emprise(0.05), cles = oiseau === 'tous' ? OISEAUX.map(o => o[0]) : [+oiseau];
+        const base = `${GBIF}&${cles.map(k => 'taxonKey=' + k).join('&')}&decimalLatitude=${b[1].toFixed(4)},${b[3].toFixed(4)}&decimalLongitude=${b[0].toFixed(4)},${b[2].toFixed(4)}`;
+        app.occupe(true, 'Lecture des observations…');
+        try {
+          // saisonnalité : nombre d'observations par mois, toutes années confondues, dans la vue
+          const f = await (await fetch(base + '&limit=0&facet=month&facetLimit=12')).json(); if (moi !== tour || app.active !== q6) return;
+          const parMois = new Array(13).fill(0); ((f.facets || [])[0] || { counts: [] }).counts.forEach(x => { parMois[+x.name] = x.count; });
+          const max = Math.max(1, ...parMois);
+          c.querySelector('.hist').innerHTML = MOIS.map((n, i) => `<button data-m="${i + 1}" aria-pressed="${moisO === i + 1}" title="${n} : ${parMois[i + 1]}" style="flex:1;padding:0;border-radius:3px;border:0;background:none;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;height:100%"><span style="display:block;background:${moisO === i + 1 ? '#b8963e' : '#4a90c2'};border-radius:2px 2px 0 0;height:${Math.round(46 * parMois[i + 1] / max) + 2}px"></span><small style="font-size:9px;color:${moisO === i + 1 ? '#b8963e' : '#9aa8bb'};font-weight:${moisO === i + 1 ? 700 : 400}">${n.charAt(0).toUpperCase()}</small></button>`).join('');
+          // observations du mois choisi (jusqu'à 900 points)
+          const feats = []; let total = 0;
+          for (let page = 0; page < 3; page++) {
+            const r = await (await fetch(base + (moisO ? '&month=' + moisO : '') + '&limit=300&offset=' + page * 300)).json(); if (moi !== tour || app.active !== q6) return;
+            total = r.count; for (const o of r.results) { const e = NOMO.get(o.speciesKey) || NOMO.get(o.taxonKey); feats.push({ type: 'Feature', properties: { nom: e ? e[1] : (o.species || 'Oiseau'), g: e ? e[2] : 'l', an: o.year || 0, mois: o.month || 0, jour: o.day || 0, nb: o.individualCount || 0, src: (o.datasetName || '').slice(0, 60) }, geometry: { type: 'Point', coordinates: [o.decimalLongitude, o.decimalLatitude] } }); }
+            if (r.endOfRecords) break;
+          }
+          m2.getSource('oiseaux').setData({ type: 'FeatureCollection', features: feats });
+          const quoi = oiseau === 'tous' ? 'des quatorze espèces' : 'de ' + NOMO.get(+oiseau)[1].toLowerCase();
+          c.querySelector('.etat').innerHTML = total ? `<span class="fort">${total}</span> observation${total > 1 ? 's' : ''} ${quoi} dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : 'sur l\'année'}${total > feats.length ? `, dont ${feats.length} affichées (zoome pour les voir toutes)` : ''}. Touche un point pour son détail.` : `Aucune observation ${quoi} publiée dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : ''}. Essaie un autre mois dans le graphique.`;
+        } catch (e) { if (moi === tour) c.querySelector('.etat').textContent = 'La base d\'observations ne répond pas pour l\'instant.'; }
+        app.occupe(false);
+        // la marée du moment, dessous
+        try {
+          const s = await maree(); if (!s || moi !== tour || app.active !== q6) return;
+          const g = await estran(); if (moi !== tour || app.active !== q6) return;
+          const t0 = depart(), niv = niveau(s, t0), jr = extremes(s, t0 - 7 * 36e5, t0 + 7 * 36e5), haut = Math.max(...jr.filter(e => e.pm).map(e => e.h), niv), bas = Math.min(...jr.filter(e => !e.pm).map(e => e.h), niv);
+          peindreMer(g, niv, bas, haut); visibilite();
+          const pm = extremes(s, t0, t0 + 13 * 36e5).find(e => e.pm), monte = niveau(s, t0 + 6e5) > niv;
+          c.querySelector('.maree').innerHTML = `${jour(t0)} ${hhmm(t0)} : mer à ${m(niv)}, elle ${monte ? 'monte' : 'descend'}.` + (pm ? ` Créneau d'affût conseillé : de <span class="fort">${hhmm(pm.t - 2.5 * 36e5)}</span> à <span class="fort">${hhmm(pm.t - 36e5)}</span>, avant la pleine mer de ${hhmm(pm.t)}, quand la mer montante rapproche les oiseaux du bord.` : '');
+        } catch (e) { /* la marée est un complément : les observations restent affichées */ }
+      };
+      c.querySelector('.esp').onchange = e => { oiseau = e.target.value; charger(); };
+      c.querySelector('.hist').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; moisO = +b.dataset.m; c.querySelector('.annee').setAttribute('aria-pressed', 'false'); charger(); };
+      c.querySelector('.annee').onclick = e => { moisO = moisO === 0 ? new Date().getMonth() + 1 : 0; e.target.setAttribute('aria-pressed', moisO === 0); charger(); };
+      app.suivre(q6, charger); await charger();
+    },
+    toucher(app, ll) {
+      const p = map.project(ll), f = map.getLayer('oiseaux') ? map.queryRenderedFeatures([[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]], { layers: ['oiseaux'] }) : [];
+      if (!f.length) return;
+      const lignes = f.slice(0, 5).map(x => { const o = x.properties; return `<span class="fort">${app.propre(o.nom)}</span>${o.nb > 1 ? ' (' + o.nb + ' individus)' : ''}, ${o.jour ? o.jour + ' ' : ''}${o.mois ? MOIS[o.mois - 1] + ' ' : ''}${o.an || ''}${o.src ? ' <span class="petit2">· ' + app.propre(o.src) + '</span>' : ''}`; });
+      document.querySelector('.reponse .etat').innerHTML = lignes.join('<br>') + (f.length > 5 ? `<br><span class="petit2">et ${f.length - 5} autres au même endroit</span>` : '');
+    },
+    fermer(app) { app.retirer('oiseaux', 'rnn', 'zps', 'mer'); }
+  };
+  [q1, q3, q4, q5, q6, q2].forEach(q => app.question(q));
 })();
 </script>
 </body>

@@ -9,9 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="Semnoz">
 <meta name="theme-color" content="#0e1622">
 <meta name="robots" content="noindex">
-<link rel="apple-touch-icon" href="../socle/icone-180.png">
+<link rel="apple-touch-icon" href="icone-180.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="../socle/icone-180.png">
+<link rel="icon" href="icone-180.png">
 <title>Où chercher les champignons — autour d'Annecy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
@@ -19,7 +19,6 @@
 <link rel="stylesheet" href="../socle/socle.css">
 <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
 <script src="../socle/socle.js"></script>
-<script src="../socle/formes.js"></script>
 </head>
 <body>
 <script>
@@ -216,7 +215,6 @@
     fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); if (q3.fondAvant && q3.fondAvant !== app.fond) app.mettreFond(q3.fondAvant); }
   };
   [q1, q2, q3].forEach(q => app.question(q));
-  app.question(Socle.formes());
 })();
 </script>
 </body>

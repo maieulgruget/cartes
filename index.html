@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cartes">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<title>Cartes</title>
+<link rel="apple-touch-icon" href="socle/icone-180.png">
+<link rel="icon" href="socle/icone-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; background: #0e1622; color: #e8ecf2; font-family: "Source Sans 3", Arial, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom)); }
+  h1 { font-family: "Source Serif 4", Georgia, serif; font-size: 26px; font-weight: 600; margin: 0 0 4px; }
+  .sous { color: #9aa8bb; margin: 0 0 22px; font-size: 15px; }
+  .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  a.carte { display: block; text-decoration: none; color: inherit; background: #101c2e; border: 1px solid rgba(184, 150, 62, 0.35); border-radius: 18px; padding: 12px 12px 14px; }
+  a.carte:active { border-color: #b8963e; }
+  a.carte img { width: 100%; aspect-ratio: 1; border-radius: 14px; display: block; }
+  a.carte b { display: block; font-family: "Source Serif 4", Georgia, serif; font-size: 17px; font-weight: 600; margin: 10px 0 2px; }
+  a.carte span { color: #9aa8bb; font-size: 13px; line-height: 1.35; display: block; }
+  @media (max-width: 340px) { .grille { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cartes</h1>
+  <p class="sous">Quatre cartes, chacune avec ses thèmes.</p>
+  <div class="grille">
+    <a class="carte" href="tarentaise/"><img src="tarentaise/icone-512.png" alt=""><b>Tarentaise</b><span>Les Chapelles : itinéraire, avalanche, neige, soleil, météo</span></a>
+    <a class="carte" href="marees/"><img src="marees/icone-512.png" alt=""><b>Marées</b><span>De Bréhat au cap Fréhel : marée, estran, traversée, oiseaux</span></a>
+    <a class="carte" href="reunion/"><img src="reunion/icone-512.png" alt=""><b>La Réunion</b><span>Lumière, versants, ensoleillement, lever et coucher</span></a>
+    <a class="carte" href="semnoz/"><img src="semnoz/icone-512.png" alt=""><b>Champignons</b><span>Autour d'Annecy : où chercher, pluie, forêts</span></a>
+  </div>
+</main>
+</body>
+</html>
