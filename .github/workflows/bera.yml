@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { ref: main }   # toujours la dernière version, même quand on relance un ancien lancement
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Lire le bulletin
@@ -19,9 +20,9 @@ jobs:
           METEOFRANCE_BRA: ${{ secrets.METEOFRANCE_BRA }}
         run: python relais/bera.py
       - name: Déposer le fichier
-        if: always()
+        if: success()
         run: |
           git config user.name "relais-bera"
           git config user.email "actions@users.noreply.github.com"
           git add tarentaise/bera.json || true
-          git diff --cached --quiet || (git commit -m "Bulletin d'avalanche du jour" && git push)
+          git diff --cached --quiet || (git commit -m "Bulletin d'avalanche du jour" && git pull --rebase origin main && git push origin HEAD:main)
