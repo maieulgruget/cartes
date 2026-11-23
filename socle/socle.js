@@ -2,7 +2,7 @@
    - Carte MapLibre plein écran : fond gris (Plan IGN vectoriel), Plan IGN HD et photo aérienne en bascule ; bâtiments en volume en vue 3D rapprochée.
    - Relief : MNT LiDAR HD de l'IGN, lu à la volée (WMS raster, flottants 32 bits) et converti en tuiles de relief ;
      repli sur les tuiles Terrarium là où l'IGN n'a pas de valeur (hors de France).
-   - Interface : une rangée de questions, une réponse à la fois ; signets (des vues), recherche de lieux, 2D/3D.
+   - Interface : une rangée de thèmes (regroupés en familles), une réponse à la fois ; signets (des vues), recherche de lieux, 2D/3D.
    - Analyses : grille d'altitudes de la vue courante, pentes et expositions, soleil, ombres portées. */
 (function () {
   'use strict';
@@ -157,74 +157,18 @@
     const blob = await new Promise(res => c.toBlob(res, 'image/png'));
     return blob.arrayBuffer();
   }
-  /* Plan IGN HD avec repli : le Plan HD ne couvre pas encore tout le territoire (centre de la Bretagne, mer).
-     Là où il n'a rien, sa tuile manque, ou revient blanche en tout ou partie. On regarde donc la tuile par carrés de
-     16 pixels : les carrés entièrement blancs sont repris du Plan IGN classique, et à défaut peints en bleu mer. */
-  const MER_RVB = [62, 132, 157], MER_PLAN = 'rgb(62,132,157)';   // le bleu de la mer du Plan HD
-  async function imageDe(url) { try { const r = await fetch(url); return r.ok ? await createImageBitmap(await r.blob()) : null; } catch (e) { return null; } }
+  /* Plan IGN HD seul. Il ne couvre pas encore tout le territoire (centre de la Bretagne, large) : là où il n'a rien,
+     la carte reste blanche. Pas de repli sur un autre plan : deux dessins mêlés se lisaient mal, et un blanc pris pour
+     de la mer peignait du bleu en pleine terre. */
+  let tuileBlanche = null;
   async function tuilePlan(z, x, y) {
-    let brut = null, hd = null;
-    try { const r = await fetch(`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/${z}/${x}/${y}.jpeg`); if (r.ok) { brut = await r.arrayBuffer(); if (brut.byteLength > 2500) hd = await createImageBitmap(new Blob([brut], { type: 'image/jpeg' })); } } catch (e) { hd = null; }
-    const c = document.createElement('canvas'); c.width = c.height = 256;
-    const ctx = c.getContext('2d', { willReadFrequently: true }), vides = [];
-    if (hd) {
-      ctx.drawImage(hd, 0, 0, 256, 256);
-      const d = ctx.getImageData(0, 0, 256, 256).data;
-      for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
-        let blanc = true;
-        for (let yy = by * 16; yy < by * 16 + 16 && blanc; yy += 3) for (let xx = bx * 16; xx < bx * 16 + 16; xx += 3) { const k = 4 * (yy * 256 + xx); if (d[k] < 250 || d[k + 1] < 250 || d[k + 2] < 250) { blanc = false; break; } }
-        if (blanc) vides.push([bx * 16, by * 16]);
-      }
-      // Une bande blanche plus étroite qu'un carré échappe au repérage par carrés : on compte aussi les pixels blancs.
-      let nBlancs = 0; for (let k = 0; k < d.length; k += 12) if (d[k] >= 250 && d[k + 1] >= 250 && d[k + 2] >= 250) nBlancs++;
-      if (!vides.length && nBlancs < 8) return brut;
+    try { const r = await fetch(`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/${z}/${x}/${y}.jpeg`); if (r.ok) return await r.arrayBuffer(); } catch (e) { /* tuile absente : blanc */ }
+    if (!tuileBlanche) {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 256, 256);
+      tuileBlanche = new Promise(res => c.toBlob(res, 'image/jpeg', 0.8)).then(b => b.arrayBuffer());
     }
-    const v2 = await imageDe(wmts('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png').replace('{z}', z).replace('{y}', y).replace('{x}', x));
-    // Fond de repli sur toute la tuile : le Plan classique, dont la mer est reteinte au bleu du Plan HD pour que les
-    // deux se raccordent ; à défaut, ce même bleu partout.
-    const hdPx = hd ? ctx.getImageData(0, 0, 256, 256) : null;
-    if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); }
-    const fondPx = ctx.getImageData(0, 0, 256, 256), fond = fondPx.data;
-    let marin = !v2;   // la tuile est-elle surtout en mer ?
-    if (v2) {
-      // Toute eau du Plan classique (ses bleus varient selon la profondeur et le niveau de zoom) prend le bleu du Plan HD.
-      const eau = new Uint8Array(65536), blanc = new Uint8Array(65536);
-      for (let k = 0, q = 0; k < fond.length; k += 4, q++) {
-        const r = fond[k], g = fond[k + 1], b = fond[k + 2];
-        if (b > 150 && b > r + 35 && g > r + 10) { eau[q] = 1; fond[k] = MER_RVB[0]; fond[k + 1] = MER_RVB[1]; fond[k + 2] = MER_RVB[2]; }
-        else if (r >= 250 && g >= 250 && b >= 250) blanc[q] = 1;
-      }
-      // Ses blancs (hors couverture) deviennent de la mer là où le carré de 16 pixels n'a presque que de l'eau et du blanc,
-      // ce qui épargne les routes blanches des terres.
-      for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
-        let n = 0, nb = 0; for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) { const q = yy * 256 + xx; n += eau[q] + blanc[q]; nb += blanc[q]; }
-        if (nb && n >= 230) for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) { const q = yy * 256 + xx; if (blanc[q]) { fond[4 * q] = MER_RVB[0]; fond[4 * q + 1] = MER_RVB[1]; fond[4 * q + 2] = MER_RVB[2]; } }
-      }
-      let ne = 0, nbl = 0; for (let q = 0; q < 65536; q += 7) { ne += eau[q]; nbl += blanc[q]; } marin = ne > 65536 / 7 * 0.05 || nbl > 65536 / 7 * 0.6;
-      // En mer, ce qui reste blanc dans le Plan classique est un trou de sa couverture.
-      if (marin) for (let q = 0; q < 65536; q++) if (blanc[q]) { fond[4 * q] = MER_RVB[0]; fond[4 * q + 1] = MER_RVB[1]; fond[4 * q + 2] = MER_RVB[2]; }
-    }
-    if (!hd) ctx.putImageData(fondPx, 0, 0);
-    else {
-      /* Le Plan HD par-dessus, sauf là où il n'a rien : ses blancs, et le liseré pâle que la compression laisse entre
-         son bleu et son blanc (une couleur à mi-chemin des deux). Le tri se fait pixel par pixel sur toute la tuile. */
-      const d = hdPx.data;
-      let merHd = 0; for (let k = 0; k < d.length; k += 28) if (Math.abs(d[k] - MER_RVB[0]) < 12 && Math.abs(d[k + 1] - MER_RVB[1]) < 12 && Math.abs(d[k + 2] - MER_RVB[2]) < 12) merHd++;
-      const prudent = !vides.length;
-      const enMer = marin || merHd > 65536 / 7 * 0.05;   // tuile côtière : un blanc des deux plans à la fois est de la mer
-      for (let k = 0; k < d.length; k += 4) {
-        const r = d[k], g = d[k + 1], b = d[k + 2];
-        let vide = r >= 228 && g >= 236 && b >= 236;
-        if (!vide) { const t = (r - MER_RVB[0]) / (255 - MER_RVB[0]); vide = t > 0.1 && Math.abs(g - (MER_RVB[1] + (255 - MER_RVB[1]) * t)) < 22 && Math.abs(b - (MER_RVB[2] + (255 - MER_RVB[2]) * t)) < 22; }
-        const fondMer = fond[k] === MER_RVB[0] && fond[k + 1] === MER_RVB[1] && fond[k + 2] === MER_RVB[2];
-        if (vide && prudent && !fondMer && !(enMer && fond[k] >= 250 && fond[k + 1] >= 250 && fond[k + 2] >= 250)) continue;   // sans vrai trou dans la tuile, un blanc n'est repris que si le Plan classique y voit de l'eau
-        if (vide) { if (enMer && fond[k] >= 250 && fond[k + 1] >= 250 && fond[k + 2] >= 250) { d[k] = MER_RVB[0]; d[k + 1] = MER_RVB[1]; d[k + 2] = MER_RVB[2]; } else { d[k] = fond[k]; d[k + 1] = fond[k + 1]; d[k + 2] = fond[k + 2]; } }
-        else if (b > 140 && b > r + 35 && g > r + 10) { d[k] = MER_RVB[0]; d[k + 1] = MER_RVB[1]; d[k + 2] = MER_RVB[2]; }   // les bleus du Plan HD ramenés à un seul
-      }
-      ctx.putImageData(hdPx, 0, 0);
-    }
-    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
-    return blob.arrayBuffer();
+    return (await tuileBlanche).slice(0);
   }
   function brancherRelief() {
     if (brancherRelief.fait) return; brancherRelief.fait = true;
@@ -302,8 +246,9 @@
       bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { 'aria-label': 'Remettre le nord en haut' }, 'Nord ↑'),
       bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
     outils.append(bFond, b3d, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
-    const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' });
-    bas.append(reponse, rang);
+    const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
+      sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
+    bas.append(reponse, sous, rang);
     const attente = el('div', { class: 'attente', hidden: '' }, 'Calcul…');
     const menu = el('div', { class: 'menu', hidden: '' });
     document.body.append(bTitre, outils, bas, attente, menu);
@@ -315,10 +260,13 @@
       map.setLayoutProperty('ortho', 'visibility', f === 'ortho' ? 'visible' : 'none');
       map.setLayoutProperty('plan', 'visibility', f === 'plan' ? 'visible' : 'none');
       map.setLayoutProperty('ombrage', 'visibility', f === 'ombrage' ? 'visible' : 'none');
-      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'ortho' ? 0.12 : 0);
+      // L'estompage ne se superpose qu'au fond gris et à la photo. Ailleurs il est retiré pour de bon : réglé à zéro,
+      // il laissait encore un voile clair par tuiles entières (bandes pâles à bords droits sur le Plan et le Relief).
+      map.setLayoutProperty('estompe', 'visibility', f === 'gris' || f === 'ortho' ? 'visible' : 'none');
+      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : 0.12);
       majBatiments();
     }
-    bFond.onclick = () => { mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]); garde.ecrire('cartes.fond', fond); };
+    bFond.onclick = () => mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]);
     b3d.onclick = () => mettre3d(!relief3d);
     bNord.onclick = () => map.easeTo({ bearing: 0, duration: 600 });
 
@@ -334,11 +282,12 @@
         const m = marge || 0, dx = (e - o) * m, dy = (n - s) * m;
         return [o - dx, s - dy, e + dx, n + dy];
       },
-      // Pose (ou remplace) une image géoréférencée sur la grille g, sous les étiquettes.
-      poser(id, g, url, opacite) {
+      // Pose (ou remplace) une image géoréférencée sur la grille g, sous les étiquettes. Les mailles sont fondues entre
+      // elles (pas de carrés nets) ; net = true garde la maille brute.
+      poser(id, g, url, opacite, net) {
         const [o, s] = versGeo(g.x0, g.y0), [e, n] = versGeo(g.x1, g.y1), coins = [[o, n], [e, n], [e, s], [o, s]];
         if (map.getSource(id)) map.getSource(id).updateImage({ url, coordinates: coins });
-        else { map.addSource(id, { type: 'image', url, coordinates: coins }); map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacite == null ? 1 : opacite, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } }, 'analyses'); }
+        else { map.addSource(id, { type: 'image', url, coordinates: coins }); map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacite == null ? 1 : opacite, 'raster-fade-duration': 0, 'raster-resampling': net ? 'nearest' : 'linear' } }, 'analyses'); }
       },
       retirer(...ids) { for (const id of ids) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); } },
       repondre(titre, html) {
@@ -376,16 +325,36 @@
       sansBulle() { if (bulleCarte) { bulleCarte.remove(); bulleCarte = null; } if (map.getLayer('pointbulle')) { map.removeLayer('pointbulle'); map.removeSource('pointbulle'); } },
       questions: [], active: null,
       masquer() { appliquerMasque(); },
+      /* Un thème seul a sa puce. Les thèmes d'une même famille (q.famille) partagent une puce : elle ouvre le dernier
+         thème consulté de la famille, et une rangée de sous-thèmes permet de passer de l'un à l'autre. */
       question(q) {
-        const b = el('button', { 'aria-pressed': 'false', title: q.libelle }, propre(q.theme || q.libelle));   // la puce porte le thème, la réponse porte la question
-        q.bouton = b; rang.append(b); app.questions.push(q);
-        b.onclick = () => app.choisir(app.active === q ? null : q);
+        app.questions.push(q);
+        if (!q.famille) {
+          const b = el('button', { 'aria-pressed': 'false', title: q.libelle }, propre(q.theme || q.libelle));   // la puce porte le thème, la réponse porte la question
+          q.bouton = b; rang.append(b); b.onclick = () => app.choisir(app.active === q ? null : q); return;
+        }
+        let f = familles.get(q.famille);
+        if (!f) {
+          f = { membres: [], dernier: null, bouton: el('button', { 'aria-pressed': 'false' }, propre(q.famille)) };
+          familles.set(q.famille, f); rang.append(f.bouton);
+          f.bouton.onclick = () => app.choisir(app.active && app.active.famille === q.famille ? null : (f.dernier || f.membres[0]));
+        }
+        f.membres.push(q); q.bouton = f.bouton;
       },
       async choisir(q) {
         if (app.active) { const a = app.active; a.bouton.setAttribute('aria-pressed', 'false'); app.active = null; try { a.fermer && a.fermer(app); } catch (e) { console.error(e); } }
         reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle(); if (masque) { masque = false; appliquerMasque(); }
+        sous.hidden = true; sous.innerHTML = '';
         if (!q) return;
         app.active = q; q.bouton.setAttribute('aria-pressed', 'true'); q.bouton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+        const f = q.famille && familles.get(q.famille);
+        if (f) {
+          f.dernier = q;
+          if (f.membres.length > 1) {
+            sous.hidden = false;
+            f.membres.forEach(m => { const b = el('button', { 'aria-pressed': String(m === q), title: m.libelle }, propre(m.theme || m.libelle)); b.onclick = () => { if (app.active !== m) app.choisir(m); }; sous.append(b); });
+          }
+        }
         try { await q.ouvrir(app); } catch (e) { console.error(e); app.occupe(false); app.repondre(q.libelle, `<p>Impossible de répondre pour l'instant : ${propre(e.message || e)}.</p><p class="petit">Vérifie la connexion, puis touche de nouveau la question.</p>`); }
       },
       // Relance fn (après un court délai) à chaque fin de déplacement tant que la question q est active.
@@ -482,9 +451,8 @@
     bRech.onclick = () => { dessinerMenu(); menu.hidden = false; const q = menu.querySelector('.q'); q.scrollIntoView({ block: 'center' }); q.focus(); };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
     if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
-    // Fond d'ouverture : le dernier choisi sur cet appareil, sinon celui de la carte, sinon le Plan IGN HD.
-    const fondDepart = garde.lire('cartes.fond', null) || cfg.fond || 'plan';
-    if (fonds.includes(fondDepart) && fondDepart !== 'gris') mettreFond(fondDepart);
+    // Fond d'ouverture : celui de la carte, sinon le Plan IGN HD. Le dernier fond choisi n'est pas repris.
+    mettreFond(fonds.includes(cfg.fond) ? cfg.fond : 'plan');
     window.carteApp = app;
     return app;
   }

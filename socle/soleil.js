@@ -46,7 +46,7 @@
       aide: 'Ombres portées par le relief à la date et à l\'heure choisies : pour chaque maille, la carte remonte un rayon vers le soleil et regarde si le terrain le coupe. En vue rapprochée, elle prend le relevé de surface, donc les arbres et les bâtiments portent ombre. La position du soleil est calculée à un demi-degré près ; les nuages ne sont pas pris en compte.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<input type="range" class="h" min="0" max="1430" step="10" value="${etat.minutes}">
-          <p class="etat"></p><div class="legende"><span><i style="background:#060a14"></i>à l'ombre</span><span><i style="background:#e9c46a"></i>lumière rasante (soleil sous 12°)</span></div>
+          <p class="etat"></p><div class="legende"><span><i style="background:#1c2848"></i>à l'ombre</span><span><i style="background:#e9c46a"></i>lumière rasante (soleil sous 12°)</span></div>
           <p class="petit">${opts.note || ''} Touche la carte pour connaître les heures de soleil d'un point.</p>`);
         const jour = c.querySelector('.jour'), h = c.querySelector('.h'), txt = c.querySelector('.etat'), heure = c.querySelector('.heure');
         let prevu = false;
@@ -54,10 +54,13 @@
           prevu = false; const g = memo.g; if (!g || app.active !== q) return;
           const centre = app.map.getCenter(), s = app.soleil(instant(opts.fuseau, etat.jour, etat.minutes), centre.lat, centre.lng);
           heure.textContent = hm(etat.minutes);
-          if (s.hauteur <= 0) { txt.textContent = 'Le soleil est sous l\'horizon.'; app.poser('ombres', g, app.peindre(g, () => [4, 8, 18, 150])); return; }
+          if (s.hauteur <= 0) { txt.textContent = 'Le soleil est sous l\'horizon.'; app.poser('ombres', g, app.peindre(g, () => [20, 30, 58, 140])); return; }
           const o = app.ombres(g, s.azimut, s.hauteur), rasant = s.hauteur < 12;
           let n = 0; for (let k = 0; k < o.length; k++) n += o[k];
-          app.poser('ombres', g, app.peindre(g, k => o[k] ? [4, 8, 18, 165] : (rasant ? [233, 196, 106, 70] : null)));
+          // Ombre bleu-gris, assez légère pour laisser lire le fond ; son bord est fondu sur une maille de part et
+          // d'autre (moyenne des neuf voisines), ce qui dessine une pénombre au lieu d'une limite en escalier.
+          const W = g.w, H = g.h, part = k => { const i = k % W, j = (k - i) / W; if (i < 1 || j < 1 || i > W - 2 || j > H - 2) return o[k]; let v = 0; for (let dj = -W; dj <= W; dj += W) v += o[k + dj - 1] + o[k + dj] + o[k + dj + 1]; return v / 9; };
+          app.poser('ombres', g, app.peindre(g, k => { const f = part(k); return f > 0 ? [28, 40, 72, Math.round(150 * f)] : (rasant ? [233, 196, 106, 55] : null); }));
           txt.innerHTML = `Soleil au <span class="fort">${cap(s.azimut)}</span> (${Math.round(s.azimut)}°), à <span class="fort">${Math.round(s.hauteur)}°</span> au-dessus de l'horizon. ${Math.round(100 * n / o.length)} % de la vue est à l'ombre${g.surface ? ', arbres et bâtiments compris' : ' (relief seul : zoome pour compter les arbres)'}.`;
         };
         const demander = () => { if (!prevu) { prevu = true; requestAnimationFrame(dessiner); } };
@@ -205,16 +208,17 @@
      Chaque maille est classée selon qu'elle reçoit le soleil bas (moins de 12°) le matin, le soir, les deux, ou jamais. */
   function rasante(opts) {
     const memo = {}, masques = new Set(); let tour = 0;
-    const COUL = { m: [244, 162, 97, 200], s: [157, 78, 221, 200], d: [255, 224, 102, 220], j: [6, 10, 20, 140] };
+    // Dégradé doré : ambre le matin, cuivre le soir, or clair quand le versant prend les deux. « Jamais » reste discret.
+    const COUL = { m: [246, 190, 92, 175], s: [222, 128, 84, 175], d: [255, 232, 150, 195], j: [24, 34, 60, 70] };
     const q = {
       theme: opts.theme || 'Rasante', libelle: opts.libelle || 'Où la lumière est-elle rasante ?',
-      aide: 'Pour la journée choisie, la carte cherche les moments où le soleil est à moins de 12° au-dessus de l\'horizon, le matin puis le soir, par pas de dix minutes, et regarde pour chaque maille si le relief laisse passer ce soleil bas. Orange : lumière rasante le matin ; violet : le soir ; jaune : les deux ; sombre : jamais, le relief fait masque. Seul le relief de la vue (élargie d\'un cinquième) est compté : une crête lointaine hors de la carte peut encore masquer. Les nuages ne sont pas pris en compte.',
+      aide: 'Pour la journée choisie, la carte cherche les moments où le soleil est à moins de 12° au-dessus de l\'horizon, le matin puis le soir, par pas de dix minutes, et regarde pour chaque maille si le relief laisse passer ce soleil bas. Ambre : lumière rasante le matin ; cuivre : le soir ; or clair : les deux ; voile sombre : jamais, le relief fait masque. Seul le relief de la vue (élargie d\'un cinquième) est compté : une crête lointaine hors de la carte peut encore masquer. Les nuages ne sont pas pris en compte.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat">Calcul…</p><div class="legende"></div>
           <p class="petit">${opts.noteRasante || ''} Touche les niveaux de la légende pour n'en garder qu'un.</p>`);
         c.querySelector('.heure').textContent = '';
         const peindre = () => { const g = memo.g, cl = memo.classes; if (!g || !cl || app.active !== q) return; app.poser('rasante', g, app.peindre(g, k => { const x = cl[k]; return x && !masques.has(x) ? COUL[x] : null; })); };
-        app.legende(c, [{ cle: 'm', couleur: '#f4a261', texte: 'rasante le matin' }, { cle: 's', couleur: '#9d4edd', texte: 'rasante le soir' }, { cle: 'd', couleur: '#ffe066', texte: 'matin et soir' }, { cle: 'j', couleur: '#060a14', texte: 'jamais' }], peindre, masques);
+        app.legende(c, [{ cle: 'm', couleur: '#f6be5c', texte: 'rasante le matin' }, { cle: 's', couleur: '#de8054', texte: 'rasante le soir' }, { cle: 'd', couleur: '#ffe896', texte: 'matin et soir' }, { cle: 'j', couleur: '#182240', texte: 'jamais' }], peindre, masques);
         const calculer = async () => {
           const moi = ++tour; const b = app.emprise(0.2), cle = b.map(v => v.toFixed(4)).join();
           if (memo.cleG !== cle) { app.occupe(true, 'Lecture du relief…'); memo.g = await app.grille(b, 300); memo.cleG = cle; app.occupe(false); }
@@ -247,27 +251,34 @@
     return q;
   }
 
-  /* « Par où passe le soleil ? » : un anneau autour du point touché, orienté comme la carte. L'arc du soleil y est tracé
-     heure par heure : doré pendant l'heure dorée, clair ensuite, interrompu là où le relief masque le soleil. */
+  /* « Par où passe le soleil ? » : la course du soleil autour du point touché, dans une vignette toujours de face
+     (elle ne s'écrase pas quand la carte est inclinée) et tournée comme la carte : le nord de la vignette est le nord
+     du terrain. Chaque position sur le cercle est la direction du soleil à une heure de la journée, les heures sont
+     écrites le long de la course. Or : heure dorée ; clair : soleil visible ; gris : levé mais caché par le relief ;
+     bleu nuit : sous l'horizon. */
   function anneau(opts) {
-    const memo = {}; let tour = 0;
+    const memo = {}; let tour = 0, marque = null, orienter = null;
+    const T = 240, C = T / 2, RA = 88, RD = Math.PI / 180;
+    const pt = (az, r) => [(C + r * Math.sin(az * RD)).toFixed(1), (C - r * Math.cos(az * RD)).toFixed(1)];
+    // Arc de cercle entre deux azimuts, par le plus court chemin : près du zénith le soleil change vite de direction,
+    // et une corde droite entre deux pas de calcul dessinait une course anguleuse.
+    const arc = (a, b) => { const p0 = pt(a, RA), p1 = pt(b, RA), d = ((b - a + 540) % 360) - 180; return `M${p0[0]} ${p0[1]}A${RA} ${RA} 0 0 ${d >= 0 ? 1 : 0} ${p1[0]} ${p1[1]}`; };
+    // Couleur du soleil visible selon sa hauteur : or quand il est bas, de plus en plus clair ensuite.
+    const teinte = h => { if (h < 6) return '#e9a23b'; const f = Math.min(1, (h - 6) / 24); return `rgb(${Math.round(240 + 15 * f)},${Math.round(190 + 53 * f)},${Math.round(96 + 100 * f)})`; };
     const q = {
       theme: opts.theme || 'Soleil', libelle: opts.libelle || 'Par où passe le soleil ?',
-      aide: 'L\'anneau est centré sur le point touché et orienté comme la carte : chaque position sur l\'anneau est la direction du soleil à une heure de la journée. Trait doré : soleil visible et bas (moins de 6°, l\'heure dorée) ; trait clair : soleil visible plus haut ; trait gris fin : le soleil est levé mais caché par le relief, compté jusqu\'à 25 km. Le petit soleil suit le curseur d\'heure. Les heures sont calculées par pas de cinq minutes ; les nuages ne sont pas pris en compte.',
+      aide: 'La vignette est centrée sur le point touché et tournée comme la carte : chaque position sur le cercle est la direction du soleil à une heure de la journée, et les heures sont écrites le long de sa course. Trait épais doré : soleil visible et bas (moins de 6°, l\'heure dorée, brève sous les tropiques) ; trait clair : soleil visible plus haut ; trait gris fin : le soleil est levé mais caché par le relief, compté jusqu\'à 25 km ; bleu nuit : le soleil est sous l\'horizon. Le petit soleil suit le curseur d\'heure. Les heures sont calculées par pas de cinq minutes ; les nuages ne sont pas pris en compte.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<input type="range" class="h" min="0" max="1435" step="5" value="${etat.minutes}">
           <p class="etat">Touche un point de vue : la carte calcule son soleil sur la journée.</p>
-          <div class="legende"><span><i style="background:#e9a23b"></i>heure dorée</span><span><i style="background:#fff3c4"></i>soleil visible</span><span><i style="background:#8b93a3"></i>masqué par le relief</span></div>`);
+          <div class="legende"><span><i style="background:#e9a23b"></i>heure dorée</span><span><i style="background:#fff3c4"></i>soleil visible</span><span><i style="background:#8b93a3"></i>caché par le relief</span><span><i style="background:#2a3658"></i>nuit</span></div>`);
         q._c = c;
         c.querySelector('.h').oninput = e => { etat.minutes = +e.target.value; q.soleilMobile(app); };
         c.querySelector('.jour').onchange = e => { if (e.target.value) { etat.jour = e.target.value; q.tracer(app); } };
         brancherMaintenant(c, opts.fuseau, () => q.tracer(app));
-        const recharger = async () => { await charger(app, memo); if (!q.point) q.point = app.map.getCenter(); q.tracer(app); };
+        // Sans point touché, la vignette se pose dans le tiers haut de l'écran : le centre est caché par le panneau.
+        const recharger = async () => { await charger(app, memo); if (!q.point) { const cv = app.map.getCanvas(); q.point = app.map.unproject([cv.clientWidth / 2, cv.clientHeight * 0.3]); } q.tracer(app); };
         app.suivre(q, recharger); await recharger();
-      },
-      position(app, az) {
-        const ct = q.point, km = 40000 / Math.pow(2, app.map.getZoom()) * 0.2;
-        return [ct.lng + km / 111.2 * Math.sin(az * Math.PI / 180) / Math.cos(ct.lat * Math.PI / 180), ct.lat + km / 111.2 * Math.cos(az * Math.PI / 180)];
       },
       async tracer(app) {
         const c = q._c, ct = q.point, g = memo.g, moi = ++tour; if (!ct || !g) return;
@@ -275,41 +286,58 @@
         app.occupe(true, 'Lecture des crêtes alentour…'); const gl = await horizon(app, ct), kl = gl ? app.indice(gl, ct.lng, ct.lat) : -1; app.occupe(false);
         if (moi !== tour || app.active !== q) return;
         const pas = []; for (let m = 0; m <= 1440; m += 5) { const s = app.soleil(instant(opts.fuseau, etat.jour, m), ct.lat, ct.lng); pas.push({ m, s, vu: s.hauteur > 0 && (k < 0 || app.eclaire(g, k, s.azimut, s.hauteur)) && (kl < 0 || app.eclaire(gl, kl, s.azimut, s.hauteur)) }); }
-        const fc = { type: 'FeatureCollection', features: [] };
-        fc.features.push({ type: 'Feature', properties: { r: 'cercle' }, geometry: { type: 'LineString', coordinates: Array.from({ length: 73 }, (_, i) => q.position(app, i * 5)) } });
-        fc.features.push({ type: 'Feature', properties: { r: 'nord' }, geometry: { type: 'Point', coordinates: q.position(app, 0) } });
-        for (let i = 1; i < pas.length; i++) { const a = pas[i - 1], b = pas[i]; if (a.s.hauteur <= 0 && b.s.hauteur <= 0) continue; fc.features.push({ type: 'Feature', properties: { r: !b.vu ? 'masque' : b.s.hauteur < 6 ? 'dore' : 'clair' }, geometry: { type: 'LineString', coordinates: [q.position(app, a.s.azimut), q.position(app, b.s.azimut)] } }); }
-        fc.features.push({ type: 'Feature', properties: { r: 'centre' }, geometry: { type: 'Point', coordinates: [ct.lng, ct.lat] } });
-        if (app.map.getSource('anneau')) app.map.getSource('anneau').setData(fc);
-        else {
-          app.map.addSource('anneau', { type: 'geojson', data: fc });
-          app.map.addLayer({ id: 'anneau-cercle', type: 'line', source: 'anneau', filter: ['==', ['get', 'r'], 'cercle'], paint: { 'line-color': '#ffffff', 'line-width': 1, 'line-opacity': 0.55 } });
-          app.map.addLayer({ id: 'anneau-ombre', type: 'line', source: 'anneau', filter: ['in', ['get', 'r'], ['literal', ['dore', 'clair']]], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#10192a', 'line-width': 9, 'line-opacity': 0.55 } });
-          app.map.addLayer({ id: 'anneau-arc', type: 'line', source: 'anneau', filter: ['in', ['get', 'r'], ['literal', ['dore', 'clair', 'masque']]], layout: { 'line-cap': 'round' }, paint: { 'line-color': ['match', ['get', 'r'], 'dore', '#e9a23b', 'clair', '#fff3c4', '#8b93a3'], 'line-width': ['match', ['get', 'r'], 'masque', 2, 6] } });
-          app.map.addLayer({ id: 'anneau-points', type: 'circle', source: 'anneau', filter: ['in', ['get', 'r'], ['literal', ['centre', 'nord']]], paint: { 'circle-radius': ['match', ['get', 'r'], 'centre', 6, 3], 'circle-color': ['match', ['get', 'r'], 'centre', '#b8963e', '#ffffff'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
-          app.map.addLayer({ id: 'anneau-n', type: 'symbol', source: 'anneau', filter: ['==', ['get', 'r'], 'nord'], layout: { 'text-field': 'N', 'text-font': ['Source Sans Pro Regular'], 'text-size': 12, 'text-offset': [0, -1], 'text-allow-overlap': true }, paint: { 'text-color': '#ffffff', 'text-halo-color': '#10192a', 'text-halo-width': 1.5 } });
+        // La vignette : cercle de repère, course du soleil pas à pas, heures repères, nord.
+        let nuit = '', fondArc = '', arcs = '', heures = '';
+        for (let i = 1; i < pas.length; i++) {
+          const a = pas[i - 1], b = pas[i], d = arc(a.s.azimut, b.s.azimut);
+          if (b.s.hauteur <= 0) { nuit += d; continue; }
+          if (b.vu) { fondArc += d; arcs += `<path d="${d}" stroke="${teinte(b.s.hauteur)}" stroke-width="${b.s.hauteur < 6 ? 13 : 8}"/>`; }
+          else arcs += `<path d="${d}" stroke="#8b93a3" stroke-width="3"/>`;
         }
+        let azPrec = null;   // deux heures trop proches sur le cercle (le soleil monte presque droit) : la seconde n'est pas écrite
+        for (const p of pas) if (p.m % 120 === 0 && p.m < 1440 && p.s.hauteur > 0) {
+          const ecart = azPrec == null ? 180 : Math.abs(((p.s.azimut - azPrec + 540) % 360) - 180); if (ecart < 16) continue; azPrec = p.s.azimut;
+          const a = pt(p.s.azimut, RA - 7), b2 = pt(p.s.azimut, RA + 7), l = pt(p.s.azimut, RA + 19);
+          heures += `<path d="M${a[0]} ${a[1]}L${b2[0]} ${b2[1]}" stroke="#10192a" stroke-width="2"/><text class="droit" x="${l[0]}" y="${l[1]}">${p.m / 60} h</text>`;
+        }
+        const n0 = pt(0, RA + 4), n1 = pt(0, RA - 26);
+        const svg = `<svg viewBox="0 0 ${T} ${T}" aria-hidden="true"><g fill="none" stroke-linecap="round">
+          <circle cx="${C}" cy="${C}" r="${RA}" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
+          <path d="${nuit}" stroke="#2a3658" stroke-width="6" stroke-opacity="0.9"/>
+          <path d="${fondArc}" stroke="#10192a" stroke-width="14" stroke-opacity="0.55"/>${arcs}${heures}</g>
+          <text class="droit" x="${n1[0]}" y="${n1[1]}" style="font-size:11px;fill:#cfd6e2">N</text><path d="M${n0[0]} ${n0[1]}L${pt(0, RA - 14)[0]} ${pt(0, RA - 14)[1]}" stroke="#cfd6e2" stroke-width="1.5"/>
+          <circle cx="${C}" cy="${C}" r="6" fill="#b8963e" stroke="#fff" stroke-width="2"/>
+          <g class="astre" style="display:none"><circle r="11" fill="#ffd23f" stroke="#fff" stroke-width="2.5"/><text class="h droit" y="23"></text></g></svg>`;
+        if (!marque) {
+          const e = document.createElement('div'); e.className = 'course';
+          marque = new maplibregl.Marker({ element: e, rotationAlignment: 'map', pitchAlignment: 'viewport' }).setLngLat([ct.lng, ct.lat]).addTo(app.map);
+          // La vignette tourne avec la carte ; ses écritures, elles, restent droites.
+          orienter = () => { const b = app.map.getBearing(); e.querySelectorAll('text.droit').forEach(x => { const px = +x.getAttribute('x') || 0, py = +x.getAttribute('y') || 0; x.setAttribute('transform', `rotate(${b.toFixed(1)} ${px} ${py})`); }); };
+          app.map.on('rotate', orienter);
+        }
+        marque.setLngLat([ct.lng, ct.lat]); marque.getElement().innerHTML = svg; orienter();
         // Fiche du point : premier et dernier rayon direct, fins et débuts d'heure dorée.
         const vus = pas.filter(p => p.vu), leve = pas.filter(p => p.s.hauteur > 0);
         if (!vus.length) { c.querySelector('.etat').textContent = 'Ce point ne reçoit pas de soleil direct ce jour-là.'; q.pas = pas; q.soleilMobile(app); return; }
         const premier = vus[0], dernier = vus[vus.length - 1], doreM = vus.filter(p => p.s.azimut < 180 && p.s.hauteur < 6), doreS = vus.filter(p => p.s.azimut >= 180 && p.s.hauteur < 6), haut = vus.filter(p => p.s.hauteur >= 6);
         const retard = premier.m - leve[0].m, avance = leve[leve.length - 1].m - dernier.m;
         c.querySelector('.etat').innerHTML = `Premier rayon direct à <span class="fort">${hm(premier.m)}</span>${retard > 10 ? ` (le relief le retarde de ${hm(retard)})` : ''}, dernier à <span class="fort">${hm(dernier.m)}</span>${avance > 10 ? ` (${hm(avance)} avant le coucher)` : ''}. ` +
-          (doreM.length ? `Heure dorée du matin jusqu'à ${hm(doreM[doreM.length - 1].m + 5)}. ` : (haut.length && premier.s.azimut < 180 ? 'Pas d\'heure dorée le matin : quand le soleil passe la crête, il est déjà haut. ' : '')) +
-          (doreS.length ? `Heure dorée du soir à partir de ${hm(doreS[0].m)}.` : 'Pas d\'heure dorée le soir : le relief cache le soleil avant qu\'il soit bas.');
+          (doreM.length ? `Heure dorée du matin de <span class="fort">${hm(doreM[0].m)}</span> à <span class="fort">${hm(doreM[doreM.length - 1].m + 5)}</span>. ` : (haut.length && premier.s.azimut < 180 ? 'Pas d\'heure dorée le matin : quand le soleil passe la crête, il est déjà haut. ' : '')) +
+          (doreS.length ? `Heure dorée du soir de <span class="fort">${hm(doreS[0].m)}</span> à <span class="fort">${hm(doreS[doreS.length - 1].m + 5)}</span>.` : 'Pas d\'heure dorée le soir : le relief cache le soleil avant qu\'il soit bas.');
         q.pas = pas; q.soleilMobile(app);
       },
-      // Le petit soleil : sa position sur l'anneau à l'heure du curseur.
+      // Le petit soleil : sa position sur la course à l'heure du curseur, avec cette heure écrite dessous.
       soleilMobile(app) {
-        const c = q._c; c.querySelector('.heure').textContent = hm(etat.minutes); if (!q.point) return;
-        const s = app.soleil(instant(opts.fuseau, etat.jour, etat.minutes), q.point.lat, q.point.lng);
-        const p = q.pas && q.pas[Math.round(etat.minutes / 5)], d = { type: 'FeatureCollection', features: s.hauteur > 0 ? [{ type: 'Feature', properties: { vu: p && p.vu ? 1 : 0, t: Math.round(s.hauteur) + '°' }, geometry: { type: 'Point', coordinates: q.position(app, s.azimut) } }] : [] };
-        if (app.map.getSource('astre')) app.map.getSource('astre').setData(d);
-        else { app.map.addSource('astre', { type: 'geojson', data: d }); app.map.addLayer({ id: 'astre', type: 'circle', source: 'astre', paint: { 'circle-radius': 10, 'circle-color': ['case', ['==', ['get', 'vu'], 1], '#ffd23f', '#8b93a3'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } });
-          app.map.addLayer({ id: 'astre-h', type: 'symbol', source: 'astre', layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-offset': [0, 1.5], 'text-allow-overlap': true }, paint: { 'text-color': '#ffffff', 'text-halo-color': '#10192a', 'text-halo-width': 1.5 } }); }
+        const c = q._c; c.querySelector('.heure').textContent = hm(etat.minutes); if (!q.point || !marque) return;
+        const s = app.soleil(instant(opts.fuseau, etat.jour, etat.minutes), q.point.lat, q.point.lng), a = marque.getElement().querySelector('.astre'); if (!a) return;
+        if (s.hauteur <= 0) { a.style.display = 'none'; return; }
+        const p = q.pas && q.pas[Math.round(etat.minutes / 5)], xy = pt(s.azimut, RA);
+        a.style.display = ''; a.setAttribute('transform', `translate(${xy[0]} ${xy[1]})`);
+        a.querySelector('circle').setAttribute('fill', p && p.vu ? '#ffd23f' : '#8b93a3');
+        a.querySelector('text').textContent = hm(etat.minutes); if (orienter) orienter();
       },
       toucher(app, ll) { q.point = ll; q.tracer(app); },
-      fermer(app) { tour++; q.point = null; q.pas = null; app.retirer('astre-h', 'astre', 'anneau-n', 'anneau-points', 'anneau-arc', 'anneau-ombre', 'anneau-cercle'); for (const s of ['astre', 'anneau']) if (app.map.getSource(s)) app.map.removeSource(s); }
+      fermer(app) { tour++; q.point = null; q.pas = null; if (marque) { marque.remove(); marque = null; } if (orienter) { app.map.off('rotate', orienter); orienter = null; } }
     };
     return q;
   }
@@ -319,17 +347,28 @@
     let tour = 0;
     const q = {
       theme: opts.theme || 'Nuages', libelle: opts.libelle || 'Le ciel sera-t-il dégagé ?',
-      aide: 'Couverture nuageuse prévue par Open-Meteo au point touché, heure par heure : les nuages bas (ceux qui bouchent les cirques et les sommets), puis le total. La maille du modèle fait plusieurs kilomètres : il donne la tendance du secteur, pas le nuage accroché à un rempart précis. Sous les tropiques, les nuages montent souvent dans les hauts dès la fin de matinée.',
+      aide: 'Couverture nuageuse prévue par Open-Meteo au point touché, heure par heure, en frise : chaque case va du bleu (ciel clair) au gris (couvert). La première frise montre les nuages bas (ceux qui bouchent les cirques et les sommets) ; la seconde, tous les nuages, quand le modèle les distingue. Les créneaux dégagés (30 % de nuages bas au plus) sont cerclés d\'or. La maille du modèle fait plusieurs kilomètres : il donne la tendance du secteur, pas le nuage accroché à un rempart précis. Sous les tropiques, les nuages montent souvent dans les hauts dès la fin de matinée.',
       async ouvrir(app) { q._c = app.repondre(q.libelle, `<p class="etat">Lecture du ciel…</p><div class="tab"></div>`); await q.lire(app, app.map.getCenter()); },
       async lire(app, ll) {
         const c = q._c, moi = ++tour;
         const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${ll.lat.toFixed(3)}&longitude=${ll.lng.toFixed(3)}&hourly=cloud_cover_low,cloud_cover,precipitation_probability&forecast_hours=36&timezone=${encodeURIComponent(opts.fuseau)}`);
         if (moi !== tour || app.active !== q) return;
         const h = j && j.hourly; if (!h) { c.querySelector('.etat').textContent = 'Le ciel n\'a pas pu être lu. Réessaie dans un moment.'; return; }
-        const jour = h.time.map((t, i) => ({ t, i, hh: +t.slice(11, 13) })).filter(x => x.hh >= 5 && x.hh <= 19);
-        const clairs = jour.filter(x => h.cloud_cover_low[x.i] != null && h.cloud_cover_low[x.i] <= 30);
-        c.querySelector('.etat').innerHTML = clairs.length ? `Peu de nuages bas (30 % au plus) prévus ici : ${clairs.slice(0, 8).map(x => `<span class="fort">${x.t.slice(8, 10)}/${x.t.slice(5, 7)} ${x.hh} h</span>`).join(', ')}${clairs.length > 8 ? '…' : ''}.` : 'Aucun créneau de jour avec peu de nuages bas dans les 36 heures prévues ici.';
-        c.querySelector('.tab').innerHTML = `<div class="jours">${jour.slice(0, 16).map(x => { const b = h.cloud_cover_low[x.i], t = h.cloud_cover[x.i]; return `<div${b != null && b <= 30 ? ' style="outline:1px solid #b8963e"' : ''}><b>${x.hh} h</b>bas ${b == null ? '–' : Math.round(b) + ' %'}<br><small>total ${t == null ? '–' : Math.round(t) + ' %'}</small></div>`; }).join('')}</div>`;
+        const jour = h.time.map((t, i) => ({ t, i, hh: +t.slice(11, 13) })).filter(x => x.hh >= 5 && x.hh <= 19).slice(0, 18);
+        const bas = x => h.cloud_cover_low[x.i], tot = x => h.cloud_cover[x.i];
+        const clairs = jour.filter(x => bas(x) != null && bas(x) <= 30);
+        // Créneaux dégagés regroupés en plages (« de 8 h à 11 h ») plutôt qu'énumérés heure par heure.
+        const plages = []; for (const x of clairs) { const d = plages[plages.length - 1]; if (d && d.fin.i === x.i - 1) d.fin = x; else plages.push({ deb: x, fin: x }); }
+        const jj = x => `${x.t.slice(8, 10)}/${x.t.slice(5, 7)}`;
+        c.querySelector('.etat').innerHTML = plages.length ? `Ciel dégagé des nuages bas ${plages.slice(0, 3).map(p => `le ${jj(p.deb)} de <span class="fort">${p.deb.hh} h</span> à <span class="fort">${p.fin.hh + 1} h</span>`).join(', ')}.` : 'Aucun créneau de jour dégagé dans les heures prévues ici.';
+        // Une case par heure : sa teinte va du bleu du ciel clair au gris du ciel couvert.
+        const teinte = v => { const f = Math.min(1, Math.max(0, v / 100)); return `rgb(${Math.round(118 + 20 * f)},${Math.round(190 - 48 * f)},${Math.round(236 - 80 * f)})`; };
+        const picto = v => v <= 15 ? '☀️' : v <= 40 ? '🌤️' : v <= 75 ? '⛅' : '☁️';
+        const bande = (val, pictos) => `<div class="frise">${jour.map((x, n) => { const v = val(x), nj = n > 0 && x.t.slice(0, 10) !== jour[n - 1].t.slice(0, 10); return `<div class="${v != null && v <= 30 ? 'ok' : ''}${nj ? ' nj' : ''}" title="${x.hh} h : ${v == null ? '–' : Math.round(v) + ' %'}">${pictos ? `<span>${v == null ? '' : picto(v)}</span>` : ''}<i style="background:${v == null ? '#39455c' : teinte(v)}"></i><b>${pictos && (x.hh % 2 === 1 || nj) ? x.hh + 'h' : ''}</b></div>`; }).join('')}</div>`;
+        const pareils = jour.every(x => bas(x) === tot(x));
+        c.querySelector('.tab').innerHTML = bande(bas, true) + (pareils ? '' : `<p class="petit2" style="margin:6px 0 0">Tous nuages confondus (les nuages hauts voilent la lumière sans boucher la vue) :</p>` + bande(tot, false)) +
+          `<div class="legende"><span>☀️ dégagé</span><span>🌤️ peu nuageux</span><span>⛅ nuageux</span><span>☁️ couvert</span><span><i style="background:none;box-shadow:0 0 0 2px #b8963e"></i>créneau dégagé</span></div>` +
+          (pareils ? '<p class="petit">Ici le modèle donne la même valeur pour les nuages bas et pour le total : une seule frise est affichée.</p>' : '');
         app.bulle(ll, 'Ciel prévu en ce point<small>voir le panneau</small>');
       },
       toucher(app, ll) { q.lire(app, ll); }

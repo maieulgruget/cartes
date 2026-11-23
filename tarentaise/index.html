@@ -144,12 +144,12 @@
     let alt = null, nom = null;
     try { const g = await app.grille([lon - 0.0006, lat - 0.0004, lon + 0.0006, lat + 0.0004], 16); alt = g.z[app.indice(g, lon, lat)]; if (!(alt === alt)) alt = g.zmin; } catch (e) { alt = null; }
     try { const r = await fetch(`${Socle.GEOPF}/geocodage/reverse?index=poi&lon=${lon}&lat=${lat}&limit=5`); const f = (await r.json()).features.find(f => f.properties.distance < 1500 && !/epci|département|région/.test((f.properties.category || []).join())); if (f) nom = f.properties.toponym; } catch (e) { nom = null; }
-    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}${alt != null && isFinite(alt) ? '&elevation=' + Math.round(alt) : ''}&timezone=Europe%2FParis&forecast_days=6&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration`);
-    return j && j.daily ? { d: j.daily, alt, nom } : null;
+    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}${alt != null && isFinite(alt) ? '&elevation=' + Math.round(alt) : ''}&timezone=Europe%2FParis&forecast_days=6&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m&hourly=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,snowfall,freezing_level_height`);
+    return j && j.daily ? { d: j.daily, h: j.hourly || null, c: j.current || null, alt, nom } : null;
   }
   const qTemps = {
-    theme: 'Météo', libelle: 'Quel temps ici ?',
-    aide: 'Prévisions du modèle Open-Meteo au point touché, ramenées à son altitude réelle : la température est corrigée de l\'écart entre l\'altitude du modèle et celle du terrain. Le vent est celui du modèle à 10 m du sol, à prendre comme un ordre de grandeur, surtout sur les crêtes. La neige annoncée est un cumul sur la journée. Au-delà de trois jours, la prévision donne une tendance, pas un horaire.',
+    theme: 'Prévisions', libelle: 'Quel temps ici ?',
+    aide: 'La bulle sur la carte donne le temps qu\'il fait maintenant au point touché ; le panneau, les jours qui viennent, et un jour touché se déplie par tranches de trois heures, avec l\'altitude du 0 °C. Prévisions du modèle Open-Meteo au point touché, ramenées à son altitude réelle : la température est corrigée de l\'écart entre l\'altitude du modèle et celle du terrain. Le vent est celui du modèle à 10 m du sol, à prendre comme un ordre de grandeur, surtout sur les crêtes. La neige annoncée est un cumul sur la journée. Au-delà de trois jours, la prévision donne une tendance, pas un horaire.',
     async montrer(app, lon, lat) {
       app.occupe(true, 'Prévisions…'); const p = await previsA(lon, lat); app.occupe(false); if (app.active !== qTemps) return;
       const d0 = { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] } };
@@ -157,8 +157,24 @@
       else { map.addSource('pointmeteo', { type: 'geojson', data: d0 }); map.addLayer({ id: 'pointmeteo', type: 'circle', source: 'pointmeteo', paint: { 'circle-radius': 7, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
       if (!p) { app.repondre(qTemps.libelle, '<p>Les prévisions ne répondent pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
       const d = p.d, jour = i => `<div><b>${JOURS[new Date(d.time[i] + 'T12:00').getDay()]} ${d.time[i].slice(8)}</b><span class="picto">${PICTO(d.weather_code[i])}</span>${TEMPS(d.weather_code[i])}<br>${Math.round(d.temperature_2m_min[i])}° / ${Math.round(d.temperature_2m_max[i])}°<br>${d.snowfall_sum[i] > 0 ? '<span class="fort">' + d.snowfall_sum[i].toFixed(0) + ' cm de neige</span>' : d.precipitation_sum[i] > 0.2 ? d.precipitation_sum[i].toFixed(0) + ' mm de pluie' : 'sec'}<br>vent ${ROSE[Math.round(d.wind_direction_10m_dominant[i] / 45) % 8]} ${Math.round(d.wind_speed_10m_max[i])}, rafales ${Math.round(d.wind_gusts_10m_max[i])} km/h<br>${Math.round((d.sunshine_duration[i] || 0) / 3600)} h de soleil</div>`;
-      app.repondre(qTemps.libelle, `<p><span class="fort">${app.propre(p.nom || 'Point touché')}</span>${p.alt != null && isFinite(p.alt) ? ', ' + Math.round(p.alt) + ' m' : ''} — touche un autre endroit pour changer.</p>
-        <div class="jours" style="grid-template-columns:repeat(3,1fr)">${d.time.map((t, i) => jour(i)).join('')}</div>`);
+      const c = app.repondre(qTemps.libelle, `<p><span class="fort">${app.propre(p.nom || 'Point touché')}</span>${p.alt != null && isFinite(p.alt) ? ', ' + Math.round(p.alt) + ' m' : ''} — touche un jour pour le détail par tranches de trois heures, ou un autre endroit de la carte.</p>
+        <div class="jours" style="grid-template-columns:repeat(3,1fr)">${d.time.map((t, i) => jour(i)).join('')}</div><div class="detail"></div>`);
+      // Bulle au point touché : le temps qu'il fait maintenant, en trois valeurs. Le panneau, lui, donne les jours qui viennent.
+      if (p.c) app.bulle({ lng: lon, lat }, `<span style="font-size:17px">${PICTO(p.c.weather_code)}</span> <span class="fort">${Math.round(p.c.temperature_2m)} °C</span> · vent ${ROSE[Math.round(p.c.wind_direction_10m / 45) % 8]} ${Math.round(p.c.wind_speed_10m)} km/h<small>maintenant, ${TEMPS(p.c.weather_code)} · rafales ${Math.round(p.c.wind_gusts_10m)} km/h</small>`);
+      // Un jour touché se déplie par tranches de trois heures : en randonnée, c'est l'heure qui compte.
+      const hh = p.h, cases = [...c.querySelectorAll('.jours > div')];
+      const deplier = i => {
+        cases.forEach((x, n) => x.setAttribute('aria-pressed', String(n === i)));
+        if (!hh) { c.querySelector('.detail').innerHTML = ''; return; }
+        const idx = hh.time.map((t, k) => t.startsWith(d.time[i]) ? k : -1).filter(k => k >= 0), tr = [];
+        for (let a = 0; a + 2 < idx.length; a += 3) {
+          const ks = idx.slice(a, a + 3), k = ks[1], som = v => ks.reduce((s, x) => s + (v[x] || 0), 0), max = v => Math.max(...ks.map(x => v[x] || 0));
+          const neige = som(hh.snowfall), pluie = som(hh.precipitation), iso = hh.freezing_level_height ? hh.freezing_level_height[k] : null;
+          tr.push(`<div><b>${+hh.time[ks[0]].slice(11, 13)} h–${(+hh.time[ks[0]].slice(11, 13) + 3)} h</b><span style="font-size:16px">${PICTO(hh.weather_code[k])}</span><br>${Math.round(hh.temperature_2m[k])} °C<br>${ROSE[Math.round(hh.wind_direction_10m[k] / 45) % 8]} ${Math.round(max(hh.wind_speed_10m))}, raf. ${Math.round(max(hh.wind_gusts_10m))}<br>${neige > 0.1 ? '<span class="fort">' + (neige < 1 ? neige.toFixed(1).replace('.', ',') : Math.round(neige)) + ' cm</span>' : pluie > 0.1 ? pluie.toFixed(1).replace('.', ',') + ' mm' : 'sec'}${iso != null ? '<br><small>0 °C à ' + Math.round(iso / 50) * 50 + ' m</small>' : ''}</div>`);
+        }
+        c.querySelector('.detail').innerHTML = `<p class="petit2" style="margin:8px 0 0">${JOURS[new Date(d.time[i] + 'T12:00').getDay()]} ${d.time[i].slice(8)} — température, vent et rafales (km/h), neige ou pluie, altitude du 0 °C :</p><div class="tranches">${tr.join('')}</div>`;
+      };
+      cases.forEach((x, i) => { x.setAttribute('role', 'button'); x.setAttribute('aria-pressed', 'false'); x.onclick = () => deplier(i); });
     },
     async ouvrir(app) { await qTemps.montrer(app, PT.lon, PT.lat); },
     toucher(app, ll) { qTemps.montrer(app, ll.lng, ll.lat); },
@@ -168,7 +184,7 @@
   // ---------- 3. Limite du gel sur le relief ----------
   const memoG = {}, masquesGel = new Set();
   const qGel = {
-    theme: 'Gel', libelle: 'Où gèle-t-il ?',
+    theme: 'Gel', libelle: 'Où la neige regèle-t-elle ?',
     aide: 'L\'isotherme 0 °C est l\'altitude où la température de l\'air passe sous zéro. Au-dessus, il gèle : la neige reste froide et les précipitations tombent en neige ; en dessous, il dégèle et il pleut. En hiver, presque toute la montagne est au-dessus, c\'est normal : ce sont alors les teintes qui renseignent, plus on monte, plus il fait froid (environ 6,5 °C de moins par 1 000 m). L\'altitude de l\'isotherme vient du modèle de prévision ; au sol, une nuit claire fait geler plus bas, et un versant au soleil dégèle plus haut.',
     async ouvrir(app) {
       app.occupe(true, 'Prévisions…'); const p = await chargerPrevis(); app.occupe(false);
@@ -206,7 +222,7 @@
      tire une relation épaisseur-altitude, décalée selon l'orientation. Dans les deux cas, c'est le relief LiDAR qui
      répartit la neige : chaque pente reçoit l'épaisseur de son altitude et de son orientation. */
   const memoN = {}, masquesNeige = new Set(), modeleNeige = new Map();
-  const CLN = [['a', '#dfeaf2', 'moins de 10 cm', [235, 242, 248, 120]], ['b', '#ffffff', '10 à 30 cm', [255, 255, 255, 175]], ['c', '#cfe6fb', '30 à 60 cm', [200, 228, 252, 205]], ['d', '#8fc1f0', '60 cm à 1 m', [143, 193, 240, 215]], ['e', '#4f86d6', 'plus d\'1 m', [79, 134, 214, 225]]];
+  const CLN = [['a', '#dfeaf2', 'moins de 10 cm', [240, 246, 251, 60]], ['b', '#ffffff', '10 à 30 cm', [255, 255, 255, 105]], ['c', '#cfe6fb', '30 à 60 cm', [205, 230, 252, 140]], ['d', '#8fc1f0', '60 cm à 1 m', [150, 198, 242, 165]], ['e', '#4f86d6', 'plus d\'1 m', [88, 142, 218, 190]]];   // d'autant plus couvrante que la neige est épaisse : le plan reste lisible dessous
   const classeN = cm => cm < 10 ? 0 : cm < 30 ? 1 : cm < 60 ? 2 : cm < 100 ? 3 : 4;
   // Épaisseur (cm) lue sur une suite de couples [altitude, épaisseur] triés, par interpolation ; constante au-delà.
   const lireCourbe = (pts, z) => { if (!pts.length) return 0; if (z <= pts[0][0]) return pts[0][1]; for (let i = 1; i < pts.length; i++) if (z <= pts[i][0]) { const a = pts[i - 1], b = pts[i]; return a[1] + (b[1] - a[1]) * (z - a[0]) / Math.max(1, b[0] - a[0]); } return pts[pts.length - 1][1]; };
@@ -228,7 +244,7 @@
     modeleNeige.set(cle, courbe); return courbe;
   }
   const qNeige = {
-    theme: 'Neige', libelle: 'Où y a-t-il de la neige ?',
+    theme: 'Épaisseur', libelle: 'Où y a-t-il de la neige ?',
     aide: 'La carte répartit sur le relief une épaisseur de neige probable. Avec le bulletin d\'avalanche du jour, elle reprend sa limite d\'enneigement en versant nord et en versant sud et ses épaisseurs par altitude, puis donne à chaque pente la valeur de son altitude et de son orientation. Sans bulletin, elle part du modèle météo, dont les mailles font un à deux kilomètres : elle en tire une épaisseur selon l\'altitude, et remonte la limite de 150 m en versant sud, la descend d\'autant en versant nord. La bulle au point touché donne un ordre de grandeur, à quelques dizaines de centimètres près en altitude. Dans les deux cas, c\'est une estimation : ni la neige soufflée par le vent, ni une combe restée pleine, ni un versant déjà purgé ne sont vus. À comparer avec ce qu\'on voit de la vallée.',
     async ouvrir(app) {
       await lireBera(); const b = bera && bera.massifs[massif], enn = b && b.enneigement && b.enneigement.niveaux && b.enneigement.niveaux.length ? b.enneigement : null;
@@ -261,12 +277,15 @@
       };
       app.suivre(qNeige, recharger); await recharger();
     },
-    toucher(app, ll) {
+    async toucher(app, ll) {
       const g = memoN.g, k = g ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0 || !qNeige.epaisseur) return;
+      // L'état de la neige avec son épaisseur : gèle-t-il ici en ce moment ? (isotherme 0 °C du modèle, comme dans « Gel »)
+      let gel = ''; try { const p = await chargerPrevis(), hh = p && p.village.hourly; if (hh) { let i = hh.time.findIndex(t => new Date(t).getTime() >= Date.now()); if (i < 0) i = 0; const iso = hh.freezing_level_height[i]; if (iso != null) gel = g.z[k] >= iso ? `il gèle ici (0 °C à ${Math.round(iso / 50) * 50} m)` : `il dégèle ici (0 °C à ${Math.round(iso / 50) * 50} m)`; } } catch (e) { gel = ''; }
+      if (app.active !== qNeige) return;
       const e = memoN.a.expo[k], nord = e === e ? (Math.cos(e * Math.PI / 180) + 1) / 2 : 0.5, cm = qNeige.epaisseur(g.z[k], nord);
       const texte = cm < 2 ? '<span class="fort">pas de neige</span> probable' : `environ <span class="fort">${cm < 10 ? 'moins de 10' : Math.round(cm / 5) * 5} cm</span> de neige`;
       document.querySelector('.reponse .etat').innerHTML = `Ici, à <span class="fort">${Math.round(g.z[k])} m</span>, versant ${ROSE[Math.round(e / 45) % 8]} : ${texte}.`;
-      app.bulle(ll, `${texte}<small>${Math.round(g.z[k])} m, versant ${ROSE[Math.round(e / 45) % 8]} · ordre de grandeur : la neige soufflée ou fondue localement n'est pas vue</small>`);
+      app.bulle(ll, `${texte}${gel ? '<br>' + gel : ''}<small>${Math.round(g.z[k])} m, versant ${ROSE[Math.round(e / 45) % 8]} · ordre de grandeur : la neige soufflée ou fondue localement n'est pas vue</small>`);
     },
     fermer(app) { app.retirer('neige'); }
   };
@@ -307,15 +326,17 @@
         <p class="petit">Maille de calcul : ${Math.round(g.pas)} m. Un tracé posé en quelques points coupe droit entre eux : ajoute des points dans les passages raides. Les pentes au-delà de 80 m (couloirs, grandes faces) ne sont pas comptées. L'heure du soleil tient compte des crêtes jusqu'à 25 km, sur une maille d'une centaine de mètres.</p>`;
     }
   });
+  // Familles : la neige (son épaisseur, puis son état : gel ou dégel), le soleil (à une heure, sur la journée), la météo.
+  const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
   app.question(qTrace);
   app.question(qPentes);
-  app.question(qNeige);
-  app.question(Socle.lumiere.lumiere({ theme: 'Soleil', libelle: 'Où est le soleil à cette heure ?', fuseau: 'Europe/Paris', note: 'Neige de printemps ou versant resté à l\'ombre : l\'heure d\'arrivée du soleil décide de la qualité de la neige.' }));
-  app.question(Socle.lumiere.duree({ fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide.' }));
-  app.question(qGel);
-  app.question(qTemps);
-  app.question(Socle.vent.theme({ fuseau: 'Europe/Paris', libelle: 'D\'où souffle le vent au sol ?' }));
-  app.question(Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 1, theme: 'Vent 3D', niveaux: [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '800hPa', alt: 2000, nom: 'vers 2 000 m', coul: '#ffd166' }, { cle: '700hPa', alt: 3000, nom: 'vers 3 000 m', coul: '#ff7b9c' }] }));
+  famille('Neige', qNeige);
+  famille('Neige', qGel);
+  famille('Soleil', Socle.lumiere.lumiere({ theme: 'À une heure', libelle: 'Où est le soleil à cette heure ?', fuseau: 'Europe/Paris', note: 'Neige de printemps ou versant resté à l\'ombre : l\'heure d\'arrivée du soleil décide de la qualité de la neige.' }));
+  famille('Soleil', Socle.lumiere.duree({ theme: 'Sur la journée', fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide : c\'est ce qui dit à quelle heure passer.' }));
+  famille('Météo', qTemps);
+  famille('Météo', Socle.vent.theme({ fuseau: 'Europe/Paris', theme: 'Vent au sol', libelle: 'D\'où souffle le vent au sol ?' }));
+  famille('Météo', Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 1, theme: 'Vent en altitude', niveaux: [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '800hPa', alt: 2000, nom: 'vers 2 000 m', coul: '#ffd166' }, { cle: '700hPa', alt: 3000, nom: 'vers 3 000 m', coul: '#ff7b9c' }] }));
   app.question(Socle.foret({ note: 'En lisière haute, les mélèzes et les aulnes verts signalent souvent les couloirs.' }));
 })();
 </script>

@@ -29,6 +29,7 @@
   const app = await Socle.creer({
     id: 'marees', racine: '../', titre: 'Où est la mer', sousTitre: 'De Bréhat au cap Fréhel',
     centre: [-2.6500, 48.5350], zoom: 11.8, pitch: 45, bearing: -10, pitch3d: 50, exageration: 2,
+    limites: [[-3.75, 48.20], [-1.65, 49.25]],   // la vue ne quitte pas la côte, de Bréhat au cap Fréhel
     recherche: { centre: [-2.65, 48.65], rayonKm: 70 },
     maison: { nom: 'Kersaint', centre: [-2.6761, 48.5264], zoom: 14.5 },
     signets: [
@@ -248,9 +249,10 @@
       ${bandes}${axes}
       <text x="2" y="${Y(hi) + 4}" font-size="8.5" fill="currentColor" opacity="0.75">${hi} m</text><text x="2" y="${Y(lo) + 2}" font-size="8.5" fill="currentColor" opacity="0.75">${lo} m</text>
       <line x1="${gx}" x2="${W - dx}" y1="${Y(z).toFixed(1)}" y2="${Y(z).toFixed(1)}" stroke="#d6be8c" stroke-width="1.6"/><text x="${W - dx}" y="${(Y(z) - 3).toFixed(1)}" font-size="8.5" fill="#d6be8c" text-anchor="end">le point : ${m(z)}</text>
-      <line x1="${gx}" x2="${W - dx}" y1="${Y(seuil).toFixed(1)}" y2="${Y(seuil).toFixed(1)}" stroke="#d6be8c" stroke-width="1" stroke-dasharray="3 3" opacity="0.8"/>
+      <line x1="${gx}" x2="${W - dx}" y1="${Y(seuil).toFixed(1)}" y2="${Y(seuil).toFixed(1)}" stroke="#d6be8c" stroke-width="1" stroke-dasharray="3 3" opacity="0.8"/><text x="${gx + 2}" y="${(Y(seuil) + 9).toFixed(1)}" font-size="8" fill="#d6be8c" opacity="0.85">avec 50 cm de marge</text>
+      <text x="${gx + 2}" y="${haut + 20}" font-size="8.5" fill="#6fb3e0">la mer</text>
       <path d="${d}" fill="none" stroke="#6fb3e0" stroke-width="2" stroke-linejoin="round"/>${ici}</svg>
-      <p class="petit2" style="margin:0">Courbe bleue : la mer. Trait sable : le point ; tirets : 50 cm de marge. En vert : à sec.</p>`;
+      <p class="petit2" style="margin:0">Une seule courbe : la hauteur de la mer. Quand elle passe sous le trait en tirets, le point est à sec (bandes vertes).</p>`;
   }
   async function passage(ll, cible) {
     const s = await maree(), g = memo.g; if (!s || !g || !cible) return;
@@ -360,8 +362,11 @@
         <div class="hist" style="display:flex;gap:2px;align-items:flex-end;height:64px;margin:6px 0 2px"></div>
         <p class="etat"></p><p class="maree"></p><div class="legende"></div>`);
       const m2 = map, vide = { type: 'FeatureCollection', features: [] };
-      m2.addSource('oiseaux', { type: 'geojson', data: vide });
-      m2.addLayer({ id: 'oiseaux', type: 'circle', source: 'oiseaux', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 6.5], 'circle-color': ['match', ['get', 'g'], 'o', '#2a6fdb', 'h', '#ffffff', '#f08a24'], 'circle-stroke-color': '#1a2e4a', 'circle-stroke-width': 1.2, 'circle-opacity': 0.85 } });
+      // De loin, les observations voisines se regroupent en une pastille qui porte leur nombre ; elle se défait en zoomant.
+      m2.addSource('oiseaux', { type: 'geojson', data: vide, cluster: true, clusterRadius: 42, clusterMaxZoom: 13 });
+      m2.addLayer({ id: 'oiseaux-groupes', type: 'circle', source: 'oiseaux', filter: ['has', 'point_count'], paint: { 'circle-radius': ['step', ['get', 'point_count'], 13, 10, 17, 50, 22, 200, 27], 'circle-color': '#f3ead2', 'circle-stroke-color': '#1a2e4a', 'circle-stroke-width': 1.5, 'circle-opacity': 0.94 } });
+      m2.addLayer({ id: 'oiseaux-nombre', type: 'symbol', source: 'oiseaux', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 13, 'text-allow-overlap': true }, paint: { 'text-color': '#1a2e4a' } });
+      m2.addLayer({ id: 'oiseaux', type: 'circle', source: 'oiseaux', filter: ['!', ['has', 'point_count']], paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 6.5], 'circle-color': ['match', ['get', 'g'], 'o', '#2a6fdb', 'h', '#ffffff', '#f08a24'], 'circle-stroke-color': '#1a2e4a', 'circle-stroke-width': 1.2, 'circle-opacity': 0.85 } });
       // périmètres protégés, lus une fois pour toute la côte
       if (!perimetres) {
         const lire = async tn => { try { return await (await fetch(`${Socle.GEOPF}/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=${tn}&OUTPUTFORMAT=application/json&SRSNAME=CRS:84&BBOX=-3.15,48.45,-2.2,48.95,CRS:84&COUNT=30`)).json(); } catch (e) { return vide; } };
@@ -373,7 +378,8 @@
       m2.addLayer({ id: 'rnn', type: 'line', source: 'rnn', paint: { 'line-color': '#1f8a4c', 'line-width': 3 } }, 'oiseaux');
       const visibilite = () => {
         m2.setLayoutProperty('rnn', 'visibility', masquesO.has('rnn') ? 'none' : 'visible'); m2.setLayoutProperty('zps', 'visibility', masquesO.has('zps') ? 'none' : 'visible');
-        const caches = ['o', 'l', 'h'].filter(g => masquesO.has(g)); m2.setFilter('oiseaux', caches.length ? ['!', ['in', ['get', 'g'], ['literal', caches]]] : null);
+        // Un groupe d'espèces masqué sort aussi des pastilles : on redonne à la carte les seules observations visibles.
+        if (q6.feats && m2.getSource('oiseaux')) m2.getSource('oiseaux').setData({ type: 'FeatureCollection', features: q6.feats.filter(f => !masquesO.has(f.properties.g)) });
         if (m2.getLayer('mer')) m2.setLayoutProperty('mer', 'visibility', masquesO.has('mer') ? 'none' : 'visible');
       };
       app.legende(c, [{ cle: 'l', couleur: '#f08a24', texte: 'limicoles' }, { cle: 'o', couleur: '#2a6fdb', texte: 'oies et canards' }, { cle: 'h', couleur: '#ffffff', texte: 'aigrette' }, { cle: 'rnn', couleur: '#1f8a4c', texte: 'réserve naturelle' }, { cle: 'zps', couleur: '#7a4fb5', texte: 'zone de protection des oiseaux' }, { cle: 'mer', couleur: '#2c6aa8', texte: 'mer et vasière du moment' }], visibilite, masquesO);
@@ -395,7 +401,7 @@
             total = r.count; for (const o of r.results) { const e = NOMO.get(o.speciesKey) || NOMO.get(o.taxonKey); feats.push({ type: 'Feature', properties: { nom: e ? e[1] : (o.species || 'Oiseau'), g: e ? e[2] : 'l', an: o.year || 0, mois: o.month || 0, jour: o.day || 0, nb: o.individualCount || 0, src: (o.datasetName || '').slice(0, 60) }, geometry: { type: 'Point', coordinates: [o.decimalLongitude, o.decimalLatitude] } }); }
             if (r.endOfRecords) break;
           }
-          m2.getSource('oiseaux').setData({ type: 'FeatureCollection', features: feats });
+          m2.getSource('oiseaux').setData({ type: 'FeatureCollection', features: feats.filter(f => !masquesO.has(f.properties.g)) }); q6.feats = feats;
           const quoi = oiseau === 'tous' ? 'des quatorze espèces' : 'de ' + NOMO.get(+oiseau)[1].toLowerCase();
           c.querySelector('.etat').innerHTML = total ? `<span class="fort">${total}</span> observation${total > 1 ? 's' : ''} ${quoi} dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : 'sur l\'année'}${total > feats.length ? `, dont ${feats.length} affichées (zoome pour les voir toutes)` : ''}. Touche un point pour son détail.` : `Aucune observation ${quoi} publiée dans la vue ${moisO ? 'en ' + MOIS[moisO - 1] : ''}. Essaie un autre mois dans le graphique.`;
         } catch (e) { if (moi === tour) c.querySelector('.etat').textContent = 'La base d\'observations ne répond pas pour l\'instant.'; }
@@ -417,16 +423,23 @@
       app.suivre(q6, charger); await charger();
     },
     toucher(app, ll) {
-      const p = map.project(ll), f = map.getLayer('oiseaux') ? map.queryRenderedFeatures([[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]], { layers: ['oiseaux'] }) : [];
+      const p = map.project(ll), boite = [[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]];
+      // Une pastille de groupe : on s'en approche, elle se défait.
+      const gr = map.getLayer('oiseaux-groupes') ? map.queryRenderedFeatures(boite, { layers: ['oiseaux-groupes'] }) : [];
+      if (gr.length) { map.easeTo({ center: gr[0].geometry.coordinates, zoom: Math.min(15, map.getZoom() + 1.6), duration: 700 }); return; }
+      const f = map.getLayer('oiseaux') ? map.queryRenderedFeatures(boite, { layers: ['oiseaux'] }) : [];
       if (!f.length) return;
       const lignes = f.slice(0, 5).map(x => { const o = x.properties; return `<span class="fort">${app.propre(o.nom)}</span>${o.nb > 1 ? ' (' + o.nb + ' individus)' : ''}, ${o.jour ? o.jour + ' ' : ''}${o.mois ? MOIS[o.mois - 1] + ' ' : ''}${o.an || ''}${o.src ? ' <span class="petit2">· ' + app.propre(o.src) + '</span>' : ''}`; });
       document.querySelector('.reponse .etat').innerHTML = lignes.join('<br>') + (f.length > 5 ? `<br><span class="petit2">et ${f.length - 5} autres au même endroit</span>` : '');
     },
-    fermer(app) { app.retirer('oiseaux', 'rnn', 'zps', 'mer'); }
+    fermer(app) { app.retirer('oiseaux-nombre', 'oiseaux-groupes', 'oiseaux', 'rnn', 'zps', 'mer'); if (map.getSource('oiseaux')) map.removeSource('oiseaux'); }
   };
-  [q1, q3, q4, q5, q6, q2].forEach(q => app.question(q));
-  app.question(Socle.vent.theme({ fuseau: 'Europe/Paris' }));
-  app.question(Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 4 }));
+  // Familles : la mer (marée, estran, passage en un point, niveau libre), la traversée, les oiseaux, le vent.
+  const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
+  [q1, q3, q4, q2].forEach(q => famille('Mer', q));
+  app.question(q5); app.question(q6);
+  famille('Vent', Socle.vent.theme({ fuseau: 'Europe/Paris', theme: 'Au sol' }));
+  famille('Vent', Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 4, theme: 'En altitude' }));
 })();
 </script>
 </body>

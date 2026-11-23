@@ -44,14 +44,15 @@
     sources: 'Relief : LiDAR HD de l\'IGN, lu à la volée ; en vue rapprochée, le calcul prend le modèle de surface, donc les arbres et les bâtiments portent ombre. Photo aérienne et plan : IGN. La position du soleil est calculée (précision de l\'ordre du demi-degré), les heures sont celles de La Réunion. Les nuages, qui montent dans les cirques en fin de matinée, ne sont pas pris en compte.'
   });
   try { app.map.setPaintProperty('estompe', 'hillshade-method', 'multidirectional'); app.map.setPaintProperty('estompe', 'hillshade-shadow-color', '#3b3566'); app.map.setPaintProperty('estompe', 'hillshade-highlight-color', '#fff1d6'); } catch (e) { }
-  app.question(Socle.lumiere.lumiere({ fuseau: F, note: 'Sous les tropiques, le soleil passe au nord une grande partie de l\'année, et presque à la verticale en été austral.' }));
-  app.question(Socle.lumiere.rasante({ fuseau: F, noteRasante: 'Dans les cirques, le soleil bas du matin n\'atteint que les hauts de rempart tournés vers l\'est.' }));
-  app.question(Socle.lumiere.anneau({ fuseau: F }));
-  app.question(Socle.lumiere.nuages({ fuseau: F }));
-  app.question(Socle.lumiere.versant({ fuseau: F }));
-  app.question(Socle.lumiere.duree({ fuseau: F, theme: 'Durée', noteDuree: 'Les fonds de cirque et les pieds de rempart ne voient le soleil que quelques heures.' }));
-  app.question(Socle.drone.camera({ cle: 'reunion', nom: 'Plan de vol — La Réunion' }));
-  app.question(Socle.drone.vol({ fuseau: F }));
+  // Trois familles : la lumière (ombres à une heure, lumière rasante, course du soleil), le ciel, le drone.
+  // Les heures de soleil d'un point se lisent dans « Soleil » (premier et dernier rayon) ou en touchant la carte dans « Ombres ».
+  const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
+  famille('Lumière', Socle.lumiere.lumiere({ fuseau: F, theme: 'Ombres', note: 'Sous les tropiques, le soleil passe au nord une grande partie de l\'année, et presque à la verticale en été austral.' }));
+  famille('Lumière', Socle.lumiere.rasante({ fuseau: F, noteRasante: 'Dans les cirques, le soleil bas du matin n\'atteint que les hauts de rempart tournés vers l\'est.' }));
+  famille('Lumière', Socle.lumiere.anneau({ fuseau: F }));
+  app.question(Socle.lumiere.nuages({ fuseau: F, theme: 'Ciel' }));
+  famille('Drone', Socle.drone.camera({ cle: 'reunion', nom: 'Plan de vol — La Réunion', theme: 'Caméra' }));
+  famille('Drone', Socle.drone.vol({ fuseau: F }));
 })();
 </script>
 </body>

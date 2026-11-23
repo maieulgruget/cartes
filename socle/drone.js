@@ -312,23 +312,41 @@
       const cle = ['', 'ok', 'haut', 'cache', 'dessous'];
       app.poser('volzone', g, app.peindre(g, k => { const x = cle[cls[k]]; if (x && !masques.has(x)) return COUL[x]; }), 0.9);
     }
+    /* Vent à la hauteur du vol. Le modèle donne le vent à 10, 80, 120 et 180 m au-dessus du sol : on lit celui de la
+       hauteur réglée, par interpolation entre les deux niveaux qui l'encadrent. La prévision d'un lieu est gardée :
+       changer la hauteur ne relance pas de requête. */
+    const NIV = [10, 80, 120, 180], previs = new Map();
+    function aHauteur(hh, i, h, nom) {
+      h = Math.max(NIV[0], Math.min(NIV[NIV.length - 1], h));
+      let n = 0; while (n < NIV.length - 2 && h > NIV[n + 1]) n++;
+      const a = hh[`${nom}_${NIV[n]}m`][i], b = hh[`${nom}_${NIV[n + 1]}m`][i], f = (h - NIV[n]) / (NIV[n + 1] - NIV[n]);
+      if (a == null) return b; if (b == null) return a;
+      if (nom === 'wind_direction') { const d = ((b - a + 540) % 360) - 180; return (a + d * f + 360) % 360; }   // les directions s'interpolent par le plus court chemin
+      return a + (b - a) * f;
+    }
     async function vent(app, c, moi) {
-      const cible = c.querySelector('.vent'); cible.innerHTML = '<p class="petit">Vent en cours de lecture…</p>';
-      const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${d.lat.toFixed(3)}&longitude=${d.lon.toFixed(3)}&hourly=wind_speed_10m,wind_gusts_10m,wind_speed_120m,wind_direction_120m,cloud_cover_low&forecast_hours=24&timezone=${encodeURIComponent(F)}`);
-      if (moi !== tour) return;
-      if (!j || !j.hourly) { cible.innerHTML = '<p class="petit">Le vent n\'a pas pu être lu.</p>'; return; }
-      const hh = j.hourly, now = Date.now(); let i0 = 0;
+      const cible = c.querySelector('.vent'), cle = d.lat.toFixed(2) + ',' + d.lon.toFixed(2);
+      if (!previs.has(cle)) {
+        cible.innerHTML = '<p class="petit">Vent en cours de lecture…</p>';
+        const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${d.lat.toFixed(3)}&longitude=${d.lon.toFixed(3)}&hourly=${NIV.map(n => `wind_speed_${n}m,wind_direction_${n}m`).join(',')},wind_gusts_10m,precipitation,precipitation_probability&forecast_hours=24&timezone=${encodeURIComponent(F)}`);
+        if (j && j.hourly) previs.set(cle, j);
+        if (moi !== tour) return;
+      }
+      const j = previs.get(cle);
+      if (!j) { cible.innerHTML = '<p class="petit">Le vent n\'a pas pu être lu.</p>'; return; }
+      const hh = j.hourly, now = Date.now(), H = etat.hVol; let i0 = 0;
       // premier pas horaire à venir (les heures sont locales, sans fuseau : on compare au décalage annoncé)
       for (let i = 0; i < hh.time.length; i++) { const t = Date.parse(hh.time[i] + ':00Z') - (j.utc_offset_seconds || 0) * 1000; if (t >= now - 3600e3) { i0 = i; break; } }
-      const cases = []; for (let i = i0; i < Math.min(hh.time.length, i0 + 12); i += 3) {
-        const v = hh.wind_speed_120m[i], r = hh.wind_gusts_10m[i], fort = Math.max(v, r) > (opts.ventMax || 38);
-        cases.push(`<div${fort ? ' style="outline:1px solid #e76f51"' : ''}><b>${hh.time[i].slice(11, 13)} h</b>${Math.round(v)} km/h<br><small>${cap8(hh.wind_direction_120m[i] + 180)} · raf. ${Math.round(r)}</small></div>`);
+      const max = opts.ventMax || 38, cases = []; for (let i = i0; i < Math.min(hh.time.length, i0 + 12); i += 3) {
+        const v = aHauteur(hh, i, H, 'wind_speed'), dir = aHauteur(hh, i, H, 'wind_direction'), r = hh.wind_gusts_10m[i], pl = hh.precipitation ? hh.precipitation[i] : 0, pp = hh.precipitation_probability ? hh.precipitation_probability[i] : null, fort = Math.max(v, r) > max;
+        cases.push(`<div${fort ? ' style="outline:1px solid #e76f51"' : ''}><b>${hh.time[i].slice(11, 13)} h</b>${Math.round(v)} km/h<br><small>vient du ${cap8(dir)} · raf. ${Math.round(r)}</small><br><small>${pl > 0.1 ? 'pluie ' + pl.toFixed(1).replace('.', ',') + ' mm' : pp != null && pp >= 30 ? 'pluie possible (' + Math.round(pp) + ' %)' : 'sec'}</small></div>`);
       }
-      cible.innerHTML = `<p class="petit" style="margin-top:6px">Vent à 120 m de hauteur (direction vers laquelle il souffle), rafales au sol, pour les douze heures à venir. Encadré en rouge au-delà de ${opts.ventMax || 38} km/h, la résistance au vent annoncée pour les petits drones DJI (à vérifier pour le sien).</p><div class="jours">${cases.join('')}</div>`;
+      cible.innerHTML = `<p style="margin-top:6px">Vent <span class="fort">à ${Math.round(H)} m</span> au-dessus du décollage, pour les douze heures à venir.</p><div class="jours">${cases.join('')}</div>
+        <p class="petit">Vent du modèle lu à la hauteur réglée (entre ses niveaux de 10, 80, 120 et 180 m) : il change avec le curseur de hauteur. Rafales au sol. Encadré en rouge au-delà de ${max} km/h, la résistance au vent annoncée pour les petits drones DJI (à vérifier pour le sien).</p>`;
     }
     const q = {
       theme: opts.theme || 'Vol', libelle: opts.libelle || 'Jusqu\'où voler, et par quel vent ?',
-      aide: 'Depuis le point de décollage touché, le drone vole à la hauteur choisie au-dessus de ce point. Pour chaque maille du relief dans un rayon de 1,5 km, la carte compare cette altitude au sol dessous : la limite légale de 120 m se compte depuis le sol le plus proche, si bien qu\'au-dessus d\'une ravine on la dépasse sans monter. Elle vérifie aussi qu\'aucune crête ne passe entre l\'œil du pilote et le drone : derrière, on perd le drone de vue et souvent la liaison radio. Vent : prévision Open-Meteo à 120 m de hauteur. Cette carte ne dit pas où le vol est autorisé : zones d\'aéroport, cœur du Parc national et réserve marine ont leurs propres règles, à vérifier auprès des sources officielles.',
+      aide: 'Depuis le point de décollage touché, le drone vole à la hauteur choisie au-dessus de ce point. Pour chaque maille du relief dans un rayon de 1,5 km, la carte compare cette altitude au sol dessous : la limite légale de 120 m se compte depuis le sol le plus proche, si bien qu\'au-dessus d\'une ravine on la dépasse sans monter. Elle vérifie aussi qu\'aucune crête ne passe entre l\'œil du pilote et le drone : derrière, on perd le drone de vue et souvent la liaison radio. Vent : prévision Open-Meteo, lue à la hauteur de vol réglée. Cette carte ne dit pas où le vol est autorisé : zones d\'aéroport, cœur du Parc national et réserve marine ont leurs propres règles, à vérifier auprès des sources officielles.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="legende"></div>
           <div class="ligne"><label style="min-width:72px">Hauteur</label><input type="range" class="hv" min="20" max="120" step="5" value="${etat.hVol}" style="flex:1;min-width:110px"><span class="fort v-hv">${etat.hVol} m</span></div>

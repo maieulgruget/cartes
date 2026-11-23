@@ -118,3 +118,30 @@ details.aide p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 .vignettes button svg { width: 40px; height: 40px; display: block; }
 .vignettes button[aria-pressed="true"] { background: #23344f; color: var(--ink); border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; font-weight: 600; }
 .jours .picto { font-size: 20px; line-height: 1.1; display: block; }
+
+/* Sous-thèmes d'une famille : une rangée fine au-dessus des thèmes, visible quand la famille est ouverte. */
+.sousthemes { pointer-events: auto; display: flex; gap: 6px; overflow-x: auto; padding: 0 10px 7px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.sousthemes[hidden] { display: none; }
+.sousthemes::-webkit-scrollbar { display: none; }
+.sousthemes button { white-space: nowrap; font-size: 13px; padding: 6px 12px; flex: none; backdrop-filter: blur(6px); }
+
+/* Course du soleil : une vignette toujours de face, posée sur le point touché. */
+.course { width: 240px; height: 240px; pointer-events: none; }
+.course svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.course text { font: 600 11px var(--body); fill: #fff; paint-order: stroke; stroke: #10192a; stroke-width: 3px; stroke-linejoin: round; text-anchor: middle; dominant-baseline: central; }
+.course text.h { font-size: 12.5px; fill: #ffe9a8; }
+
+/* Frise horaire (nuages) : une case par heure, de claire à couverte. */
+.frise { display: flex; gap: 2px; margin: 8px 0 2px; }
+.frise > div { flex: 1; min-width: 0; text-align: center; font-size: 10.5px; color: var(--muted); }
+.frise i { display: block; height: 26px; border-radius: 4px; margin: 2px 0; }
+.frise .ok i { box-shadow: 0 0 0 2px var(--gold); }
+.frise .ok b { color: var(--gold); }
+.frise b { font-weight: 400; display: block; height: 14px; white-space: nowrap; }
+.frise span { display: block; font-size: 13px; line-height: 1.1; height: 15px; }
+.frise .nj { border-left: 1px solid var(--line); margin-left: 3px; padding-left: 3px; }
+.tranches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 6px 0; }
+.tranches div { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px 3px; font-size: 11.5px; text-align: center; line-height: 1.3; }
+.tranches b { display: block; color: var(--gold); font-size: 12.5px; }
+.jours div[role="button"] { cursor: pointer; }
+.jours div[aria-pressed="true"] { outline: 1px solid var(--gold); }
