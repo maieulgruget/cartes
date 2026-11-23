@@ -65,7 +65,7 @@
   }
   const qPentes = {
     theme: 'Avalanche', libelle: 'Quelles pentes éviter ?',
-    aide: 'Le bulletin d\'avalanche du jour dit sur quelles orientations de versant et à partir de quelle altitude le danger est le plus marqué. L\'orientation est la direction vers laquelle la pente regarde : un versant nord tourne le dos au soleil. Elle compte parce que le vent dépose la neige sur les versants abrités de lui, et parce que le soleil transforme la neige des versants sud bien plus vite que celle des versants nord. L\'altitude compte parce que la quantité de neige et le froid changent avec elle. La pente, enfin : une plaque part surtout au-dessus de 30°. La carte colore donc les pentes qui cumulent les trois critères. Les pentes sont calculées sur le relevé LiDAR de l\'IGN ; de loin, elles sont lissées et sous-estimées, il faut zoomer sur le secteur visé. La carte ne sait rien de la neige elle-même. Quand le bulletin du jour est disponible, ses orientations et son altitude sont reportées automatiquement (versant des Chapelles : massif du Beaufortain ; en face, Haute-Tarentaise) ; tu peux toujours les modifier à la main.',
+    aide: 'Le bulletin d\'avalanche du jour dit sur quelles orientations de versant et à partir de quelle altitude le danger est le plus marqué. L\'orientation est la direction vers laquelle la pente regarde : un versant nord tourne le dos au soleil. Elle compte parce que le vent dépose la neige sur les versants abrités de lui, et parce que le soleil transforme la neige des versants sud bien plus vite que celle des versants nord. L\'altitude compte parce que la quantité de neige et le froid changent avec elle. La pente, enfin : une plaque part surtout au-dessus de 30°. La carte colore donc les pentes qui cumulent les trois critères. Les pentes sont calculées sur le relevé LiDAR de l\'IGN ; de loin, elles sont lissées et sous-estimées, il faut zoomer sur le secteur visé. La carte ne sait rien de la neige elle-même. Les trois réglages : les orientations (les versants que le bulletin désigne comme les plus dangereux ; tout cocher revient à ne pas trier par versant), la pente minimale (30° est le seuil à partir duquel une plaque peut partir, 35° et 40° ne gardent que le plus raide, là où les départs sont les plus fréquents) et l\'altitude (le bulletin donne souvent un niveau de risque différent au-dessus d\'une altitude). Quand le bulletin du jour est disponible, ses orientations et son altitude sont reportées automatiquement (versant des Chapelles : massif du Beaufortain ; en face, Haute-Tarentaise) ; tu peux toujours les modifier à la main.',
     async ouvrir(app) {
       await lireBera(); if (bera && !qPentes.dejaApplique) { if (!bera.massifs[massif]) massif = Object.keys(bera.massifs)[0]; appliquerBera(); qPentes.dejaApplique = true; }
       const b = bera && bera.massifs[massif];
@@ -117,6 +117,7 @@
       const g = memoP.g, k = g ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0) return;
       const p = memoP.a.pente[k], e = memoP.a.expo[k];
       document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, pente de <span class="fort">${Math.round(p)}°</span> tournée vers le <span class="fort">${ROSE[Math.round(e / 45) % 8]}</span>.`;
+      app.bulle(ll, `Pente de <span class="fort">${Math.round(p)}°</span> vers le ${ROSE[Math.round(e / 45) % 8]}<small>${Math.round(g.z[k])} m</small>`);
     },
     fermer(app) { app.retirer('pentes'); }
   };
@@ -124,6 +125,7 @@
   // ---------- 2. Prévisions : au village et en altitude ----------
   const PT = { lat: 45.5923, lon: 6.7368 };
   const JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+  const PICTO = c => c === 0 ? '☀️' : c <= 2 ? '🌤️' : c === 3 ? '☁️' : c <= 48 ? '🌫️' : c <= 57 ? '🌦️' : c <= 67 ? '🌧️' : c <= 77 ? '❄️' : c <= 82 ? '🌦️' : c <= 86 ? '🌨️' : '⛈️';
   const TEMPS = c => c === 0 ? 'ciel clair' : c <= 2 ? 'peu nuageux' : c === 3 ? 'couvert' : c <= 48 ? 'brouillard' : c <= 57 ? 'bruine' : c <= 67 ? 'pluie' : c <= 77 ? 'neige' : c <= 82 ? 'averses' : c <= 86 ? 'averses de neige' : 'orage';
   let previs = null;
   async function chargerPrevis() {
@@ -153,7 +155,7 @@
       if (map.getSource('pointmeteo')) map.getSource('pointmeteo').setData(d0);
       else { map.addSource('pointmeteo', { type: 'geojson', data: d0 }); map.addLayer({ id: 'pointmeteo', type: 'circle', source: 'pointmeteo', paint: { 'circle-radius': 7, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
       if (!p) { app.repondre(qTemps.libelle, '<p>Les prévisions ne répondent pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
-      const d = p.d, jour = i => `<div><b>${JOURS[new Date(d.time[i] + 'T12:00').getDay()]} ${d.time[i].slice(8)}</b>${TEMPS(d.weather_code[i])}<br>${Math.round(d.temperature_2m_min[i])}° / ${Math.round(d.temperature_2m_max[i])}°<br>${d.snowfall_sum[i] > 0 ? '<span class="fort">' + d.snowfall_sum[i].toFixed(0) + ' cm de neige</span>' : d.precipitation_sum[i] > 0.2 ? d.precipitation_sum[i].toFixed(0) + ' mm de pluie' : 'sec'}<br>vent ${ROSE[Math.round(d.wind_direction_10m_dominant[i] / 45) % 8]} ${Math.round(d.wind_speed_10m_max[i])}, rafales ${Math.round(d.wind_gusts_10m_max[i])} km/h<br>${Math.round((d.sunshine_duration[i] || 0) / 3600)} h de soleil</div>`;
+      const d = p.d, jour = i => `<div><b>${JOURS[new Date(d.time[i] + 'T12:00').getDay()]} ${d.time[i].slice(8)}</b><span class="picto">${PICTO(d.weather_code[i])}</span>${TEMPS(d.weather_code[i])}<br>${Math.round(d.temperature_2m_min[i])}° / ${Math.round(d.temperature_2m_max[i])}°<br>${d.snowfall_sum[i] > 0 ? '<span class="fort">' + d.snowfall_sum[i].toFixed(0) + ' cm de neige</span>' : d.precipitation_sum[i] > 0.2 ? d.precipitation_sum[i].toFixed(0) + ' mm de pluie' : 'sec'}<br>vent ${ROSE[Math.round(d.wind_direction_10m_dominant[i] / 45) % 8]} ${Math.round(d.wind_speed_10m_max[i])}, rafales ${Math.round(d.wind_gusts_10m_max[i])} km/h<br>${Math.round((d.sunshine_duration[i] || 0) / 3600)} h de soleil</div>`;
       app.repondre(qTemps.libelle, `<p><span class="fort">${app.propre(p.nom || 'Point touché')}</span>${p.alt != null && isFinite(p.alt) ? ', ' + Math.round(p.alt) + ' m' : ''} — touche un autre endroit pour changer.</p>
         <div class="jours" style="grid-template-columns:repeat(3,1fr)">${d.time.map((t, i) => jour(i)).join('')}</div>`);
     },
@@ -226,7 +228,7 @@
   }
   const qNeige = {
     theme: 'Neige', libelle: 'Où y a-t-il de la neige ?',
-    aide: 'La carte répartit sur le relief une épaisseur de neige probable. Avec le bulletin d\'avalanche du jour, elle reprend sa limite d\'enneigement en versant nord et en versant sud et ses épaisseurs par altitude, puis donne à chaque pente la valeur de son altitude et de son orientation. Sans bulletin, elle part du modèle météo, dont les mailles font un à deux kilomètres : elle en tire une épaisseur selon l\'altitude, et remonte la limite de 150 m en versant sud, la descend d\'autant en versant nord. Dans les deux cas, c\'est une estimation : ni la neige soufflée par le vent, ni une combe restée pleine, ni un versant déjà purgé ne sont vus. À comparer avec ce qu\'on voit de la vallée.',
+    aide: 'La carte répartit sur le relief une épaisseur de neige probable. Avec le bulletin d\'avalanche du jour, elle reprend sa limite d\'enneigement en versant nord et en versant sud et ses épaisseurs par altitude, puis donne à chaque pente la valeur de son altitude et de son orientation. Sans bulletin, elle part du modèle météo, dont les mailles font un à deux kilomètres : elle en tire une épaisseur selon l\'altitude, et remonte la limite de 150 m en versant sud, la descend d\'autant en versant nord. La bulle au point touché donne un ordre de grandeur, à quelques dizaines de centimètres près en altitude. Dans les deux cas, c\'est une estimation : ni la neige soufflée par le vent, ni une combe restée pleine, ni un versant déjà purgé ne sont vus. À comparer avec ce qu\'on voit de la vallée.',
     async ouvrir(app) {
       await lireBera(); const b = bera && bera.massifs[massif], enn = b && b.enneigement && b.enneigement.niveaux && b.enneigement.niveaux.length ? b.enneigement : null;
       app.occupe(true, 'Lecture de l\'enneigement…'); const courbe = enn ? null : await neigeModele(); app.occupe(false); if (app.active !== qNeige) return;
@@ -261,7 +263,9 @@
     toucher(app, ll) {
       const g = memoN.g, k = g ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0 || !qNeige.epaisseur) return;
       const e = memoN.a.expo[k], nord = e === e ? (Math.cos(e * Math.PI / 180) + 1) / 2 : 0.5, cm = qNeige.epaisseur(g.z[k], nord);
-      document.querySelector('.reponse .etat').innerHTML = `Ici, à <span class="fort">${Math.round(g.z[k])} m</span>, versant ${ROSE[Math.round(e / 45) % 8]} : ${cm < 2 ? '<span class="fort">pas de neige</span> probable' : `environ <span class="fort">${cm < 10 ? 'moins de 10' : Math.round(cm / 5) * 5} cm</span> de neige`}.`;
+      const texte = cm < 2 ? '<span class="fort">pas de neige</span> probable' : `environ <span class="fort">${cm < 10 ? 'moins de 10' : Math.round(cm / 5) * 5} cm</span> de neige`;
+      document.querySelector('.reponse .etat').innerHTML = `Ici, à <span class="fort">${Math.round(g.z[k])} m</span>, versant ${ROSE[Math.round(e / 45) % 8]} : ${texte}.`;
+      app.bulle(ll, `${texte}<small>${Math.round(g.z[k])} m, versant ${ROSE[Math.round(e / 45) % 8]} · ordre de grandeur : la neige soufflée ou fondue localement n'est pas vue</small>`);
     },
     fermer(app) { app.retirer('neige'); }
   };
@@ -270,6 +274,7 @@
   const T = Socle.traceOutils, L = Socle.lumiere;
   const qTrace = Socle.trace({
     cle: 'tarentaise', nom: 'Sortie au-dessus des Chapelles', libelle: 'Par où monter ?',
+    aide: 'Tracé posé au doigt. La carte en tire le profil et le dénivelé, un temps de montée (dénivelé et distance combinés), la longueur passée sur des pentes de 30° ou plus et leur orientation, les pentes raides qui dominent le tracé à moins de 80 m, et l\'heure d\'arrivée du soleil. Entre deux points, le tracé coupe droit. Les pentes lointaines (couloirs, grandes faces) ne sont pas comptées, et la carte ne sait rien de la neige.',
     intro: 'Touche la carte pour poser le départ, puis chaque point de passage jusqu\'au sommet.',
     pied: 'Outil de préparation : il ne remplace ni le bulletin d\'avalanche ni l\'observation du manteau neigeux.',
     async analyse(app, d) {

@@ -11,6 +11,7 @@
     opts = opts || {}; let cle = null; const masques = new Set();
     const q = {
       theme: 'Forêt', libelle: opts.libelle || 'Quelle forêt ici ?',
+      aide: 'Peuplements de la BD Forêt de l\'IGN, lus pour la vue affichée. Elle décrit des types de forêt, pas des arbres un par un.',
       async ouvrir(app) {
         q.fondAvant = app.fond; if (app.fond !== 'ombrage') app.mettreFond('ombrage');   // les peuplements se lisent mieux sur le relief ombré
         const c = app.repondre(q.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement, ou un type de la légende pour le masquer.</p><div class="legende"></div><p class="petit">BD Forêt de l'IGN : elle décrit des peuplements, pas des arbres un par un. ${opts.note || ''}</p>`);

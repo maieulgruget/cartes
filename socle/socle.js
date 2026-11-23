@@ -292,6 +292,15 @@
         div.onclick = e => { const s = e.target.closest('span[data-c]'); if (!s) return; const k = s.dataset.c; masques.has(k) ? masques.delete(k) : masques.add(k); s.classList.toggle('off', masques.has(k)); surChange(masques); };
         return masques;
       },
+      /* Bulle au point touché : un repère sur la carte et une courte réponse, là où l'on a posé le doigt. */
+      bulle(ll, html) {
+        if (bulleCarte) bulleCarte.remove();
+        bulleCarte = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'bulle', maxWidth: '230px', offset: 10 }).setLngLat(ll).setHTML(html).addTo(map);
+        const d = { type: 'Feature', geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] } };
+        if (map.getSource('pointbulle')) map.getSource('pointbulle').setData(d);
+        else { map.addSource('pointbulle', { type: 'geojson', data: d }); map.addLayer({ id: 'pointbulle', type: 'circle', source: 'pointbulle', paint: { 'circle-radius': 6, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
+      },
+      sansBulle() { if (bulleCarte) { bulleCarte.remove(); bulleCarte = null; } if (map.getLayer('pointbulle')) { map.removeLayer('pointbulle'); map.removeSource('pointbulle'); } },
       questions: [], active: null,
       masquer() { appliquerMasque(); },
       question(q) {
@@ -301,7 +310,7 @@
       },
       async choisir(q) {
         if (app.active) { const a = app.active; a.bouton.setAttribute('aria-pressed', 'false'); app.active = null; try { a.fermer && a.fermer(app); } catch (e) { console.error(e); } }
-        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); if (masque) { masque = false; appliquerMasque(); }
+        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle(); if (masque) { masque = false; appliquerMasque(); }
         if (!q) return;
         app.active = q; q.bouton.setAttribute('aria-pressed', 'true'); q.bouton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
         try { await q.ouvrir(app); } catch (e) { console.error(e); app.occupe(false); app.repondre(q.libelle, `<p>Impossible de répondre pour l'instant : ${propre(e.message || e)}.</p><p class="petit">Vérifie la connexion, puis touche de nouveau la question.</p>`); }
@@ -315,12 +324,13 @@
     };
     // Couches du fond de carte, relevées une fois : tout ce qui s'y ajoute ensuite appartient à un thème.
     const couchesFond = new Set(map.getStyle().layers.map(l => l.id).concat(['maposition']));
-    let masque = false;
+    let masque = false, bulleCarte = null;
     function appliquerMasque() { for (const l of map.getStyle().layers) if (!couchesFond.has(l.id)) map.setLayoutProperty(l.id, 'visibility', masque ? 'none' : 'visible'); }
     map.on('sourcedata', () => { if (masque) appliquerMasque(); });
     map.on('click', e => { if (app.active && app.active.toucher) app.active.toucher(app, e.lngLat); });
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
+    const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy']];
     const cleSignets = 'cartes.signets.' + cfg.id;
     // Chaque saut (lieu, recherche, position) garde la vue quittée : le bouton Retour y ramène, un saut à la fois.
     const vues = [];
@@ -349,6 +359,8 @@
       menu.innerHTML = `<div><h3>Lieux</h3><ul class="lieux"></ul>
         <h3>Garder la vue actuelle</h3><div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue" maxlength="40"><button class="garder">Garder</button></div>
         <h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go">Chercher</button></div><ul class="res"></ul>
+        <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, et avec quelle fiabilité</button></p>
+        <h3>Autres cartes</h3><ul class="autres">${AUTRES.filter(a => a[0] !== cfg.id).map(a => `<li><button data-u="${cfg.racine}${a[0]}/">${a[1]}<small>${a[2]}</small></button></li>`).join('')}<li><button data-u="${cfg.racine}">Les quatre cartes<small>page d'accueil</small></button></li></ul>
         <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p>
         <p style="text-align:right;margin:10px 0 0"><button class="fermer">Fermer</button></p></div>`;
       const ul = menu.querySelector('.lieux');
@@ -359,6 +371,13 @@
         li.append(b); ul.append(li);
       });
       menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
+      menu.querySelector('.autres').onclick = e => { const b = e.target.closest('button[data-u]'); if (b) location.href = b.dataset.u; };
+      // Page « méthode » : tous les thèmes de la carte, ce qu'ils calculent, leurs limites ; puis les sources.
+      menu.querySelector('.methode').onclick = () => {
+        menu.innerHTML = `<div><h3>Comprendre la carte</h3>${app.questions.map(q => `<h4>${propre(q.theme || q.libelle)} — ${propre(q.libelle)}</h4><p class="sources">${q.aide || 'Ouvre ce thème : son panneau décrit ce qu\'il montre.'}</p>`).join('')}
+          <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p><p style="text-align:right;margin:10px 0 0"><button class="retour">Retour</button> <button class="fermer">Fermer</button></p></div>`;
+        menu.querySelector('.retour').onclick = dessinerMenu; menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
+      };
       menu.querySelector('.garder').onclick = () => {
         const nom = menu.querySelector('.nomvue').value.trim(); if (!nom) return;
         const c = map.getCenter(), l = garde.lire(cleSignets, []).filter(x => x.nom !== nom);

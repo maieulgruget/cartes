@@ -120,7 +120,7 @@
     }
 
     const q = {
-      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?',
+      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
           <div class="puces" style="margin-top:8px"><button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);

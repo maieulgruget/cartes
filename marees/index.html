@@ -132,6 +132,7 @@
   // ---------- 1. La mer maintenant, et dans les heures qui viennent ----------
   const q1 = {
     theme: 'Marée', libelle: 'Où est la mer maintenant ?',
+    aide: 'La mer couvre tout ce qui est plus bas que son niveau, sur le relevé de l\'estran de l\'IGN. Le niveau vient du modèle de marée d\'Open-Meteo ; pour un jour éloigné, il est calculé à partir d\'un an de ce modèle (écart type de 18 cm sur mon contrôle, 60 cm au pire). Ce n\'est pas l\'annuaire du Shom : compter plusieurs dizaines de centimètres et de minutes d\'écart possibles, davantage par vent fort.',
     async ouvrir(app) {
       const s = await maree(); if (!s) { app.repondre(q1.libelle, sansMaree); return; }
       const c = app.repondre(q1.libelle, champJour() + `<p class="etat"></p><div class="ligne"><button class="anim">▶ Animer 24 h</button><input type="range" class="h" min="0" max="288" value="0" style="flex:1;min-width:120px"></div><p class="horaire petit"></p>
@@ -163,6 +164,7 @@
   let libre = 3;
   const q2 = {
     theme: 'Niveau', libelle: 'Et si la mer montait à… ?',
+    aide: 'Un niveau libre, sans marée : la carte montre ce qui serait sous l\'eau si la mer était à la hauteur choisie. Les hauteurs sont celles des cartes terrestres (NGF), pas le zéro des cartes marines.',
     async ouvrir(app) {
       const c = app.repondre(q2.libelle, `<p>Mer à <span class="fort niv"></span> <span class="petit">(niveau des cartes terrestres)</span></p><input type="range" class="h" min="-70" max="90" value="${libre * 10}">
         <p class="etat petit">Repères sur cette côte : une basse mer de vive-eau descend vers −5,5 m, une pleine mer de vive-eau monte vers +6 m, et les plus grandes marées approchent +7 m. Au-delà, c'est une surcote de tempête.</p>
@@ -176,6 +178,7 @@
   // ---------- 3. Durée d'émersion de l'estran ----------
   const q3 = {
     theme: 'Estran', libelle: 'Combien de temps à sec ?',
+    aide: 'Part du temps où chaque point de l\'estran est découvert sur les deux prochaines marées. C\'est ce qui sépare les vasières, les herbiers et le haut de plage.',
     async ouvrir(app) {
       const s = await maree(); if (!s) { app.repondre(q3.libelle, sansMaree); return; }
       const c = app.repondre(q3.libelle, champJour() + `<p class="etat"></p>
@@ -223,6 +226,7 @@
   }
   const q4 = {
     theme: 'Passage', libelle: 'Quand puis-je passer ici ?',
+    aide: 'Heures où le point touché est à sec, avec 50 cm de marge. Un point à sec peut être coupé de la côte par un chenal plus bas : le thème Traversée regarde tout un trajet. À vérifier avec les horaires officiels.',
     async ouvrir(app) {
       const s = await maree(); if (!s) { app.repondre(q4.libelle, sansMaree); return; }
       const c = app.repondre(q4.libelle, champJour() + '<p class="etat">Touche un point de l\'estran : un rocher, un banc de sable, un passage à gué.</p>');
@@ -236,6 +240,7 @@
   // ---------- 5. Traversée : c'est le point le plus bas du trajet qui fixe la fenêtre ----------
   const T = Socle.traceOutils;
   const q5 = Socle.trace({
+    aide: 'Pour un trajet tracé au doigt, c\'est son point le plus bas qui fixe la fenêtre : la carte donne les heures où tout le trajet est à sec (avec 50 cm de marge) et l\'heure limite de départ à 3 km/h. La vase, les courants et le vent ne sont pas pris en compte.',
     cle: 'marees', nom: 'Traversée de l\'estran', theme: 'Traversée', libelle: 'Quand traverser par ici ?', couche: Socle.RGEALTI, seuilPente: false,
     intro: 'Touche la carte pour poser le départ, puis chaque point du trajet sur l\'estran.',
     apres(app, c) { brancherJour(c, () => q5.relancer(app)); },

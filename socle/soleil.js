@@ -43,6 +43,7 @@
   function lumiere(opts) {
     const memo = {}, q = {
       theme: opts.theme || 'Lumière', libelle: opts.libelle || 'Où est la lumière à cette heure ?',
+      aide: 'Ombres portées par le relief à la date et à l\'heure choisies : pour chaque maille, la carte remonte un rayon vers le soleil et regarde si le terrain le coupe. En vue rapprochée, elle prend le relevé de surface, donc les arbres et les bâtiments portent ombre. La position du soleil est calculée à un demi-degré près ; les nuages ne sont pas pris en compte.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<input type="range" class="h" min="0" max="1430" step="10" value="${etat.minutes}">
           <p class="etat"></p><div class="legende"><span><i style="background:#060a14"></i>à l'ombre</span><span><i style="background:#e9c46a"></i>lumière rasante (soleil sous 12°)</span></div>
@@ -103,6 +104,7 @@
   function versant(opts) {
     const memo = {}, q = {
       theme: opts.theme || 'Versant', libelle: opts.libelle || 'Quand ce versant s\'éclaire-t-il ?',
+      aide: 'Heures de soleil du point touché sur la journée choisie, par pas de cinq minutes, en comptant les crêtes jusqu\'à 25 km. Précision de l\'ordre de dix minutes ; les nuages ne sont pas pris en compte.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat">Touche un point de la carte : un versant, un sommet, un fond de cirque.</p>`);
         c.querySelector('.heure').textContent = '';
@@ -120,6 +122,7 @@
   function leverCoucher(opts) {
     const q = {
       theme: opts.theme || 'Lever et coucher', libelle: opts.libelle || 'Où se lève et se couche le soleil ?',
+      aide: 'Directions et heures du lever, du coucher et du point le plus haut du soleil, sur un horizon plat, depuis le point touché. Une crête retarde le lever et avance le coucher : le thème Versant donne les heures réelles.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat"></p><div class="legende"><span><i style="background:#f4a261"></i>lever</span><span><i style="background:#e76f51"></i>coucher</span><span><i style="background:#e9c46a"></i>midi solaire</span></div><p class="petit">Touche la carte pour choisir le point d'où partent les directions ; sans cela, elles partent du centre. Elles sont tracées sur un horizon plat : une crête retarde le lever et avance le coucher (le thème Versant donne les heures réelles).</p>`);
         c.querySelector('.heure').textContent = '';
@@ -160,6 +163,7 @@
   function duree(opts) {
     const memo = {}, q = {
       theme: opts.theme || 'Ensoleillement', libelle: opts.libelle || 'Combien d\'heures de soleil ?',
+      aide: 'Durée d\'ensoleillement de chaque maille sur la journée choisie, par pas de vingt minutes, relief compris. Le relief hors de la vue n\'est pas compté dans cette carte d\'ensemble : pour un point précis, le thème Versant est plus juste.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<p class="etat"></p>
           <div class="legende"></div>
