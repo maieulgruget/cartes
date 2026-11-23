@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="../socle/socle.css">
 <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
 <script src="../socle/socle.js"></script>
+<script src="../socle/vent.js"></script>
 <script src="../socle/soleil.js"></script>
 <script src="../socle/trace.js"></script>
 </head>
@@ -398,6 +399,8 @@
     fermer(app) { app.retirer('oiseaux', 'rnn', 'zps', 'mer'); }
   };
   [q1, q3, q4, q5, q6, q2].forEach(q => app.question(q));
+  app.question(Socle.vent.theme({ fuseau: 'Europe/Paris' }));
+  app.question(Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 4 }));
 })();
 </script>
 </body>

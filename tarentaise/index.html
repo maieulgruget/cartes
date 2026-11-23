@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="../socle/socle.css">
 <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
 <script src="../socle/socle.js"></script>
+<script src="../socle/vent.js"></script>
 <script src="../socle/soleil.js"></script>
 <script src="../socle/foret.js"></script>
 <script src="../socle/trace.js"></script>
@@ -313,6 +314,8 @@
   app.question(Socle.lumiere.duree({ fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide.' }));
   app.question(qGel);
   app.question(qTemps);
+  app.question(Socle.vent.theme({ fuseau: 'Europe/Paris', libelle: 'D\'où souffle le vent au sol ?' }));
+  app.question(Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 1, theme: 'Vent 3D', niveaux: [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '800hPa', alt: 2000, nom: 'vers 2 000 m', coul: '#ffd166' }, { cle: '700hPa', alt: 3000, nom: 'vers 3 000 m', coul: '#ff7b9c' }] }));
   app.question(Socle.foret({ note: 'En lisière haute, les mélèzes et les aulnes verts signalent souvent les couloirs.' }));
 })();
 </script>

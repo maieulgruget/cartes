@@ -145,5 +145,109 @@
     };
     return q;
   }
-  S.vent = { theme, pointVent, allure, rose, beaufort, phrase, lireChamp, vent, CLASSES };
+  /* Vent par nappes d'altitude : la même animation, à plusieurs hauteurs à la fois. Chaque nappe flotte à sa hauteur
+     au-dessus de la mer (exagérée pour qu'on les sépare à l'œil) ; la nappe du sol suit le terrain.
+     Prototype : les traînées sont projetées avec la matrice de la vue 3D, empruntée à une couche vide de la carte. */
+  async function lireNappes(app, b, n, fuseau, niveaux) {
+    const lats = [], lons = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { lats.push((b[1] + (b[3] - b[1]) * j / (n - 1)).toFixed(3)); lons.push((b[0] + (b[2] - b[0]) * i / (n - 1)).toFixed(3)); }
+    const vars = niveaux.map(v => `wind_speed_${v.cle},wind_direction_${v.cle}`).join(',');
+    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=${vars}&wind_speed_unit=kn&forecast_hours=24&timezone=${encodeURIComponent(fuseau)}`);
+    if (!j) return null;
+    const pts = Array.isArray(j) ? j : [j]; if (pts.length !== n * n || !pts[0].hourly) return null;
+    const heures = pts[0].hourly.time;
+    const couches = niveaux.map(v => {
+      const U = heures.map(() => new Float32Array(n * n)), V = heures.map(() => new Float32Array(n * n));
+      pts.forEach((p, k) => heures.forEach((_, h) => { const sp = p.hourly['wind_speed_' + v.cle][h] || 0, d = (p.hourly['wind_direction_' + v.cle][h] || 0) * RAD; U[h][k] = -sp * Math.sin(d); V[h][k] = -sp * Math.cos(d); }));
+      return { o: b[0], s: b[1], e: b[2], n: b[3], nx: n, heures, U, V, R: U };
+    });
+    return { o: b[0], s: b[1], e: b[2], n: b[3], heures, couches };
+  }
+  function nappes(opts) {
+    opts = opts || {};
+    const F = opts.fuseau || 'Europe/Paris', EX = opts.exageration || 3;
+    const NIV = opts.niveaux || [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '975hPa', alt: 300, nom: 'vers 300 m', coul: '#ffd166' }, { cle: '900hPa', alt: 1000, nom: 'vers 1 000 m', coul: '#ff7b9c' }];
+    let ch = null, h = 0, toile = null, anim = null, tour = 0, vider = null, dpr = 1, M = null;
+    const masques = new Set(), parts = NIV.map(() => []);
+    const couche = { id: 'nappes-vue', type: 'custom', renderingMode: '3d', onAdd() { }, render(gl, args) { const m = args && args.defaultProjectionData && args.defaultProjectionData.mainMatrix; if (m) M = m; } };
+    async function charger(app, c) {
+      const vue = app.emprise(0);
+      const dedans = ch && vue[0] >= ch.o && vue[1] >= ch.s && vue[2] <= ch.e && vue[3] <= ch.n && (ch.e - ch.o) < 5 * (vue[2] - vue[0]);
+      if (!dedans) {
+        const moi = ++tour; app.occupe(true, 'Lecture du vent en altitude…');
+        const neuf = await lireNappes(app, app.emprise(0.45), 6, F, NIV);
+        app.occupe(false); if (moi !== tour || app.active !== q) return;
+        if (!neuf) { if (!ch) c.querySelector('.etat').textContent = 'Le vent en altitude n\'a pas pu être lu. Réessaie dans un moment.'; return; }
+        ch = neuf; h = Math.min(h, ch.heures.length - 1); c.querySelector('.hv').max = ch.heures.length - 1;
+      }
+      dire(app, c);
+    }
+    function dire(app, c) {
+      if (!ch) return; const ct = app.map.getCenter();
+      c.querySelector('.hv').value = h; c.querySelector('.hh').textContent = h === 0 ? 'maintenant' : hhmm(ch.heures[h]);
+      const ws = ch.couches.map(k => vent(k, h, ct.lng, ct.lat));
+      if (ws.some(w => !w)) { c.querySelector('.etat').textContent = 'Déplace la carte : son centre est hors de la zone lue.'; return; }
+      const ecart = Math.abs(((provenance(ws[ws.length - 1]) - provenance(ws[0]) + 540) % 360) - 180);
+      c.querySelector('.etat').innerHTML = `Au centre de la carte, à ${hhmm(ch.heures[h])} : ` + NIV.map((v, i) => `${v.nom}, <span class="fort">${Math.round(force(ws[i]))} nœuds</span> de ${rose(provenance(ws[i]))}`).join(' ; ') + `. ${ecart > 30 ? `Le vent tourne de ${Math.round(ecart)}° entre le sol et la nappe du haut.` : 'Le vent garde à peu près la même direction à toutes les hauteurs.'}`;
+    }
+    function boucle(app) {
+      if (!toile) return; anim = requestAnimationFrame(() => boucle(app));
+      if (!ch || !M) return;
+      const map = app.map, ctx = toile.getContext('2d'), W = toile.width, H = toile.height, bd = map.getBounds();
+      ctx.globalCompositeOperation = 'destination-in'; ctx.fillStyle = 'rgba(0,0,0,0.93)'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+      const o = Math.max(bd.getWest(), ch.o), e = Math.min(bd.getEast(), ch.e), s = Math.max(bd.getSouth(), ch.s), n = Math.min(bd.getNorth(), ch.n);
+      if (e <= o || n <= s) return;
+      const pas = 0.11 * 360 / (512 * Math.pow(2, map.getZoom())), relief = !!map.getTerrain();
+      // Position à l'écran d'un point (longitude, latitude, altitude en mètres), par la matrice de la vue.
+      const ecran = (lon, lat, alt) => {
+        const x = (lon + 180) / 360, y = (1 - Math.log(Math.tan(Math.PI / 4 + lat * RAD / 2)) / Math.PI) / 2, z = alt / (40075016.686 * Math.cos(lat * RAD));
+        const cw = M[3] * x + M[7] * y + M[11] * z + M[15]; if (cw <= 0) return null;
+        return [((M[0] * x + M[4] * y + M[8] * z + M[12]) / cw + 1) / 2 * W, (1 - (M[1] * x + M[5] * y + M[9] * z + M[13]) / cw) / 2 * H];
+      };
+      NIV.forEach((niv, L) => {
+        if (masques.has(niv.cle)) return;
+        ctx.strokeStyle = niv.coul; ctx.globalAlpha = 0.9; ctx.lineWidth = (niv.alt == null ? 1.2 : 1.6) * dpr; ctx.lineCap = 'round'; ctx.beginPath();
+        for (const p of parts[L]) {
+          if (p.age <= 0 || p.lon < o || p.lon > e || p.lat < s || p.lat > n) {
+            p.lon = o + Math.random() * (e - o); p.lat = s + Math.random() * (n - s); p.age = 30 + Math.random() * 70;
+            const sol = relief ? (map.queryTerrainElevation([p.lon, p.lat]) || 0) : 0;
+            p.z = niv.alt == null ? sol : niv.alt * EX; if (niv.alt != null && sol > p.z) p.age = 0;   // le relief dépasse la nappe : pas de vent ici
+            continue;
+          }
+          const w = vent(ch.couches[L], h, p.lon, p.lat); if (!w) { p.age = 0; continue; }
+          const lon2 = p.lon + w[0] * pas, lat2 = p.lat + w[1] * pas * Math.cos(p.lat * RAD), a = ecran(p.lon, p.lat, p.z), b = ecran(lon2, lat2, p.z);
+          if (a && b && Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]) < 80 * dpr) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+          p.lon = lon2; p.lat = lat2; p.age--;
+        }
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+    const q = {
+      theme: opts.theme || 'Vent 3D', libelle: opts.libelle || 'Comment le vent change-t-il avec la hauteur ?',
+      aide: 'Prototype. Trois nappes de traînées, une par hauteur : le vent au sol (à 10 m), puis deux niveaux d\'altitude du modèle météo (Open-Meteo, niveaux de pression, dont la hauteur réelle varie d\'une centaine de mètres selon le temps). Chaque nappe est dessinée à sa hauteur au-dessus de la mer, multipliée par ' + EX + ' pour que l\'œil les sépare ; là où le relief dépasse une nappe, elle s\'interrompt. On y voit par exemple une brise de mer au ras de l\'eau sous un vent d\'altitude différent. La maille du modèle reste de l\'ordre de deux kilomètres : c\'est la structure d\'ensemble qui est juste, pas le détail. Incline la carte pour séparer les nappes.',
+      async ouvrir(app) {
+        const c = app.repondre(q.libelle, `<p class="etat">Lecture du vent en altitude…</p>
+          <div class="ligne"><button class="now">Maintenant</button><input type="range" class="hv" min="0" max="23" value="${h}" style="flex:1;min-width:120px"><span class="fort hh" style="min-width:74px;text-align:right"></span></div>
+          <div class="legende"></div><p class="petit">Touche une hauteur de la légende pour la masquer. Incline la carte (bouton 3D) pour voir les nappes l'une au-dessus de l'autre.</p>`);
+        app.legende(c, NIV.map(v => ({ cle: v.cle, couleur: v.coul, texte: v.nom })), () => { if (toile) toile.getContext('2d').clearRect(0, 0, toile.width, toile.height); }, masques);
+        toile = document.createElement('canvas'); toile.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none'; document.body.append(toile);
+        const caler = () => { dpr = Math.min(2, window.devicePixelRatio || 1); toile.width = Math.round(innerWidth * dpr); toile.height = Math.round(innerHeight * dpr); };
+        caler(); q._caler = caler; addEventListener('resize', caler);
+        vider = () => { if (toile) toile.getContext('2d').clearRect(0, 0, toile.width, toile.height); }; app.map.on('move', vider);
+        if (!app.map.getLayer('nappes-vue')) app.map.addLayer(couche);
+        parts.forEach(l => { l.length = 0; for (let i = 0; i < (opts.particules || 650); i++) l.push({ lon: 0, lat: 0, age: 0, z: 0 }); });
+        c.querySelector('.hv').oninput = e => { h = +e.target.value; dire(app, c); };
+        c.querySelector('.now').onclick = () => { h = 0; dire(app, c); };
+        if (app.map.getPitch() < 30) app.map.easeTo({ pitch: 60, duration: 800 });
+        app.suivre(q, () => charger(app, c)); boucle(app); await charger(app, c);
+      },
+      fermer(app) {
+        tour++; cancelAnimationFrame(anim); anim = null; if (vider) app.map.off('move', vider); removeEventListener('resize', q._caler);
+        if (toile) { toile.remove(); toile = null; } if (app.map.getLayer('nappes-vue')) app.map.removeLayer('nappes-vue'); M = null;
+      }
+    };
+    return q;
+  }
+  S.vent = { theme, nappes, pointVent, allure, rose, beaufort, phrase, lireChamp, vent, CLASSES };
 })();
