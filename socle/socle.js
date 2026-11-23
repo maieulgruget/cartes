@@ -300,6 +300,11 @@
       plan: { type: 'raster', tiles: ['ignplan://{z}/{x}/{y}'], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN © IGN' },
       ombrage: { type: 'raster', tiles: [wmts('IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'LiDAR HD © IGN' },
       geologie: { type: 'raster', tiles: [wmts('BRGM_SCAN_D_GEOL50', 'image/jpeg')], tileSize: 256, maxzoom: 15, attribution: 'Carte géologique © BRGM' },
+      geol250: { type: 'raster', tiles: [wmts('BRGM_SCAN_F_GEOL250', 'image/jpeg')], tileSize: 256, maxzoom: 14, attribution: 'Carte géologique © BRGM' },
+      geol1m: { type: 'raster', tiles: [wmts('BRGM_SCAN_F_GEOL1M', 'image/jpeg')], tileSize: 256, maxzoom: 11, attribution: 'Carte géologique © BRGM' },
+      etatmajor: { type: 'raster', tiles: [wmts('GEOGRAPHICALGRIDSYSTEMS.ETATMAJOR40', 'image/jpeg')], tileSize: 256, minzoom: 6, maxzoom: 15, attribution: 'Carte de l\'état-major © IGN' },
+      cassini: { type: 'raster', tiles: [wmts('BNF-IGNF_GEOGRAPHICALGRIDSYSTEMS.CASSINI', 'image/png')], tileSize: 256, minzoom: 6, maxzoom: 14, attribution: 'Carte de Cassini © BnF, IGN' },
+      carte1950: { type: 'raster', tiles: [wmts('GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN50.1950', 'image/jpeg')], tileSize: 256, minzoom: 3, maxzoom: 15, attribution: 'Carte de 1950 © IGN' },
       bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
       // Relief en tuiles de 512 points à l'écran : quatre fois moins de tuiles à demander qu'en 256, pour un maillage 3D qui n'y perd rien de visible.
       relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
@@ -309,7 +314,13 @@
       { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
       { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
       { id: 'ombrage', type: 'raster', source: 'ombrage', layout: { visibility: 'none' } },
-      { id: 'geologie', type: 'raster', source: 'geologie', layout: { visibility: 'none' } },
+      // Géologie à trois échelles, enchaînées selon le zoom : le million de loin, le 1/250 000, puis le 1/50 000.
+      { id: 'geol1m', type: 'raster', source: 'geol1m', maxzoom: 7.5, layout: { visibility: 'none' } },
+      { id: 'geol250', type: 'raster', source: 'geol250', minzoom: 7.5, maxzoom: 10.5, layout: { visibility: 'none' } },
+      { id: 'geologie', type: 'raster', source: 'geologie', minzoom: 10.5, layout: { visibility: 'none' } },
+      { id: 'etatmajor', type: 'raster', source: 'etatmajor', layout: { visibility: 'none' } },
+      { id: 'cassini', type: 'raster', source: 'cassini', layout: { visibility: 'none' } },
+      { id: 'carte1950', type: 'raster', source: 'carte1950', layout: { visibility: 'none' } },
       { id: 'estompe', type: 'hillshade', source: 'estompe', paint: { 'hillshade-exaggeration': 0.4, 'hillshade-shadow-color': '#2b3545', 'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#55617a' } },
       { id: 'analyses', type: 'background', paint: { 'background-opacity': 0 } });   // repère : les analyses se glissent sous les étiquettes
     /* Noms en double. Le fond porte les noms de l'eau sous deux formes : posés en un point, et couchés le long d'une ligne.
@@ -345,8 +356,8 @@
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', {}, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
-      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { 'aria-label': 'Remettre le nord en haut' }, 'Nord ↑'),
+    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
+      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
       bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
     outils.append(bFond, b3d, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
@@ -356,34 +367,61 @@
     const menu = el('div', { class: 'menu', hidden: '' });
     const bCartes = el('button', { class: 'cartes', 'aria-label': 'Revenir à toutes les cartes', title: 'Toutes les cartes' }, '‹');
     bCartes.onclick = () => { location.href = cfg.racine; };
-    document.body.append(bCartes, bTitre, outils, bas, attente, menu);
+    // Repère de la carte libre : le seul bouton qui reste, avec celui des fonds, quand tout le reste est rangé.
+    const bRepere = el('button', { class: 'repere', 'aria-label': 'Faire revenir les boutons et le panneau', hidden: '' }, '☰');
+    document.body.append(bCartes, bTitre, outils, bas, attente, menu, bRepere);
 
-    // La carte géologique du BRGM (1/50 000) ne couvre que la métropole : une carte peut l'écarter (cfg.geologie = false).
-    const fonds = ['plan', 'gris', 'ortho', 'ombrage'].concat(cfg.geologie === false ? [] : ['geologie']), noms = { gris: 'Gris', plan: 'Plan HD', ortho: 'Photo', ombrage: 'Relief', geologie: 'Géologie' };
+    /* Fonds de carte. Chacun allume un ou plusieurs calques en image ; « estompe » est la force de l'ombrage du relief posé
+       dessus (0 : aucun). La carte géologique et les cartes anciennes ne couvrent que la métropole : une carte peut en
+       écarter (cfg.geologie = false, cfg.fondsExclus = ['etatmajor', …]). */
+    const FONDS = {
+      plan: { nom: 'Plan HD', note: 'Plan IGN HD, drapé sur le relief', calques: ['plan'], estompe: 0 },
+      gris: { nom: 'Gris', note: 'fond sobre, bâtiments en volume de près', calques: [], estompe: 0.4 },
+      ortho: { nom: 'Photo', note: 'photographie aérienne', calques: ['ortho'], estompe: 0.12 },
+      ombrage: { nom: 'Relief', note: 'ombrage du LiDAR HD', calques: ['ombrage'], estompe: 0 },
+      geologie: { nom: 'Géologie', note: 'cartes géologiques du BRGM, trois échelles', calques: ['geol1m', 'geol250', 'geologie'], estompe: 0.25 },
+      carte1950: { nom: 'Carte 1950', note: 'carte topographique des années 1950', calques: ['carte1950'], estompe: 0.12, ancien: true },
+      etatmajor: { nom: 'État-major', note: 'carte de l\'état-major, 1820-1866', calques: ['etatmajor'], estompe: 0.12, ancien: true },
+      cassini: { nom: 'Cassini', note: 'carte de Cassini, XVIIIe siècle', calques: ['cassini'], estompe: 0, ancien: true }
+    };
+    const exclus = (cfg.fondsExclus || []).concat(cfg.geologie === false ? ['geologie'] : []);
+    const fonds = Object.keys(FONDS).filter(f => !exclus.includes(f)), IMAGES = [...new Set(Object.values(FONDS).flatMap(f => f.calques))];
     let fond = 'gris';
     const surFond = [];   // fonctions prévenues à chaque changement de fond
     function mettreFond(f) {
-      fond = f; bFond.textContent = noms[f];
+      if (!FONDS[f]) f = 'plan';
+      fond = f; bFond.textContent = FONDS[f].nom;
       if ((f === 'gris') !== grisAllume) { grisAllume = f === 'gris'; for (const id of dessinGris) map.setLayoutProperty(id, 'visibility', grisAllume ? 'visible' : 'none'); }
-      map.setLayoutProperty('ortho', 'visibility', f === 'ortho' ? 'visible' : 'none');
-      map.setLayoutProperty('plan', 'visibility', f === 'plan' ? 'visible' : 'none');
-      map.setLayoutProperty('ombrage', 'visibility', f === 'ombrage' ? 'visible' : 'none');
-      map.setLayoutProperty('geologie', 'visibility', f === 'geologie' ? 'visible' : 'none');
-      // L'estompage ne se superpose qu'au fond gris et à la photo. Ailleurs il est retiré pour de bon : réglé à zéro,
-      // il laissait encore un voile clair par tuiles entières (bandes pâles à bords droits sur le Plan et le Relief).
-      map.setLayoutProperty('estompe', 'visibility', f === 'gris' || f === 'ortho' || f === 'geologie' ? 'visible' : 'none');
-      map.setPaintProperty('estompe', 'hillshade-exaggeration', f === 'gris' ? 0.4 : f === 'geologie' ? 0.25 : 0.12);
+      for (const id of IMAGES) map.setLayoutProperty(id, 'visibility', FONDS[f].calques.includes(id) ? 'visible' : 'none');
+      // L'ombrage du relief est retiré pour de bon là où il n'a rien à faire : réglé à zéro, il laissait encore un voile
+      // clair par tuiles entières (bandes pâles à bords droits sur le Plan et le Relief).
+      map.setLayoutProperty('estompe', 'visibility', FONDS[f].estompe ? 'visible' : 'none');
+      if (FONDS[f].estompe) map.setPaintProperty('estompe', 'hillshade-exaggeration', FONDS[f].estompe);
       for (const fn of surFond) { try { fn(f); } catch (e) { console.error(e); } }
       majBatiments();
     }
-    bFond.onclick = () => mettreFond(fonds[(fonds.indexOf(fond) + 1) % fonds.length]);
+    // Le bouton des fonds ouvre une courte liste : un toucher choisit, un toucher ailleurs referme.
+    const listeFonds = el('div', { class: 'listefonds', hidden: '' });
+    document.body.append(listeFonds);
+    function ouvrirFonds() {
+      const ligne = f => `<button data-f="${f}" aria-pressed="${f === fond}">${FONDS[f].nom}<small>${FONDS[f].note}</small></button>`;
+      const anciens = fonds.filter(f => FONDS[f].ancien);
+      listeFonds.innerHTML = fonds.filter(f => !FONDS[f].ancien).map(ligne).join('') + (anciens.length ? '<p>Cartes anciennes</p>' + anciens.map(ligne).join('') : '');
+      listeFonds.hidden = false;
+    }
+    listeFonds.onclick = e => { const b = e.target.closest('button[data-f]'); if (b) { mettreFond(b.dataset.f); listeFonds.hidden = true; } };
+    bFond.onclick = e => { e.stopPropagation(); if (listeFonds.hidden) ouvrirFonds(); else listeFonds.hidden = true; };
+    document.addEventListener('click', e => { if (!listeFonds.hidden && !listeFonds.contains(e.target)) listeFonds.hidden = true; });
     b3d.onclick = () => mettre3d(!relief3d);
     bNord.onclick = () => map.easeTo({ bearing: 0, duration: 600 });
+    // La boussole tourne avec la carte : sa pointe rouge reste tournée vers le nord.
+    const tournerBoussole = () => { const b = map.getBearing(); bNord.querySelector('svg').style.transform = `rotate(${-b}deg)`; bNord.classList.toggle('tournee', Math.abs(b) > 1); };
+    map.on('rotate', tournerBoussole); tournerBoussole();
 
     const app = {
       map, cfg, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, propre, versGeo, versMerc, distKm,
       get fond() { return fond; }, mettreFond, mettre3d, surFond, altitudeMonde,
-      get relief3d() { return relief3d; },
+      get relief3d() { return relief3d; }, libre,
       occupe(oui, texte) { attente.textContent = texte || 'Calcul…'; attente.hidden = !oui; },
       // Emprise de la vue courante, élargie d'une marge (fraction), bornée pour rester raisonnable en vue inclinée.
       emprise(marge) {
@@ -401,19 +439,26 @@
         else { map.addSource(id, { type: 'image', url, coordinates: coins }); map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacite == null ? 1 : opacite, 'raster-fade-duration': 0, 'raster-resampling': net ? 'nearest' : 'linear' } }, 'analyses'); }
       },
       retirer(...ids) { for (const id of ids) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); } },
+      /* Le panneau d'un thème a deux tailles. Ouvert : la réponse, ses réglages, sa légende. Réduit : son titre et sa
+         phrase de réponse, sur deux lignes au plus, pour laisser la carte grande ; la légende s'y affiche à la demande.
+         On passe de l'une à l'autre en touchant le titre ou le chevron ; la taille choisie est gardée d'un thème à l'autre.
+         « Calque » retire un instant de la carte ce que le thème y a posé ; la croix ferme le thème. */
       repondre(titre, html) {
-        reponse.hidden = false; reponse.classList.remove('replie'); masque = false;
-        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="oeil" aria-pressed="false">Masquer</button><button class="x" aria-label="Fermer">×</button></h2><div class="corps">${html}</div>`;
+        reponse.hidden = false; masque = false;
+        reponse.classList.toggle('replie', garde.lire('cartes.panneau', '') === 'reduit'); reponse.classList.remove('aveclegende');
+        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button><button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
         reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
-        // Masquer : retire un instant ce que le thème a posé sur la carte, pour voir le fond et le relief dessous.
-        reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.textContent = masque ? 'Montrer' : 'Masquer'; e.target.setAttribute('aria-pressed', masque); appliquerMasque(); };
+        reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.setAttribute('aria-pressed', !masque); appliquerMasque(); };
         // Les explications (ce qui est calculé, comment, avec quelle fiabilité) se rangent sous un seul intitulé.
         const corps = reponse.querySelector('.corps'), notes = [...corps.querySelectorAll(':scope > p.petit')], q = app.active;
         if (notes.length || (q && q.aide)) {
           const det = el('details', { class: 'aide' }, '<summary>Ce que montre la carte</summary>' + (q && q.aide ? `<p>${q.aide}</p>` : ''));
           notes.forEach(p => det.append(p)); corps.append(det);
         }
-        reponse.querySelector('h2 span').onclick = () => reponse.classList.toggle('replie');
+        const plier = () => { const r = reponse.classList.toggle('replie'); garde.ecrire('cartes.panneau', r ? 'reduit' : 'ouvert'); if (!r) { reponse.classList.remove('aveclegende'); reponse.querySelector('h2 .leg').setAttribute('aria-pressed', 'false'); } };
+        reponse.querySelector('h2 span').onclick = plier; reponse.querySelector('h2 .pli').onclick = plier;
+        reponse.querySelector('h2 .leg').onclick = e => { e.target.setAttribute('aria-pressed', reponse.classList.toggle('aveclegende')); };
+        reponse.classList.toggle('sanslegende', !corps.querySelector('.legende'));
         return reponse.querySelector('.corps');
       },
       /* Légende interactive : chaque niveau se masque ou se rétablit d'un toucher. items = [{ cle, couleur, texte }].
@@ -480,7 +525,29 @@
     let masque = false, bulleCarte = null;
     function appliquerMasque() { for (const l of map.getStyle().layers) if (!couchesFond.has(l.id)) map.setLayoutProperty(l.id, 'visibility', masque ? 'none' : 'visible'); }
     map.on('sourcedata', () => { if (masque) appliquerMasque(); });
-    map.on('click', e => { if (app.active && app.active.toucher) app.active.toucher(app, e.lngLat); });
+    let avale = 0;   // un appui long ne compte pas comme un toucher de la carte
+    map.on('click', e => { if (Date.now() < avale) return; if (app.active && app.active.toucher) app.active.toucher(app, e.lngLat); });
+
+    /* Carte libre : un appui long sur la carte range le titre, les boutons et le panneau, pour ne garder que la carte,
+       le bouton des fonds et un petit repère ; un nouvel appui long, ou un toucher du repère, fait tout revenir. */
+    function libre(oui) {
+      document.body.classList.toggle('libre', oui); bRepere.hidden = !oui; listeFonds.hidden = true;
+      if (oui && !garde.lire('cartes.librevu', false)) { garde.ecrire('cartes.librevu', true); app.occupe(true, 'Carte libre : appui long, ou ☰, pour retrouver les boutons'); setTimeout(() => app.occupe(false), 3200); }
+    }
+    bRepere.onclick = () => libre(false);
+    {
+      const zone = map.getCanvasContainer(); let minuterie = null, depart = null;
+      const annuler = () => { clearTimeout(minuterie); minuterie = null; };
+      const debut = (x, y, doigts) => { annuler(); if (doigts > 1) return; depart = [x, y]; minuterie = setTimeout(() => { minuterie = null; avale = Date.now() + 900; libre(!document.body.classList.contains('libre')); }, 650); };
+      const bouge = (x, y) => { if (minuterie && Math.hypot(x - depart[0], y - depart[1]) > 9) annuler(); };
+      zone.addEventListener('touchstart', e => debut(e.touches[0].clientX, e.touches[0].clientY, e.touches.length), { passive: true });
+      zone.addEventListener('touchmove', e => bouge(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+      zone.addEventListener('touchend', annuler); zone.addEventListener('touchcancel', annuler);
+      zone.addEventListener('mousedown', e => { if (e.button === 0) debut(e.clientX, e.clientY, 1); });
+      zone.addEventListener('mousemove', e => bouge(e.clientX, e.clientY)); zone.addEventListener('mouseup', annuler);
+      zone.addEventListener('contextmenu', e => e.preventDefault());
+      map.on('movestart', annuler);
+    }
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
     const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['voile', 'Voile', 'de Cerbère à Menton, et la Corse']];
@@ -512,6 +579,7 @@
       menu.innerHTML = `<div><h3>Lieux</h3><ul class="lieux"></ul>
         <h3>Garder la vue actuelle</h3><div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue" maxlength="40"><button class="garder">Garder</button></div>
         <h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go">Chercher</button></div><ul class="res"></ul>
+        <h3>Carte libre</h3><p style="margin:0"><button class="libre">Ne garder que la carte</button></p><p class="sources" style="margin:4px 0 0">Range le titre, les boutons et le panneau ; le choix du fond reste. Un appui long sur la carte fait la même chose, et les fait revenir.</p>
         <h3>Relief</h3><p style="margin:0"><button class="exag" aria-pressed="${exag > exag0}">Relief accentué (hauteurs × 1,8)</button></p><p class="sources" style="margin:4px 0 0">Par défaut, le relief est à l'échelle réelle. De loin il paraît plat : l'accentuer aide à le lire, mais fausse les pentes.</p>
         <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, et avec quelle fiabilité</button></p>
         <h3>Autres cartes</h3><ul class="autres">${AUTRES.filter(a => a[0] !== cfg.id).map(a => `<li><button data-u="${cfg.racine}${a[0]}/">${a[1]}<small>${a[2]}</small></button></li>`).join('')}<li><button data-u="${cfg.racine}">Toutes les cartes<small>page d'accueil</small></button></li></ul>
@@ -525,6 +593,7 @@
         li.append(b); ul.append(li);
       });
       menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
+      menu.querySelector('.libre').onclick = () => { menu.hidden = true; libre(true); };
       menu.querySelector('.exag').onclick = e => {
         exag = exag > exag0 ? exag0 : exag0 * 1.8; e.target.setAttribute('aria-pressed', exag > exag0);
         if (!relief3d) mettre3d(true); else map.setTerrain({ source: 'relief', exaggeration: exag });
