@@ -157,8 +157,55 @@
     const blob = await new Promise(res => c.toBlob(res, 'image/png'));
     return blob.arrayBuffer();
   }
+  /* Plan IGN HD avec repli : le Plan HD ne couvre pas encore tout le territoire (centre de la Bretagne, mer).
+     Là où il n'a rien, sa tuile manque, ou revient blanche en tout ou partie. On regarde donc la tuile par carrés de
+     16 pixels : les carrés entièrement blancs sont repris du Plan IGN classique, et à défaut peints en bleu mer. */
+  const MER_PLAN = '#aadaf5';
+  async function imageDe(url) { try { const r = await fetch(url); return r.ok ? await createImageBitmap(await r.blob()) : null; } catch (e) { return null; } }
+  async function tuilePlan(z, x, y) {
+    let brut = null, hd = null;
+    try { const r = await fetch(`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/${z}/${x}/${y}.jpeg`); if (r.ok) { brut = await r.arrayBuffer(); if (brut.byteLength > 2500) hd = await createImageBitmap(new Blob([brut], { type: 'image/jpeg' })); } } catch (e) { hd = null; }
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const ctx = c.getContext('2d', { willReadFrequently: true }), vides = [];
+    if (hd) {
+      ctx.drawImage(hd, 0, 0, 256, 256);
+      const d = ctx.getImageData(0, 0, 256, 256).data;
+      for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
+        let blanc = true;
+        for (let yy = by * 16; yy < by * 16 + 16 && blanc; yy += 3) for (let xx = bx * 16; xx < bx * 16 + 16; xx += 3) { const k = 4 * (yy * 256 + xx); if (d[k] < 250 || d[k + 1] < 250 || d[k + 2] < 250) { blanc = false; break; } }
+        if (blanc) vides.push([bx * 16, by * 16]);
+      }
+      if (!vides.length) return brut;
+    }
+    const v2 = await imageDe(wmts('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png').replace('{z}', z).replace('{y}', y).replace('{x}', x));
+    if (!hd) { if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); } }
+    else {
+      // Fond de repli sur toute la tuile, puis le Plan HD par-dessus, sauf ses blancs : carrés vides en entier,
+      // et pixel par pixel dans les carrés voisins d'un vide (la lisière de la couverture).
+      const hdPx = ctx.getImageData(0, 0, 256, 256), d = hdPx.data, vide = new Uint8Array(256);
+      for (const [bx, by] of vides) vide[(by / 16) * 16 + bx / 16] = 1;
+      if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); }
+      const fond = ctx.getImageData(0, 0, 256, 256).data;
+      for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
+        let lisiere = false;
+        for (let dy = -1; dy <= 1 && !lisiere; dy++) for (let dx = -1; dx <= 1; dx++) { const yy = by + dy, xx = bx + dx; if (yy >= 0 && xx >= 0 && yy < 16 && xx < 16 && vide[yy * 16 + xx]) { lisiere = true; break; } }
+        if (!vide[by * 16 + bx] && !lisiere) continue;
+        for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) {
+          const k = 4 * (yy * 256 + xx);
+          if (vide[by * 16 + bx] || (d[k] >= 244 && d[k + 1] >= 244 && d[k + 2] >= 244)) { d[k] = fond[k]; d[k + 1] = fond[k + 1]; d[k + 2] = fond[k + 2]; }
+        }
+      }
+      ctx.putImageData(hdPx, 0, 0);
+    }
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
+    return blob.arrayBuffer();
+  }
   function brancherRelief() {
     if (brancherRelief.fait) return; brancherRelief.fait = true;
+    maplibregl.addProtocol('ignplan', async (params) => {
+      const [z, x, y] = params.url.replace('ignplan://', '').split('/').map(Number);
+      return { data: await tuilePlan(z, x, y) };
+    });
     maplibregl.addProtocol('ignalti', async (params) => {
       const cle = params.url;
       if (!cacheTuiles.has(cle)) {
@@ -190,7 +237,7 @@
     const premierTexte = style.layers.findIndex(l => l.type === 'symbol');
     Object.assign(style.sources, {
       ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
-      plan: { type: 'raster', tiles: [`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/{z}/{x}/{y}.jpeg`], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN HD © IGN' },
+      plan: { type: 'raster', tiles: ['ignplan://{z}/{x}/{y}'], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN © IGN' },
       ombrage: { type: 'raster', tiles: [wmts('IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'LiDAR HD © IGN' },
       bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
       relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
