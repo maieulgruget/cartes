@@ -136,8 +136,16 @@
     ctx.drawImage(bmp, (x % f) * 256 / f, (y % f) * 256 / f, 256 / f, 256 / f, 0, 0, 256, 256);
     return ctx.getImageData(0, 0, 256, 256).data;
   }
+  let tuilePlate = null;
   async function tuileRelief(z, x, y) {
     const t = 2 * R / (1 << z), x0 = -R + x * t, y1 = R - y * t;
+    // En pleine mer (le relief mondial est partout sous -3 m), il n'y a ni LiDAR à demander ni relief à montrer :
+    // une tuile plate, faite une fois, évite deux requêtes par tuile.
+    const lim = await bornesAlti(z, x, y);
+    if (lim && lim.max < -3) {
+      if (!tuilePlate) { const c0 = document.createElement('canvas'); c0.width = c0.height = 256; const g = c0.getContext('2d'); g.fillStyle = 'rgb(128,0,0)'; g.fillRect(0, 0, 256, 256); tuilePlate = new Promise(res => c0.toBlob(res, 'image/png')).then(b => b.arrayBuffer()); }
+      return (await tuilePlate).slice(0);
+    }
     let alt = null;
     try { alt = await lireBil(MNT, x0, y1 - t, x0 + t, y1, 256, 256); } catch (e) { alt = null; }
     const c = document.createElement('canvas'); c.width = c.height = 256;
@@ -186,6 +194,15 @@
     const a = await altiMonde(10, Math.floor(fx), Math.floor(fy)); if (!a) return NaN;
     return a[Math.min(255, Math.floor((fy % 1) * 256)) * 256 + Math.min(255, Math.floor((fx % 1) * 256))];
   }
+  // Altitudes extrêmes du relief mondial sur une tuile (z, x, y), d'après sa tuile parente : un tri rapide entre la
+  // pleine mer, l'intérieur des terres et la côte, sans rien demander de plus que cette tuile parente, gardée en mémoire.
+  async function bornesAlti(z, x, y) {
+    const zz = Math.min(z, 10), f = 1 << (z - zz), a = await altiMonde(zz, Math.floor(x / f), Math.floor(y / f)); if (!a) return null;
+    const i0 = Math.max(0, Math.floor((x % f) * 256 / f) - 1), i1 = Math.min(255, Math.ceil(((x % f) + 1) * 256 / f)), j0 = Math.max(0, Math.floor((y % f) * 256 / f) - 1), j1 = Math.min(255, Math.ceil(((y % f) + 1) * 256 / f));
+    let min = Infinity, max = -Infinity;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const v = a[j * 256 + i]; if (v < min) min = v; if (v > max) max = v; }
+    return { min, max };
+  }
   // Masque de mer d'une tuile (z, x, y) : 1 là où le relief mondial est sous -2 m, interpolé depuis sa tuile parente.
   async function masqueMer(z, x, y) {
     const zz = Math.min(z, 10), f = 1 << (z - zz), a = await altiMonde(zz, Math.floor(x / f), Math.floor(y / f));
@@ -204,6 +221,9 @@
     const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 256, 256);
     let brut = null;
     try { const r = await fetch(`${GEOPF}/tms/1.0.0/IGNF_PLAN-IGN-HD/${z}/${x}/${y}.jpeg`); if (r.ok) brut = await r.arrayBuffer(); } catch (e) { /* tuile absente : blanc */ }
+    // Loin de la mer (tout est au-dessus de 4 m), il n'y a rien à repeindre : la tuile part sans être décodée.
+    const lim = await bornesAlti(z, x, y);
+    if (brut && lim && lim.min > 4) return brut;
     if (brut) { try { ctx.drawImage(await createImageBitmap(new Blob([brut], { type: 'image/jpeg' })), 0, 0); } catch (e) { return brut; } }
     const im = ctx.getImageData(0, 0, 256, 256), d = im.data;
     // Le plan a deux bleus de mer (un clair par endroits près des côtes) : le clair est ramené au bleu courant, sinon la mer
@@ -213,7 +233,7 @@
     if (blancs < 90 && clairs < 90 && brut) return brut;
     let m = await masqueMer(z, x, y);
     // Un module (les fonds marins) peut donner un trait de côte bien plus fin que le relief mondial : 1 mer, 0 terre, 2 inconnu.
-    if (planMer.fin) { try { const f = await planMer.fin(z, x, y); if (f) { const g = new Uint8Array(65536); for (let k = 0; k < 65536; k++) g[k] = f[k] === 2 ? (m ? m[k] : 0) : f[k]; m = g; } } catch (e) { /* on garde le masque grossier */ } }
+    if (planMer.fin && !(lim && lim.max < -20)) { try { const f = await planMer.fin(z, x, y); if (f) { const g = new Uint8Array(65536); for (let k = 0; k < 65536; k++) g[k] = f[k] === 2 ? (m ? m[k] : 0) : f[k]; m = g; } } catch (e) { /* on garde le masque grossier */ } }
     if (!m) return brut || (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer();
     /* Seules les grandes plages blanches sont repeintes : un nom écrit en blanc sur la mer doit rester lisible. Un point
        est au cœur d'une plage si tout son voisinage (5 × 5) est blanc ; la plage est ensuite élargie de cinq
@@ -265,6 +285,13 @@
   async function creer(cfg) {
     brancherRelief();
     const style = await (await fetch(cfg.racine + 'socle/style-gris.json')).json();
+    /* Sous un fond en image (Plan IGN, photo, relief, géologie), le dessin du fond gris ne se voit pas : ses centaines
+       de calques de surfaces et de lignes sont éteints, pour ne garder que ses noms. Ils sont rallumés sur le fond gris.
+       C'est le premier poste d'économie : le téléphone ne prépare plus un dessin que personne ne voit. */
+    const fondInitial = cfg.fond || 'plan';
+    const dessinGris = style.layers.filter(l => l.type !== 'symbol' && l.type !== 'background' && !(l.layout && l.layout.visibility === 'none')).map(l => l.id);
+    if (fondInitial !== 'gris') for (const l of style.layers) if (dessinGris.includes(l.id)) l.layout = Object.assign({}, l.layout, { visibility: 'none' });
+    let grisAllume = fondInitial === 'gris';
     // Les étiquettes passent toutes au-dessus : les analyses se glissent entre les surfaces et les noms.
     style.layers = [...style.layers.filter(l => l.type !== 'symbol'), ...style.layers.filter(l => l.type === 'symbol')];
     const premierTexte = style.layers.findIndex(l => l.type === 'symbol');
@@ -274,8 +301,9 @@
       ombrage: { type: 'raster', tiles: [wmts('IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'LiDAR HD © IGN' },
       geologie: { type: 'raster', tiles: [wmts('BRGM_SCAN_D_GEOL50', 'image/jpeg')], tileSize: 256, maxzoom: 15, attribution: 'Carte géologique © BRGM' },
       bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
-      relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
-      estompe: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 256, maxzoom: 15, encoding: 'terrarium' }
+      // Relief en tuiles de 512 points à l'écran : quatre fois moins de tuiles à demander qu'en 256, pour un maillage 3D qui n'y perd rien de visible.
+      relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
+      estompe: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium' }
     });
     style.layers.splice(premierTexte, 0,
       { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
@@ -302,7 +330,8 @@
     document.body.append(el('div', { id: 'carte' }));
     const map = new maplibregl.Map({
       container: 'carte', style, center: cfg.centre, zoom: cfg.zoom, pitch: cfg.pitch || 0, bearing: cfg.bearing || 0,
-      maxPitch: 78, maxBounds: cfg.limites || undefined, attributionControl: false, hash: true
+      maxPitch: 78, maxBounds: cfg.limites || undefined, attributionControl: false, hash: true,
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2)   // un téléphone à trois points par pixel dessinerait plus du double de points pour un gain peu visible
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     map.touchZoomRotate.enableRotation(); map.touchPitch.enable();
@@ -335,6 +364,7 @@
     const surFond = [];   // fonctions prévenues à chaque changement de fond
     function mettreFond(f) {
       fond = f; bFond.textContent = noms[f];
+      if ((f === 'gris') !== grisAllume) { grisAllume = f === 'gris'; for (const id of dessinGris) map.setLayoutProperty(id, 'visibility', grisAllume ? 'visible' : 'none'); }
       map.setLayoutProperty('ortho', 'visibility', f === 'ortho' ? 'visible' : 'none');
       map.setLayoutProperty('plan', 'visibility', f === 'plan' ? 'visible' : 'none');
       map.setLayoutProperty('ombrage', 'visibility', f === 'ombrage' ? 'visible' : 'none');

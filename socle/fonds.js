@@ -202,7 +202,7 @@
   /* Trait de côte fin pour le Plan IGN (voir tuilePlan dans le socle) : 1 là où le modèle du Shom donne de l'eau,
      0 là où il donne de la terre, 2 là où il ne dit rien. Les tuiles sans donnée ne sont demandées qu'une fois. */
   const cacheCote = new Map();
-  window.Socle.planMer.fin = (z, x, y) => {
+  function coteTuile(z, x, y) {
     const cle = z + '/' + x + '/' + y;
     if (!cacheCote.has(cle)) {
       cacheCote.set(cle, (async () => {
@@ -216,9 +216,18 @@
         }
         return m;
       })().catch(() => null));
-      if (cacheCote.size > 300) cacheCote.delete(cacheCote.keys().next().value);
+      if (cacheCote.size > 200) cacheCote.delete(cacheCote.keys().next().value);
     }
     return cacheCote.get(cle);
+  }
+  // Le modèle a une maille de 100 m : le demander au-delà du zoom 11 n'apporte rien. De plus près, le masque d'une tuile
+  // est découpé dans celui de sa tuile parente du zoom 11, demandée une seule fois pour toutes ses tuiles filles.
+  window.Socle.planMer.fin = async (z, x, y) => {
+    const zz = Math.min(z, 11), f = 1 << (z - zz), parent = await coteTuile(zz, Math.floor(x / f), Math.floor(y / f));
+    if (!parent || f === 1) return parent;
+    const m = new Uint8Array(65536), ox = (x % f) * 256 / f, oy = (y % f) * 256 / f;
+    for (let j = 0; j < 256; j++) { const sj = Math.min(255, Math.floor(oy + j / f)) * 256; for (let i = 0; i < 256; i++) m[j * 256 + i] = parent[sj + Math.min(255, Math.floor(ox + i / f))]; }
+    return m;
   };
 
   window.Socle.fonds = { lire, grille, profondeur, profil, isobathes, niveauxPour, teinte, css, theme, brancher, get tirant() { try { return +(localStorage.getItem('cartes.fonds.tirant') || 0) || 0; } catch (e) { return 0; } } };
