@@ -43,7 +43,7 @@
       { nom: 'Côte Bleue', note: 'Niolon, Carry, Sausset', centre: [5.1800, 43.3250], zoom: 11.8, pitch: 45, bearing: 0 },
       { nom: 'Île du Planier', note: 'le phare du large', centre: [5.2299, 43.1987], zoom: 13.5, pitch: 45, bearing: 30 }
     ],
-    sources: 'Vent : prévision Open-Meteo (modèles de Météo-France), à 10 m de hauteur. Vagues, houle et température de l\'eau : modèle de vagues d\'Open-Meteo, dont la maille est de plusieurs kilomètres. Positions des ports, îles et caps : IGN. Plan et photo aérienne : IGN. Cette carte aide à préparer une sortie ; elle ne remplace ni le bulletin côtier de Météo-France, ni la carte marine du Shom, et ne montre ni les sondes, ni les dangers, ni le balisage.'
+    sources: 'Vent : prévision Open-Meteo (modèles de Météo-France), à 10 m de hauteur. Vagues, houle et température de l\'eau : modèle de vagues d\'Open-Meteo, dont la maille est de plusieurs kilomètres. Positions des ports, îles et caps : IGN. Balises, feux, roches et épaves : contributeurs d\'OpenStreetMap, relevé incomplet. Plan et photo aérienne : IGN. Cette carte aide à préparer une sortie ; elle ne remplace ni le bulletin côtier de Météo-France, ni la carte marine du Shom, et ne montre ni les sondes, ni les dangers, ni le balisage.'
   });
 
   // ---------- Lieux : ports et abris, îles, caps (positions de l'IGN) ----------
@@ -64,14 +64,81 @@
   // Indice de l'heure courante dans une série horaire (heures locales).
   const maintenant = heures => { const t = new Date().toLocaleString('sv-SE', { timeZone: F }).slice(0, 13).replace(' ', 'T'); const i = heures.findIndex(x => x.slice(0, 13) >= t); return i < 0 ? 0 : i; };
 
+  // Un pictogramme par type de lieu, dessiné une fois : il sert à la carte et aux légendes.
+  const TEINTES = { port: '#1a2e4a', calanque: '#2a9d8f', 'île': '#b8963e', cap: '#7a8597' };
+  function picto(type) {
+    const c = document.createElement('canvas'); c.width = c.height = 56; const x = c.getContext('2d');
+    x.beginPath(); x.arc(28, 28, 24, 0, 7); x.fillStyle = TEINTES[type]; x.fill(); x.lineWidth = 3; x.strokeStyle = '#fff'; x.stroke();
+    x.fillStyle = '#fff'; x.lineWidth = 3.5; x.lineCap = 'round'; x.lineJoin = 'round';
+    if (type === 'port') {   // une ancre
+      x.beginPath(); x.arc(28, 15, 4, 0, 7); x.stroke();
+      x.beginPath(); x.moveTo(28, 19); x.lineTo(28, 42); x.moveTo(20, 25); x.lineTo(36, 25); x.stroke();
+      x.beginPath(); x.arc(28, 30, 12, 0.12 * Math.PI, 0.88 * Math.PI); x.stroke();
+    } else if (type === 'calanque') {   // une anse
+      x.beginPath(); x.moveTo(17, 14); x.bezierCurveTo(17, 46, 39, 46, 39, 14); x.stroke();
+    } else if (type === 'île') {   // une terre sur l'eau
+      x.beginPath(); x.moveTo(13, 33); x.quadraticCurveTo(28, 8, 43, 33); x.closePath(); x.fill();
+      x.beginPath(); x.moveTo(13, 41); x.lineTo(43, 41); x.stroke();
+    } else { x.beginPath(); x.moveTo(15, 17); x.lineTo(43, 28); x.lineTo(15, 39); x.closePath(); x.fill(); }   // une pointe
+    return c;
+  }
+  const PICTOS = {}; for (const t in TEINTES) PICTOS[t] = picto(t);
+  const legendeLieux = `<div class="legende">${Object.keys(TEINTES).map(t => `<span><img src="${PICTOS[t].toDataURL()}" alt="" style="width:16px;height:16px;vertical-align:-3px;margin-right:4px">${t}</span>`).join('')}</div>`;
   function poserLieux() {
     if (app.map.getSource('lieux')) return;
+    for (const t in PICTOS) if (!app.map.hasImage('lieu-' + t)) app.map.addImage('lieu-' + t, PICTOS[t].getContext('2d').getImageData(0, 0, 56, 56), { pixelRatio: 2 });
     app.map.addSource('lieux', { type: 'geojson', data: { type: 'FeatureCollection', features: LIEUX.map(l => ({ type: 'Feature', properties: { nom: l.nom, type: l.type }, geometry: { type: 'Point', coordinates: [l.lon, l.lat] } })) } });
-    app.map.addLayer({ id: 'lieux-halo', type: 'circle', source: 'lieux', paint: { 'circle-radius': 9, 'circle-color': '#ffffff', 'circle-opacity': 0.85 } });
-    app.map.addLayer({ id: 'lieux', type: 'circle', source: 'lieux', paint: { 'circle-radius': 5.5, 'circle-color': ['match', ['get', 'type'], 'port', '#1a2e4a', 'calanque', '#2a9d8f', 'île', '#b8963e', '#7a8597'], 'circle-stroke-color': '#b8963e', 'circle-stroke-width': 1.5 } });
-    app.map.addLayer({ id: 'lieux-nom', type: 'symbol', source: 'lieux', layout: { 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+    app.map.addLayer({ id: 'lieux', type: 'symbol', source: 'lieux', layout: { 'icon-image': ['concat', 'lieu-', ['get', 'type']], 'icon-size': 0.85, 'icon-allow-overlap': true, 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
   }
-  const oterLieux = () => { app.retirer('lieux-nom', 'lieux', 'lieux-halo'); };
+  const oterLieux = () => { };   // les lieux restent affichés sur toute la carte
+  poserLieux();
+
+  // ---------- Balises, feux et dangers (OpenStreetMap, lus à la demande) ----------
+  const GENRES = {
+    babord: ['marque latérale bâbord', '#d62828', '#ffffff', ''], tribord: ['marque latérale tribord', '#2a9d55', '#ffffff', ''],
+    nord: ['cardinale nord', '#f2c80f', '#111111', 'N'], sud: ['cardinale sud', '#f2c80f', '#111111', 'S'], est: ['cardinale est', '#f2c80f', '#111111', 'E'], ouest: ['cardinale ouest', '#f2c80f', '#111111', 'O'],
+    isole: ['danger isolé', '#111111', '#d62828', ''], saines: ['eaux saines', '#ffffff', '#d62828', ''], speciale: ['marque spéciale', '#f2c80f', '#8a6d00', ''],
+    feu: ['feu', '#fff3b0', '#b8963e', ''], roche: ['roche', '#e4572e', '#ffffff', 'R'], epave: ['épave ou obstruction', '#e4572e', '#ffffff', 'É']
+  };
+  const DANGERS = new Set(['roche', 'epave', 'isole']);
+  const balises = { bornes: null, liste: [], etat: '' };
+  function genre(t) {
+    const ty = t['seamark:type'] || '';
+    if (/lateral/.test(ty)) { const c = t['seamark:buoy_lateral:category'] || t['seamark:beacon_lateral:category'] || ''; return /starboard/.test(c) ? 'tribord' : /port/.test(c) ? 'babord' : null; }
+    if (/cardinal/.test(ty)) { const c = t['seamark:buoy_cardinal:category'] || t['seamark:beacon_cardinal:category'] || ''; return { north: 'nord', south: 'sud', east: 'est', west: 'ouest' }[c] || null; }
+    if (/isolated_danger/.test(ty)) return 'isole'; if (/safe_water/.test(ty)) return 'saines'; if (/special_purpose/.test(ty)) return 'speciale';
+    if (/^light/.test(ty) || (ty === 'landmark' && t['seamark:light:character'])) return 'feu';
+    if (ty === 'rock') return 'roche'; if (ty === 'wreck' || ty === 'obstruction') return 'epave';
+    return null;
+  }
+  // Lit les balises de l'emprise b = [ouest, sud, est, nord] si elle n'est pas déjà couverte. Renvoie faux en cas d'échec.
+  async function lireBalises(b) {
+    const k = balises.bornes; if (k && b[0] >= k[0] && b[1] >= k[1] && b[2] <= k[2] && b[3] <= k[3]) return true;
+    const mx = (b[2] - b[0]) * 0.3, my = (b[3] - b[1]) * 0.3, e = [b[0] - mx, b[1] - my, b[2] + mx, b[3] + my], bb = `(${e[1].toFixed(4)},${e[0].toFixed(4)},${e[3].toFixed(4)},${e[2].toFixed(4)})`;
+    const q = `[out:json][timeout:25];(node["seamark:type"]${bb};way["seamark:type"~"rock|wreck|obstruction"]${bb};);out center 1500;`;
+    try {
+      const r = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q)); if (!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      balises.liste = (j.elements || []).map(el => { const t = el.tags || {}, g = genre(t), lon = el.lon != null ? el.lon : el.center && el.center.lon, lat = el.lat != null ? el.lat : el.center && el.center.lat; if (!g || lon == null) return null;
+        const feu = t['seamark:light:character'] ? [t['seamark:light:character'], t['seamark:light:colour'], t['seamark:light:period'] ? t['seamark:light:period'] + ' s' : '', t['seamark:light:range'] ? t['seamark:light:range'] + ' milles' : ''].filter(Boolean).join(' · ') : '';
+        return { g, lon, lat, nom: t['seamark:name'] || t.name || '', feu }; }).filter(Boolean);
+      balises.bornes = e; return true;
+    } catch (err) { return false; }
+  }
+  function dessinerBalises() {
+    const fc = { type: 'FeatureCollection', features: balises.liste.map((x, i) => ({ type: 'Feature', properties: { i, g: x.g, fond: GENRES[x.g][1], bord: GENRES[x.g][2], lettre: GENRES[x.g][3] }, geometry: { type: 'Point', coordinates: [x.lon, x.lat] } })) };
+    if (app.map.getSource('balises')) { app.map.getSource('balises').setData(fc); return; }
+    app.map.addSource('balises', { type: 'geojson', data: fc });
+    app.map.addLayer({ id: 'balises', type: 'circle', source: 'balises', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3.5, 14, 7.5], 'circle-color': ['get', 'fond'], 'circle-stroke-color': ['get', 'bord'], 'circle-stroke-width': 2 } });
+    app.map.addLayer({ id: 'balises-lettre', type: 'symbol', source: 'balises', minzoom: 12, filter: ['!=', ['get', 'lettre'], ''], layout: { 'text-field': ['get', 'lettre'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 10, 'text-allow-overlap': true }, paint: { 'text-color': ['match', ['get', 'g'], ['roche', 'epave'], '#ffffff', '#111111'] } });
+  }
+  const oterBalises = () => { app.retirer('balises-lettre', 'balises'); };
+  // Distance (milles) d'un point à un tronçon, en géométrie plane locale.
+  function ecart(p, a, b) {
+    const k = Math.cos(p[1] * RAD), ax = (a[0] - p[0]) * k, ay = a[1] - p[1], bx = (b[0] - p[0]) * k, by = b[1] - p[1], dx = bx - ax, dy = by - ay, n = dx * dx + dy * dy;
+    const t = n ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / n)) : 0;
+    return Math.hypot(ax + dx * t, ay + dy * t) * 60;   // un degré de latitude fait soixante milles
+  }
 
   // ---------- 1. Vent ----------
   app.question(V.theme({ fuseau: F }));
@@ -107,8 +174,7 @@
     aide: 'Ports, calanques, îles et caps de la rade, placés d\'après l\'IGN. En touchant la mer, la carte donne la distance en milles et le cap à suivre vers les lieux les plus proches, en ligne droite : elle ne tient compte ni des îles, ni des hauts-fonds, ni des zones réglementées du Parc national des Calanques. Un mouillage ou une place de port se vérifie auprès de la capitainerie.',
     async ouvrir(app) {
       qPorts._c = app.repondre(qPorts.libelle, `<p class="etat">Touche un port pour son vent, ou la mer pour savoir ce qui est à portée.</p><div class="liste"></div>
-        <div class="legende"><span><i style="background:#1a2e4a"></i>port</span><span><i style="background:#2a9d8f"></i>calanque</span><span><i style="background:#b8963e"></i>île</span><span><i style="background:#7a8597"></i>cap</span></div>`);
-      poserLieux();
+        ${legendeLieux}`);
     },
     async toucher(app, ll) {
       const c = qPorts._c, p = [ll.lng, ll.lat], tri = LIEUX.map(l => ({ l, d: milles(app.distKm(p, [l.lon, l.lat])), cap: cap(p, [l.lon, l.lat]) })).sort((a, b) => a.d - b.d);
@@ -130,22 +196,52 @@
   };
   app.question(qPorts);
 
-  // ---------- 4. Route : distance, cap et allure de chaque bord ----------
+  // ---------- 4. Balises ----------
+  const qBal = {
+    theme: 'Balises', libelle: 'Où sont les balises et les dangers ?',
+    aide: 'Bouées, tourelles, feux, roches et épaves relevés par les contributeurs d\'OpenStreetMap (objets « seamark »), lus à la demande pour la zone affichée. Ce relevé est bénévole et incomplet : une balise ou une roche absente de la carte peut exister en mer, et une position peut être fausse. Les marques latérales suivent la règle européenne : rouge à bâbord et vert à tribord en entrant au port. Seules la carte marine et les Instructions nautiques du Shom font foi.',
+    async ouvrir(app) {
+      qBal._c = app.repondre(qBal.libelle, `<p class="etat">Lecture des balises…</p>
+        <div class="legende">${Object.values(GENRES).map(g => `<span><i style="background:${g[1]};border:2px solid ${g[2]};border-radius:50%;box-sizing:border-box"></i>${g[0]}</span>`).join('')}</div>`);
+      app.suivre(qBal, () => qBal.charger(app)); await qBal.charger(app);
+    },
+    async charger(app) {
+      const c = qBal._c;
+      if (app.map.getZoom() < 10) { c.querySelector('.etat').textContent = 'Approche-toi : les balises se lisent zone par zone.'; return; }
+      app.occupe(true, 'Lecture des balises…'); const ok = await lireBalises(app.emprise(0)); app.occupe(false); if (app.active !== qBal) return;
+      if (!ok) { c.querySelector('.etat').textContent = 'Les balises n\'ont pas pu être lues (le service OpenStreetMap ne répond pas). Réessaie dans un moment.'; return; }
+      dessinerBalises();
+      const n = balises.liste.length, d = balises.liste.filter(x => DANGERS.has(x.g)).length;
+      c.querySelector('.etat').innerHTML = n ? `<span class="fort">${n} marques</span> relevées dans cette zone, dont ${d} roche${d > 1 ? 's' : ''}, épave${d > 1 ? 's' : ''} ou danger${d > 1 ? 's' : ''} isolé${d > 1 ? 's' : ''}. Touche une marque pour son nom et son feu. Relevé incomplet : la carte marine fait foi.` : 'Aucune marque relevée dans cette zone.';
+    },
+    toucher(app, ll) {
+      const p = [ll.lng, ll.lat], seuil = 40075 * Math.cos(ll.lat * RAD) / (512 * Math.pow(2, app.map.getZoom())) * 22;
+      const pres = balises.liste.map(x => ({ x, d: app.distKm(p, [x.lon, x.lat]) })).sort((a, b) => a.d - b.d)[0];
+      if (!pres || pres.d > seuil) { app.sansBulle(); return; }
+      const x = pres.x; app.bulle({ lng: x.lon, lat: x.lat }, `<span class="fort">${app.propre(x.nom || GENRES[x.g][0])}</span><small>${GENRES[x.g][0]}${x.feu ? ' · feu ' + app.propre(x.feu) : ''}</small>`);
+    },
+    fermer() { oterBalises(); }
+  };
+  app.question(qBal);
+
+  // ---------- 5. Route : distance, cap et allure de chaque bord ----------
   let route = []; try { route = JSON.parse(localStorage.getItem('cartes.voile.route')) || []; } catch (e) { route = []; }
   let allure5 = 5, heureDep = 0;
   const qRoute = {
     theme: 'Route', libelle: 'Quelle route, à quelle allure ?',
-    aide: 'Route posée au doigt, point par point. Pour chaque tronçon : la distance en milles, le cap vrai et l\'allure sous le vent prévu à l\'heure choisie (vent lu au milieu de la route, à 10 m). Un tronçon à moins de 40° du vent est signalé « vent debout » : il faudra tirer des bords, et la distance réelle sera plus longue, d\'environ 40 % à un angle de remontée de 45°. La durée est une simple division par la vitesse choisie. Tracé en ligne droite : il ne voit ni les îles, ni les hauts-fonds, ni le balisage.',
+    aide: 'Route posée au doigt, point par point. Pour chaque tronçon : la distance en milles, le cap vrai et l\'allure sous le vent prévu à l\'heure choisie (vent lu au milieu de la route, à 10 m). Un tronçon à moins de 40° du vent est signalé « vent debout » : il faudra tirer des bords, et la distance réelle sera plus longue, d\'environ 40 % à un angle de remontée de 45°. La durée est une simple division par la vitesse choisie. Une flèche à chaque point donne le vent prévu à cet endroit. La carte signale les roches, épaves et marques cardinales relevées par OpenStreetMap à moins de 0,2 mille de la route : ce relevé est incomplet, et le tracé en ligne droite ne voit ni les îles ni les hauts-fonds.',
     async ouvrir(app) {
-      const c = qRoute._c = app.repondre(qRoute.libelle, `<p class="etat"></p><div class="bords"></div>
+      const c = qRoute._c = app.repondre(qRoute.libelle, `<p class="etat"></p><div class="bords"></div><p class="mer petit2"></p><p class="dangers petit2"></p>
         <div class="ligne"><label style="min-width:64px">Départ</label><input type="range" class="hd" min="0" max="23" value="${heureDep}" style="flex:1;min-width:110px"><span class="fort v-hd" style="min-width:74px;text-align:right"></span></div>
         <div class="ligne"><label style="min-width:64px">Vitesse</label><input type="range" class="vit" min="2" max="9" step="0.5" value="${allure5}" style="flex:1;min-width:110px"><span class="fort v-vit" style="min-width:74px;text-align:right"></span></div>
-        <div class="puces"><button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button></div>`);
+        <div class="puces"><button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="comp">Comparer les départs</button></div><div class="departs"></div>`);
+      c.querySelector('.comp').onclick = () => { qRoute.comparer = !qRoute.comparer; qRoute.calculer(app); };
       c.querySelector('.hd').oninput = e => { heureDep = +e.target.value; qRoute.calculer(app); };
       c.querySelector('.vit').oninput = e => { allure5 = +e.target.value; qRoute.calculer(app); };
       c.querySelector('.undo').onclick = () => { route.pop(); qRoute.calculer(app); };
       c.querySelector('.raz').onclick = () => { route = []; qRoute.calculer(app); };
-      poserLieux(); await qRoute.calculer(app);
+      if (!app.map.hasImage('fleche')) { const f = document.createElement('canvas'); f.width = f.height = 48; const x = f.getContext('2d'); x.beginPath(); x.moveTo(24, 3); x.lineTo(38, 24); x.lineTo(29, 24); x.lineTo(29, 45); x.lineTo(19, 45); x.lineTo(19, 24); x.lineTo(10, 24); x.closePath(); x.fillStyle = '#ffffff'; x.fill(); x.lineWidth = 3; x.strokeStyle = '#1a2e4a'; x.lineJoin = 'round'; x.stroke(); app.map.addImage('fleche', x.getImageData(0, 0, 48, 48), { pixelRatio: 2 }); }
+      await qRoute.calculer(app);
     },
     dessiner(app, debout) {
       const fc = { type: 'FeatureCollection', features: [] };
@@ -162,7 +258,7 @@
       try { localStorage.setItem('cartes.voile.route', JSON.stringify(route)); } catch (e) { }
       c.querySelector('.v-vit').textContent = String(allure5).replace('.', ',') + ' nœuds';
       qRoute.dessiner(app);
-      if (route.length < 2) { c.querySelector('.etat').textContent = route.length ? 'Départ posé. Touche la carte pour le point suivant.' : 'Touche la carte pour poser le départ, puis chaque point de passage.'; c.querySelector('.bords').innerHTML = ''; c.querySelector('.v-hd').textContent = ''; return; }
+      if (route.length < 2) { c.querySelector('.etat').textContent = route.length ? 'Départ posé. Touche la carte pour le point suivant.' : 'Touche la carte pour poser le départ, puis chaque point de passage.'; for (const k of ['.bords', '.mer', '.dangers', '.departs']) c.querySelector(k).innerHTML = ''; c.querySelector('.v-hd').textContent = ''; qRoute.fleches(app, []); return; }
       const mil = route.reduce((s, p) => [s[0] + p[0] / route.length, s[1] + p[1] / route.length], [0, 0]);
       const d = await V.pointVent(app, mil[0], mil[1], F); if (moi !== qRoute.tour || app.active !== qRoute) return;
       const i = d ? Math.min(d.heures.length - 1, maintenant(d.heures) + heureDep) : 0;
@@ -177,13 +273,46 @@
       const reel = total + louvoie * 0.4;
       c.querySelector('.etat').innerHTML = `<span class="fort">${mi(total)}</span> en ligne droite${louvoie ? `, plutôt ${nm(reel)} en comptant les bords à tirer` : ''} : environ <span class="fort">${duree(reel / allure5)}</span> à ${String(allure5).replace('.', ',')} nœuds.` + (d ? ` Vent prévu à ${hh(d.heures[i])} : ${Math.round(d.kn[i])} nœuds de ${V.rose(d.dir[i])} (force ${V.beaufort(d.kn[i])}), rafales ${Math.round(d.raf[i])}.` : ' Le vent n\'a pas pu être lu.');
       c.querySelector('.bords').innerHTML = `<div class="jours" style="grid-template-columns:repeat(2,1fr)">${lignes.join('')}</div>`;
+      // Comparer les départs : la même route, toutes les deux heures sur douze heures.
+      if (qRoute.comparer && d) {
+        const i0 = maintenant(d.heures), cases = [];
+        for (let k = 0; k <= 12 && i0 + k < d.heures.length; k += 2) {
+          let deb = 0; for (let n = 1; n < route.length; n++) if (V.allure(cap(route[n - 1], route[n]), d.dir[i0 + k]).debout) deb += milles(app.distKm(route[n - 1], route[n]));
+          const rr = total + deb * 0.4;
+          cases.push(`<div style="text-align:left${k === heureDep ? ';outline:1px solid #b8963e' : ''}"><b>${hh(d.heures[i0 + k])} · ${duree(rr / allure5)}</b>${Math.round(d.kn[i0 + k])} nd ${V.rose(d.dir[i0 + k])}, raf. ${Math.round(d.raf[i0 + k])}<br><small>${deb ? Math.round(100 * deb / total) + ' % vent debout' : 'aucun bord à tirer'}</small></div>`);
+        }
+        c.querySelector('.departs').innerHTML = `<p class="petit2" style="margin-top:8px">Même route selon l'heure de départ (le vent est pris à l'heure du départ, sans le faire évoluer en route) :</p><div class="jours" style="grid-template-columns:repeat(2,1fr)">${cases.join('')}</div>`;
+      } else c.querySelector('.departs').innerHTML = '';
+      // Vent à chaque point de la route : une flèche dans le sens où il souffle, et sa force en nœuds.
+      const pts = route.length <= 6 ? route : route.filter((_, n) => n % Math.ceil(route.length / 6) === 0 || n === route.length - 1);
+      Promise.all(pts.map(p => V.pointVent(app, p[0], p[1], F))).then(vs => { if (moi !== qRoute.tour || app.active !== qRoute) return; qRoute.fleches(app, pts.map((p, n) => vs[n] ? { p, kn: vs[n].kn[i], dir: vs[n].dir[i] } : null).filter(Boolean)); });
+      // État de la mer au milieu de la route.
+      app.meteo(`https://marine-api.open-meteo.com/v1/marine?latitude=${mil[1].toFixed(3)}&longitude=${mil[0].toFixed(3)}&hourly=wave_height,wave_direction,wave_period&forecast_hours=24&timezone=${encodeURIComponent(F)}`).then(j => {
+        if (moi !== qRoute.tour || app.active !== qRoute) return; const hr = j && j.hourly, n = hr ? Math.min(hr.time.length - 1, maintenant(hr.time) + heureDep) : 0;
+        c.querySelector('.mer').innerHTML = hr && hr.wave_height[n] != null ? `Mer au milieu de la route à ${hh(hr.time[n])} : vagues de ${hr.wave_height[n].toFixed(1).replace('.', ',')} m venant de ${V.rose(hr.wave_direction[n])}, toutes les ${Math.round(hr.wave_period[n])} s.` : '';
+      });
+      // Dangers relevés près de la route (OpenStreetMap, incomplet).
+      let o = 180, s2 = 90, e = -180, n2 = -90; for (const p of route) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s2 = Math.min(s2, p[1]); n2 = Math.max(n2, p[1]); }
+      lireBalises([o - 0.01, s2 - 0.01, e + 0.01, n2 + 0.01]).then(ok => {
+        if (moi !== qRoute.tour || app.active !== qRoute) return; const cible = c.querySelector('.dangers');
+        if (!ok) { cible.textContent = 'Balises et dangers non lus (service indisponible) : la route n\'a pas été contrôlée.'; return; }
+        const pres = []; for (const x of balises.liste) { if (!DANGERS.has(x.g) && !['nord', 'sud', 'est', 'ouest'].includes(x.g)) continue; let dm = 9, tr = 0; for (let k = 1; k < route.length; k++) { const dd = ecart([x.lon, x.lat], route[k - 1], route[k]); if (dd < dm) { dm = dd; tr = k; } } if (dm < 0.2) pres.push({ x, dm, tr }); }
+        pres.sort((a, b) => a.dm - b.dm);
+        cible.innerHTML = pres.length ? `<span class="fort">À moins de 0,2 mille de la route</span> : ${pres.slice(0, 6).map(q => `${app.propre(q.x.nom || GENRES[q.x.g][0])} (${GENRES[q.x.g][0]}, tronçon ${q.tr}, à ${Math.round(q.dm * 1852 / 10) * 10} m)`).join(' ; ')}${pres.length > 6 ? ` ; et ${pres.length - 6} autres` : ''}. Relevé OpenStreetMap, incomplet.` : 'Aucune roche, épave ou marque cardinale relevée par OpenStreetMap à moins de 0,2 mille de la route. Ce relevé est incomplet : cela ne veut pas dire que la route est claire.';
+      });
+    },
+    fleches(app, liste) {
+      const fc = { type: 'FeatureCollection', features: liste.map(v => ({ type: 'Feature', properties: { rot: (v.dir + 180) % 360, t: Math.round(v.kn) + ' nd' }, geometry: { type: 'Point', coordinates: v.p } })) };
+      if (app.map.getSource('routevent')) { app.map.getSource('routevent').setData(fc); return; }
+      app.map.addSource('routevent', { type: 'geojson', data: fc });
+      app.map.addLayer({ id: 'routevent', type: 'symbol', source: 'routevent', layout: { 'icon-image': 'fleche', 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map', 'icon-offset': [0, -22], 'icon-allow-overlap': true, 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12, 'text-offset': [1.6, 0], 'text-anchor': 'left', 'text-allow-overlap': true }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
     },
     toucher(app, ll) { route.push([+ll.lng.toFixed(5), +ll.lat.toFixed(5)]); qRoute.calculer(app); },
-    fermer(app) { app.retirer('route-points', 'route-ligne', 'route-bord'); if (app.map.getSource('route')) app.map.removeSource('route'); oterLieux(); }
+    fermer(app) { app.retirer('routevent', 'route-points', 'route-ligne', 'route-bord'); if (app.map.getSource('route')) app.map.removeSource('route'); }
   };
   app.question(qRoute);
 
-  // ---------- 5. En mer : la carte suit le bateau ----------
+  // ---------- 6. En mer : la carte suit le bateau ----------
   function imageBateau() {
     const c = document.createElement('canvas'); c.width = c.height = 96; const x = c.getContext('2d');
     x.translate(48, 48);
@@ -196,11 +325,11 @@
   let veille = null, verrou = null;
   const qMer2 = {
     theme: 'En mer', libelle: 'Où est le bateau ?',
-    aide: 'La carte suit la position du téléphone : vitesse sur le fond en nœuds et route suivie d\'après le GPS, vent prévu à cet endroit (pas le vent mesuré à bord) et allure qui en découle. La route n\'est donnée par le GPS qu\'en mouvement ; à l\'arrêt, le bateau garde son dernier cap. L\'écran reste allumé tant que le thème est ouvert, si le téléphone le permet. Ce n\'est pas un instrument de navigation.',
+    aide: 'La carte suit la position du téléphone : vitesse sur le fond en nœuds et route suivie d\'après le GPS, vent prévu à cet endroit (pas le vent mesuré à bord) et allure qui en découle. Le trait blanc est le sillage : le chemin parcouru depuis l\'ouverture du thème. La route n\'est donnée par le GPS qu\'en mouvement ; à l\'arrêt, le bateau garde son dernier cap. L\'écran reste allumé tant que le thème est ouvert, si le téléphone le permet. Ce n\'est pas un instrument de navigation.',
     async ouvrir(app) {
       const c = qMer2._c = app.repondre(qMer2.libelle, `<p class="etat">Recherche de la position…</p><div class="jours tab" style="grid-template-columns:repeat(3,1fr)"></div>
         <div class="puces"><button class="suivre" aria-pressed="true">Suivre le bateau</button><button class="haut" aria-pressed="true">Cap en haut</button></div>`);
-      let suivre = true, capHaut = true, dernier = null, capBateau = 0, vent = null, tVent = 0;
+      let suivre = true, capHaut = true, dernier = null, capBateau = 0, vent = null, tVent = 0; const sillage = [];
       c.querySelector('.suivre').onclick = e => { suivre = !suivre; e.target.setAttribute('aria-pressed', suivre); };
       c.querySelector('.haut').onclick = e => { capHaut = !capHaut; e.target.setAttribute('aria-pressed', capHaut); if (!capHaut) app.map.easeTo({ bearing: 0, duration: 500 }); };
       app.map.on('dragstart', qMer2._lache = () => { if (suivre) { suivre = false; c.querySelector('.suivre').setAttribute('aria-pressed', 'false'); } });
@@ -213,6 +342,10 @@
         if (pos.coords.heading != null && !isNaN(pos.coords.heading) && (nd == null || nd > 0.7)) capBateau = pos.coords.heading;
         else if (dernier && app.distKm(dernier, p) > 0.02) capBateau = cap(dernier, p);
         if (!dernier || app.distKm(dernier, p) > 0.02) dernier = p;
+        if (!sillage.length || app.distKm(sillage[sillage.length - 1], p) > 0.01) { sillage.push(p); if (sillage.length > 400) sillage.shift(); }
+        const tr = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: sillage.length > 1 ? sillage : [p, p] } };
+        if (app.map.getSource('sillage')) app.map.getSource('sillage').setData(tr);
+        else { app.map.addSource('sillage', { type: 'geojson', data: tr, lineMetrics: true }); app.map.addLayer({ id: 'sillage', type: 'line', source: 'sillage', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': 5, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, 'rgba(255,255,255,0)', 1, 'rgba(255,255,255,0.9)'] } }); }
         const f = { type: 'Feature', properties: { cap: capBateau }, geometry: { type: 'Point', coordinates: p } };
         if (app.map.getSource('bateau')) app.map.getSource('bateau').setData(f);
         else { app.map.addSource('bateau', { type: 'geojson', data: f }); app.map.addLayer({ id: 'bateau', type: 'symbol', source: 'bateau', layout: { 'icon-image': 'bateau', 'icon-size': 1.5, 'icon-rotate': ['get', 'cap'], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } }); }
@@ -228,7 +361,7 @@
       if (veille != null) { navigator.geolocation.clearWatch(veille); veille = null; }
       if (verrou) { try { verrou.release(); } catch (e) { } verrou = null; }
       if (qMer2._lache) app.map.off('dragstart', qMer2._lache);
-      app.retirer('bateau');
+      app.retirer('bateau', 'sillage');
     }
   };
   app.question(qMer2);

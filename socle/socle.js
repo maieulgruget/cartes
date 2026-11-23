@@ -184,6 +184,12 @@
     if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); }
     const fondPx = ctx.getImageData(0, 0, 256, 256), fond = fondPx.data;
     if (v2) for (let k = 0; k < fond.length; k += 4) if (Math.abs(fond[k] - 170) < 7 && Math.abs(fond[k + 1] - 213) < 7 && Math.abs(fond[k + 2] - 233) < 7) { fond[k] = MER_RVB[0]; fond[k + 1] = MER_RVB[1]; fond[k + 2] = MER_RVB[2]; }
+    // Le Plan classique a lui aussi des blancs (hors de sa couverture) : un carré entièrement blanc y devient de la mer.
+    if (v2) for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
+      let blanc = true;
+      for (let yy = by * 16; yy < by * 16 + 16 && blanc; yy += 3) for (let xx = bx * 16; xx < bx * 16 + 16; xx += 3) { const k = 4 * (yy * 256 + xx); if (fond[k] < 250 || fond[k + 1] < 250 || fond[k + 2] < 250) { blanc = false; break; } }
+      if (blanc) for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) { const k = 4 * (yy * 256 + xx); fond[k] = MER_RVB[0]; fond[k + 1] = MER_RVB[1]; fond[k + 2] = MER_RVB[2]; }
+    }
     if (!hd) ctx.putImageData(fondPx, 0, 0);
     else {
       // Le Plan HD par-dessus, sauf ses blancs : carrés vides en entier, et pixel par pixel dans les carrés voisins

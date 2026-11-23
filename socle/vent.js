@@ -10,7 +10,7 @@
   const BFT = [1, 4, 7, 11, 17, 22, 28, 34, 41, 48, 56, 64];
   const beaufort = kn => { let b = 0; while (b < 12 && kn >= BFT[b]) b++; return b; };
   // Classes de force, en nœuds (limites de l'échelle de Beaufort, forces 3 à 8).
-  const CLASSES = [[7, [159, 211, 230], 'moins de 7 nœuds'], [11, [108, 197, 160], '7 à 10'], [17, [233, 215, 88], '11 à 16'], [22, [242, 165, 65], '17 à 21'], [28, [228, 87, 46], '22 à 27'], [34, [181, 23, 158], '28 à 33'], [999, [106, 27, 154], '34 et plus']];
+  const CLASSES = [[7, [159, 211, 230], '0 à 6'], [11, [108, 197, 160], '7 à 10'], [17, [233, 215, 88], '11 à 16'], [22, [242, 165, 65], '17 à 21'], [28, [228, 87, 46], '22 à 27'], [34, [181, 23, 158], '28 à 33'], [999, [106, 27, 154], '34 et plus']];
   const classe = kn => CLASSES.find(c => kn < c[0]) || CLASSES[CLASSES.length - 1];
   const hhmm = iso => iso.slice(11, 13) + ' h';
 
@@ -118,6 +118,7 @@
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat">Lecture du vent…</p>
           <div class="ligne"><button class="now">Maintenant</button><input type="range" class="hv" min="0" max="23" value="${h}" style="flex:1;min-width:120px"><span class="fort hh" style="min-width:74px;text-align:right"></span></div>
+          <p class="petit2" style="margin:8px 0 0">Force du vent, en nœuds (1 nœud = 1,85 km/h) :</p>
           <div class="legende">${CLASSES.map(k => `<span><i style="background:rgb(${k[1].join()})"></i>${k[2]}</span>`).join('')}</div>
           <p class="petit">Glisse pour avancer heure par heure sur 24 heures. Touche la carte pour le vent en un point.</p>`);
         q._c = c;
