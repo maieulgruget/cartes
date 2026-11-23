@@ -160,7 +160,7 @@
   /* Plan IGN HD avec repli : le Plan HD ne couvre pas encore tout le territoire (centre de la Bretagne, mer).
      Là où il n'a rien, sa tuile manque, ou revient blanche en tout ou partie. On regarde donc la tuile par carrés de
      16 pixels : les carrés entièrement blancs sont repris du Plan IGN classique, et à défaut peints en bleu mer. */
-  const MER_PLAN = '#aadaf5';
+  const MER_RVB = [62, 132, 157], MER_PLAN = 'rgb(62,132,157)';   // le bleu de la mer du Plan HD
   async function imageDe(url) { try { const r = await fetch(url); return r.ok ? await createImageBitmap(await r.blob()) : null; } catch (e) { return null; } }
   async function tuilePlan(z, x, y) {
     let brut = null, hd = null;
@@ -178,21 +178,25 @@
       if (!vides.length) return brut;
     }
     const v2 = await imageDe(wmts('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png').replace('{z}', z).replace('{y}', y).replace('{x}', x));
-    if (!hd) { if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); } }
+    // Fond de repli sur toute la tuile : le Plan classique, dont la mer est reteinte au bleu du Plan HD pour que les
+    // deux se raccordent ; à défaut, ce même bleu partout.
+    const hdPx = hd ? ctx.getImageData(0, 0, 256, 256) : null;
+    if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); }
+    const fondPx = ctx.getImageData(0, 0, 256, 256), fond = fondPx.data;
+    if (v2) for (let k = 0; k < fond.length; k += 4) if (Math.abs(fond[k] - 170) < 7 && Math.abs(fond[k + 1] - 213) < 7 && Math.abs(fond[k + 2] - 233) < 7) { fond[k] = MER_RVB[0]; fond[k + 1] = MER_RVB[1]; fond[k + 2] = MER_RVB[2]; }
+    if (!hd) ctx.putImageData(fondPx, 0, 0);
     else {
-      // Fond de repli sur toute la tuile, puis le Plan HD par-dessus, sauf ses blancs : carrés vides en entier,
-      // et pixel par pixel dans les carrés voisins d'un vide (la lisière de la couverture).
-      const hdPx = ctx.getImageData(0, 0, 256, 256), d = hdPx.data, vide = new Uint8Array(256);
+      // Le Plan HD par-dessus, sauf ses blancs : carrés vides en entier, et pixel par pixel dans les carrés voisins
+      // d'un vide (la lisière de la couverture).
+      const d = hdPx.data, vide = new Uint8Array(256);
       for (const [bx, by] of vides) vide[(by / 16) * 16 + bx / 16] = 1;
-      if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); }
-      const fond = ctx.getImageData(0, 0, 256, 256).data;
       for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
         let lisiere = false;
         for (let dy = -1; dy <= 1 && !lisiere; dy++) for (let dx = -1; dx <= 1; dx++) { const yy = by + dy, xx = bx + dx; if (yy >= 0 && xx >= 0 && yy < 16 && xx < 16 && vide[yy * 16 + xx]) { lisiere = true; break; } }
         if (!vide[by * 16 + bx] && !lisiere) continue;
         for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) {
           const k = 4 * (yy * 256 + xx);
-          if (vide[by * 16 + bx] || (d[k] >= 244 && d[k + 1] >= 244 && d[k + 2] >= 244)) { d[k] = fond[k]; d[k + 1] = fond[k + 1]; d[k + 2] = fond[k + 2]; }
+          if (vide[by * 16 + bx] || (d[k] >= 205 && d[k + 1] >= 222 && d[k + 2] >= 222)) { d[k] = fond[k]; d[k + 1] = fond[k + 1]; d[k + 2] = fond[k + 2]; }
         }
       }
       ctx.putImageData(hdPx, 0, 0);
@@ -377,7 +381,7 @@
     map.on('click', e => { if (app.active && app.active.toucher) app.active.toucher(app, e.lngLat); });
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
-    const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy']];
+    const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['voile', 'Voile', 'la rade de Marseille']];
     const cleSignets = 'cartes.signets.' + cfg.id;
     // Chaque saut (lieu, recherche, position) garde la vue quittée : le bouton Retour y ramène, un saut à la fois.
     const vues = [];
@@ -407,7 +411,7 @@
         <h3>Garder la vue actuelle</h3><div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue" maxlength="40"><button class="garder">Garder</button></div>
         <h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go">Chercher</button></div><ul class="res"></ul>
         <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, et avec quelle fiabilité</button></p>
-        <h3>Autres cartes</h3><ul class="autres">${AUTRES.filter(a => a[0] !== cfg.id).map(a => `<li><button data-u="${cfg.racine}${a[0]}/">${a[1]}<small>${a[2]}</small></button></li>`).join('')}<li><button data-u="${cfg.racine}">Les quatre cartes<small>page d'accueil</small></button></li></ul>
+        <h3>Autres cartes</h3><ul class="autres">${AUTRES.filter(a => a[0] !== cfg.id).map(a => `<li><button data-u="${cfg.racine}${a[0]}/">${a[1]}<small>${a[2]}</small></button></li>`).join('')}<li><button data-u="${cfg.racine}">Toutes les cartes<small>page d'accueil</small></button></li></ul>
         <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p>
         <p style="text-align:right;margin:10px 0 0"><button class="fermer">Fermer</button></p></div>`;
       const ul = menu.querySelector('.lieux');

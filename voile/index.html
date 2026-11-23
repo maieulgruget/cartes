@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Voile">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-180.png">
+<title>Voile — la rade de Marseille</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+<script src="../socle/vent.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const F = 'Europe/Paris', V = Socle.vent, RAD = Math.PI / 180;
+  const app = await Socle.creer({
+    id: 'voile', racine: '../', titre: 'Sous voile', sousTitre: 'Rade de Marseille',
+    centre: [5.3300, 43.2700], zoom: 11.2, pitch: 45, bearing: 0, pitch3d: 50,
+    recherche: { centre: [5.35, 43.25], rayonKm: 60 },
+    maison: { nom: 'Vieux-Port', centre: [5.3638, 43.2934], zoom: 14 },
+    signets: [
+      { nom: 'La rade', note: 'de l\'Estaque au cap Croisette', centre: [5.3300, 43.2800], zoom: 11.2, pitch: 0, bearing: 0 },
+      { nom: 'Vieux-Port', centre: [5.3638, 43.2934], zoom: 14.2, pitch: 50, bearing: 70 },
+      { nom: 'Îles du Frioul et château d\'If', centre: [5.3120, 43.2790], zoom: 13.4, pitch: 50, bearing: -30 },
+      { nom: 'Pointe Rouge', centre: [5.3671, 43.2450], zoom: 14, pitch: 45, bearing: 90 },
+      { nom: 'Les Goudes, Maïre et cap Croisette', centre: [5.3400, 43.2140], zoom: 13.6, pitch: 50, bearing: 150 },
+      { nom: 'Archipel de Riou', centre: [5.3809, 43.1783], zoom: 12.8, pitch: 50, bearing: 0 },
+      { nom: 'Calanques', note: 'de Sormiou à En-Vau', centre: [5.4600, 43.2050], zoom: 12.4, pitch: 55, bearing: 0 },
+      { nom: 'Cassis et Port-Miou', centre: [5.5280, 43.2110], zoom: 13.4, pitch: 50, bearing: 20 },
+      { nom: 'La Ciotat', centre: [5.6092, 43.1704], zoom: 13, pitch: 45, bearing: 0 },
+      { nom: 'Côte Bleue', note: 'Niolon, Carry, Sausset', centre: [5.1800, 43.3250], zoom: 11.8, pitch: 45, bearing: 0 },
+      { nom: 'Île du Planier', note: 'le phare du large', centre: [5.2299, 43.1987], zoom: 13.5, pitch: 45, bearing: 30 }
+    ],
+    sources: 'Vent : prévision Open-Meteo (modèles de Météo-France), à 10 m de hauteur. Vagues, houle et température de l\'eau : modèle de vagues d\'Open-Meteo, dont la maille est de plusieurs kilomètres. Positions des ports, îles et caps : IGN. Plan et photo aérienne : IGN. Cette carte aide à préparer une sortie ; elle ne remplace ni le bulletin côtier de Météo-France, ni la carte marine du Shom, et ne montre ni les sondes, ni les dangers, ni le balisage.'
+  });
+
+  // ---------- Lieux : ports et abris, îles, caps (positions de l'IGN) ----------
+  const LIEUX = [
+    ['Vieux-Port', 'port', 5.3638, 43.2934], ['Port du Frioul', 'port', 5.3083, 43.2785], ['Pointe Rouge', 'port', 5.3671, 43.2450],
+    ['La Madrague de Montredon', 'port', 5.3528, 43.2326], ['Les Goudes', 'port', 5.3456, 43.2163], ['Callelongue', 'port', 5.3539, 43.2125],
+    ['L\'Estaque', 'port', 5.3140, 43.3589], ['Saumaty', 'port', 5.3229, 43.3564], ['Niolon', 'port', 5.2586, 43.3393],
+    ['Le Rouet', 'port', 5.1729, 43.3335], ['Carry-le-Rouet', 'port', 5.1526, 43.3299], ['Sausset-les-Pins', 'port', 5.1083, 43.3303],
+    ['Port-Miou', 'port', 5.5176, 43.2077], ['Cassis', 'port', 5.5351, 43.2138], ['La Ciotat', 'port', 5.6092, 43.1704],
+    ['Sormiou', 'calanque', 5.4219, 43.2096], ['Morgiou', 'calanque', 5.4459, 43.2109], ['En-Vau', 'calanque', 5.5011, 43.2010],
+    ['Château d\'If', 'île', 5.3256, 43.2798], ['Île Maïre', 'île', 5.3361, 43.2111], ['Île de Riou', 'île', 5.3809, 43.1783], ['Île du Planier', 'île', 5.2299, 43.1987],
+    ['Cap Croisette', 'cap', 5.3371, 43.2146], ['Cap Couronne', 'cap', 5.0530, 43.3247]
+  ].map(l => ({ nom: l[0], type: l[1], lon: l[2], lat: l[3] }));
+  const milles = km => km / 1.852, nm = v => v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v), mi = v => nm(v) + (v < 1.95 ? ' mille' : ' milles');
+  const cap = (a, b) => (Math.atan2((b[0] - a[0]) * Math.cos((a[1] + b[1]) / 2 * RAD), b[1] - a[1]) / RAD + 360) % 360;
+  const hh = iso => iso.slice(11, 13) + ' h';
+  const duree = h => { const m = Math.round(h * 60 / 5) * 5; return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'); };
+  // Indice de l'heure courante dans une série horaire (heures locales).
+  const maintenant = heures => { const t = new Date().toLocaleString('sv-SE', { timeZone: F }).slice(0, 13).replace(' ', 'T'); const i = heures.findIndex(x => x.slice(0, 13) >= t); return i < 0 ? 0 : i; };
+
+  function poserLieux() {
+    if (app.map.getSource('lieux')) return;
+    app.map.addSource('lieux', { type: 'geojson', data: { type: 'FeatureCollection', features: LIEUX.map(l => ({ type: 'Feature', properties: { nom: l.nom, type: l.type }, geometry: { type: 'Point', coordinates: [l.lon, l.lat] } })) } });
+    app.map.addLayer({ id: 'lieux-halo', type: 'circle', source: 'lieux', paint: { 'circle-radius': 9, 'circle-color': '#ffffff', 'circle-opacity': 0.85 } });
+    app.map.addLayer({ id: 'lieux', type: 'circle', source: 'lieux', paint: { 'circle-radius': 5.5, 'circle-color': ['match', ['get', 'type'], 'port', '#1a2e4a', 'calanque', '#2a9d8f', 'île', '#b8963e', '#7a8597'], 'circle-stroke-color': '#b8963e', 'circle-stroke-width': 1.5 } });
+    app.map.addLayer({ id: 'lieux-nom', type: 'symbol', source: 'lieux', layout: { 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+  }
+  const oterLieux = () => { app.retirer('lieux-nom', 'lieux', 'lieux-halo'); };
+
+  // ---------- 1. Vent ----------
+  app.question(V.theme({ fuseau: F }));
+
+  // ---------- 2. Mer : vagues, houle, température ----------
+  const qMer = {
+    theme: 'Mer', libelle: 'Comment est la mer ?',
+    aide: 'Hauteur, direction et période des vagues, houle et température de surface au point touché, heure par heure, d\'après le modèle de vagues d\'Open-Meteo. La hauteur est la hauteur significative : la moyenne du tiers des vagues les plus hautes, certaines vagues la dépassent nettement. La maille est de plusieurs kilomètres : près de la côte, dans une calanque ou à l\'abri d\'une île, la mer réelle peut être très différente.',
+    async ouvrir(app) {
+      qMer._c = app.repondre(qMer.libelle, `<p class="etat">Touche la mer à l'endroit qui t'intéresse.</p><div class="tab"></div>`);
+      const c = app.map.getCenter(); await qMer.lire(app, c);
+    },
+    async lire(app, ll) {
+      const c = qMer._c, moi = qMer.tour = (qMer.tour || 0) + 1;
+      c.querySelector('.etat').textContent = 'Lecture de l\'état de la mer…';
+      const j = await app.meteo(`https://marine-api.open-meteo.com/v1/marine?latitude=${ll.lat.toFixed(3)}&longitude=${ll.lng.toFixed(3)}&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period,sea_surface_temperature&forecast_hours=24&timezone=${encodeURIComponent(F)}`);
+      if (moi !== qMer.tour || app.active !== qMer) return;
+      const hr = j && j.hourly;
+      if (!hr || hr.wave_height.every(v => v == null)) { c.querySelector('.etat').textContent = hr ? 'Pas de mer ici pour le modèle : touche un point plus au large.' : 'L\'état de la mer n\'a pas pu être lu.'; c.querySelector('.tab').innerHTML = ''; return; }
+      const i0 = hr.wave_height.findIndex(v => v != null), m = v => v == null ? '–' : v.toFixed(1).replace('.', ',') + ' m';
+      c.querySelector('.etat').innerHTML = `À ${hh(hr.time[i0])} : vagues de <span class="fort">${m(hr.wave_height[i0])}</span> venant de ${V.rose(hr.wave_direction[i0])}, période ${Math.round(hr.wave_period[i0])} s${hr.swell_wave_height[i0] != null ? ` ; houle ${m(hr.swell_wave_height[i0])} de ${V.rose(hr.swell_wave_direction[i0])}` : ''}${hr.sea_surface_temperature[i0] != null ? ` ; eau à <span class="fort">${Math.round(hr.sea_surface_temperature[i0])} °C</span>` : ''}.`;
+      const cases = []; for (let i = i0; i < hr.time.length && cases.length < 8; i += 3) cases.push(`<div><b>${hh(hr.time[i])}</b>${m(hr.wave_height[i])}<br><small>${V.rose(hr.wave_direction[i])} · ${Math.round(hr.wave_period[i])} s</small></div>`);
+      c.querySelector('.tab').innerHTML = `<div class="jours">${cases.join('')}</div>`;
+      app.bulle(ll, `Vagues <span class="fort">${m(hr.wave_height[i0])}</span><small>de ${V.rose(hr.wave_direction[i0])}, toutes les ${Math.round(hr.wave_period[i0])} s</small>`);
+    },
+    toucher(app, ll) { qMer.lire(app, ll); }
+  };
+  app.question(qMer);
+
+  // ---------- 3. Ports et abris ----------
+  const qPorts = {
+    theme: 'Ports', libelle: 'Où sont les ports et les abris ?',
+    aide: 'Ports, calanques, îles et caps de la rade, placés d\'après l\'IGN. En touchant la mer, la carte donne la distance en milles et le cap à suivre vers les lieux les plus proches, en ligne droite : elle ne tient compte ni des îles, ni des hauts-fonds, ni des zones réglementées du Parc national des Calanques. Un mouillage ou une place de port se vérifie auprès de la capitainerie.',
+    async ouvrir(app) {
+      qPorts._c = app.repondre(qPorts.libelle, `<p class="etat">Touche un port pour son vent, ou la mer pour savoir ce qui est à portée.</p><div class="liste"></div>
+        <div class="legende"><span><i style="background:#1a2e4a"></i>port</span><span><i style="background:#2a9d8f"></i>calanque</span><span><i style="background:#b8963e"></i>île</span><span><i style="background:#7a8597"></i>cap</span></div>`);
+      poserLieux();
+    },
+    async toucher(app, ll) {
+      const c = qPorts._c, p = [ll.lng, ll.lat], tri = LIEUX.map(l => ({ l, d: milles(app.distKm(p, [l.lon, l.lat])), cap: cap(p, [l.lon, l.lat]) })).sort((a, b) => a.d - b.d);
+      const pres = tri[0], seuil = milles(40075 * Math.cos(ll.lat * RAD) / (512 * Math.pow(2, app.map.getZoom())) * 24);   // 24 pixels autour du point
+      if (pres.d < Math.max(seuil, 0.08)) {
+        const l = pres.l, moi = qPorts.tour = (qPorts.tour || 0) + 1;
+        app.bulle({ lng: l.lon, lat: l.lat }, `<span class="fort">${app.propre(l.nom)}</span><small>${l.type} · lecture du vent…</small>`);
+        const d = await V.pointVent(app, l.lon, l.lat, F); if (moi !== qPorts.tour || app.active !== qPorts) return;
+        const i = d ? maintenant(d.heures) : 0;
+        app.bulle({ lng: l.lon, lat: l.lat }, `<span class="fort">${app.propre(l.nom)}</span><small>${l.type}</small>${d ? `${Math.round(d.kn[i])} nœuds de ${V.rose(d.dir[i])} (force ${V.beaufort(d.kn[i])}), rafales ${Math.round(d.raf[i])}` : 'Vent indisponible.'}`);
+        c.querySelector('.etat').innerHTML = `<span class="fort">${app.propre(l.nom)}</span> (${l.type}).` + (d ? ` Vent prévu : ${[0, 3, 6, 9].map(k => i + k < d.heures.length ? `${hh(d.heures[i + k])} ${Math.round(d.kn[i + k])} nd ${V.rose(d.dir[i + k])}` : '').filter(Boolean).join(' · ')}.` : '');
+        c.querySelector('.liste').innerHTML = ''; return;
+      }
+      app.bulle(ll, `${app.propre(pres.l.nom)} à <span class="fort">${mi(pres.d)}</span><small>cap ${Math.round(pres.cap)}° (${V.rose(pres.cap)})</small>`);
+      c.querySelector('.etat').textContent = 'Depuis le point touché, en ligne droite :';
+      c.querySelector('.liste').innerHTML = '<div class="jours" style="grid-template-columns:repeat(2,1fr)">' + tri.slice(0, 6).map(t => `<div style="text-align:left"><b>${app.propre(t.l.nom)}</b>${mi(t.d)} · cap ${Math.round(t.cap)}°</div>`).join('') + '</div>';
+    },
+    fermer() { oterLieux(); }
+  };
+  app.question(qPorts);
+
+  // ---------- 4. Route : distance, cap et allure de chaque bord ----------
+  let route = []; try { route = JSON.parse(localStorage.getItem('cartes.voile.route')) || []; } catch (e) { route = []; }
+  let allure5 = 5, heureDep = 0;
+  const qRoute = {
+    theme: 'Route', libelle: 'Quelle route, à quelle allure ?',
+    aide: 'Route posée au doigt, point par point. Pour chaque tronçon : la distance en milles, le cap vrai et l\'allure sous le vent prévu à l\'heure choisie (vent lu au milieu de la route, à 10 m). Un tronçon à moins de 40° du vent est signalé « vent debout » : il faudra tirer des bords, et la distance réelle sera plus longue, d\'environ 40 % à un angle de remontée de 45°. La durée est une simple division par la vitesse choisie. Tracé en ligne droite : il ne voit ni les îles, ni les hauts-fonds, ni le balisage.',
+    async ouvrir(app) {
+      const c = qRoute._c = app.repondre(qRoute.libelle, `<p class="etat"></p><div class="bords"></div>
+        <div class="ligne"><label style="min-width:64px">Départ</label><input type="range" class="hd" min="0" max="23" value="${heureDep}" style="flex:1;min-width:110px"><span class="fort v-hd" style="min-width:74px;text-align:right"></span></div>
+        <div class="ligne"><label style="min-width:64px">Vitesse</label><input type="range" class="vit" min="2" max="9" step="0.5" value="${allure5}" style="flex:1;min-width:110px"><span class="fort v-vit" style="min-width:74px;text-align:right"></span></div>
+        <div class="puces"><button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button></div>`);
+      c.querySelector('.hd').oninput = e => { heureDep = +e.target.value; qRoute.calculer(app); };
+      c.querySelector('.vit').oninput = e => { allure5 = +e.target.value; qRoute.calculer(app); };
+      c.querySelector('.undo').onclick = () => { route.pop(); qRoute.calculer(app); };
+      c.querySelector('.raz').onclick = () => { route = []; qRoute.calculer(app); };
+      poserLieux(); await qRoute.calculer(app);
+    },
+    dessiner(app, debout) {
+      const fc = { type: 'FeatureCollection', features: [] };
+      for (let i = 1; i < route.length; i++) fc.features.push({ type: 'Feature', properties: { r: debout && debout[i - 1] ? 'debout' : 'bord' }, geometry: { type: 'LineString', coordinates: [route[i - 1], route[i]] } });
+      route.forEach((p, i) => fc.features.push({ type: 'Feature', properties: { r: i === 0 ? 'depart' : i === route.length - 1 ? 'arrivee' : 'point' }, geometry: { type: 'Point', coordinates: p } }));
+      if (app.map.getSource('route')) { app.map.getSource('route').setData(fc); return; }
+      app.map.addSource('route', { type: 'geojson', data: fc });
+      app.map.addLayer({ id: 'route-bord', type: 'line', source: 'route', filter: ['==', ['geometry-type'], 'LineString'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 7, 'line-opacity': 0.9 } });
+      app.map.addLayer({ id: 'route-ligne', type: 'line', source: 'route', filter: ['==', ['geometry-type'], 'LineString'], layout: { 'line-cap': 'round' }, paint: { 'line-color': ['match', ['get', 'r'], 'debout', '#e4572e', '#1a2e4a'], 'line-width': 4, 'line-dasharray': ['match', ['get', 'r'], 'debout', ['literal', [1, 1.6]], ['literal', [1, 0]]] } });
+      app.map.addLayer({ id: 'route-points', type: 'circle', source: 'route', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': ['match', ['get', 'r'], 'point', 4.5, 7], 'circle-color': ['match', ['get', 'r'], 'depart', '#2a9d8f', 'arrivee', '#b8963e', '#1a2e4a'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+    },
+    async calculer(app) {
+      const c = qRoute._c, moi = qRoute.tour = (qRoute.tour || 0) + 1;
+      try { localStorage.setItem('cartes.voile.route', JSON.stringify(route)); } catch (e) { }
+      c.querySelector('.v-vit').textContent = String(allure5).replace('.', ',') + ' nœuds';
+      qRoute.dessiner(app);
+      if (route.length < 2) { c.querySelector('.etat').textContent = route.length ? 'Départ posé. Touche la carte pour le point suivant.' : 'Touche la carte pour poser le départ, puis chaque point de passage.'; c.querySelector('.bords').innerHTML = ''; c.querySelector('.v-hd').textContent = ''; return; }
+      const mil = route.reduce((s, p) => [s[0] + p[0] / route.length, s[1] + p[1] / route.length], [0, 0]);
+      const d = await V.pointVent(app, mil[0], mil[1], F); if (moi !== qRoute.tour || app.active !== qRoute) return;
+      const i = d ? Math.min(d.heures.length - 1, maintenant(d.heures) + heureDep) : 0;
+      c.querySelector('.v-hd').textContent = d ? (heureDep === 0 ? 'maintenant' : hh(d.heures[i])) : '';
+      let total = 0, louvoie = 0; const lignes = [], debout = [];
+      for (let k = 1; k < route.length; k++) {
+        const dist = milles(app.distKm(route[k - 1], route[k])), cp = cap(route[k - 1], route[k]), al = d ? V.allure(cp, d.dir[i]) : null;
+        total += dist; debout.push(!!(al && al.debout)); if (al && al.debout) louvoie += dist;
+        lignes.push(`<div style="text-align:left${al && al.debout ? ';outline:1px solid #e4572e' : ''}"><b>${k}. ${mi(dist)} · cap ${Math.round(cp)}°</b>${al ? al.nom + (al.note ? ' : ' + al.note : '') : 'vent indisponible'}</div>`);
+      }
+      qRoute.dessiner(app, debout);
+      const reel = total + louvoie * 0.4;
+      c.querySelector('.etat').innerHTML = `<span class="fort">${mi(total)}</span> en ligne droite${louvoie ? `, plutôt ${nm(reel)} en comptant les bords à tirer` : ''} : environ <span class="fort">${duree(reel / allure5)}</span> à ${String(allure5).replace('.', ',')} nœuds.` + (d ? ` Vent prévu à ${hh(d.heures[i])} : ${Math.round(d.kn[i])} nœuds de ${V.rose(d.dir[i])} (force ${V.beaufort(d.kn[i])}), rafales ${Math.round(d.raf[i])}.` : ' Le vent n\'a pas pu être lu.');
+      c.querySelector('.bords').innerHTML = `<div class="jours" style="grid-template-columns:repeat(2,1fr)">${lignes.join('')}</div>`;
+    },
+    toucher(app, ll) { route.push([+ll.lng.toFixed(5), +ll.lat.toFixed(5)]); qRoute.calculer(app); },
+    fermer(app) { app.retirer('route-points', 'route-ligne', 'route-bord'); if (app.map.getSource('route')) app.map.removeSource('route'); oterLieux(); }
+  };
+  app.question(qRoute);
+
+  // ---------- 5. En mer : la carte suit le bateau ----------
+  function imageBateau() {
+    const c = document.createElement('canvas'); c.width = c.height = 96; const x = c.getContext('2d');
+    x.translate(48, 48);
+    x.beginPath(); x.moveTo(0, -40); x.bezierCurveTo(17, -18, 17, 18, 10, 38); x.lineTo(-10, 38); x.bezierCurveTo(-17, 18, -17, -18, 0, -40); x.closePath();
+    x.fillStyle = '#1a2e4a'; x.fill(); x.lineWidth = 4; x.strokeStyle = '#ffffff'; x.stroke();
+    x.beginPath(); x.moveTo(0, -24); x.quadraticCurveTo(15, 0, 3, 26); x.lineTo(0, 26); x.closePath(); x.fillStyle = '#f3ead2'; x.fill();   // la grand-voile, vue de dessus
+    x.beginPath(); x.arc(0, -24, 3, 0, 7); x.fillStyle = '#b8963e'; x.fill();
+    return x.getImageData(0, 0, 96, 96);
+  }
+  let veille = null, verrou = null;
+  const qMer2 = {
+    theme: 'En mer', libelle: 'Où est le bateau ?',
+    aide: 'La carte suit la position du téléphone : vitesse sur le fond en nœuds et route suivie d\'après le GPS, vent prévu à cet endroit (pas le vent mesuré à bord) et allure qui en découle. La route n\'est donnée par le GPS qu\'en mouvement ; à l\'arrêt, le bateau garde son dernier cap. L\'écran reste allumé tant que le thème est ouvert, si le téléphone le permet. Ce n\'est pas un instrument de navigation.',
+    async ouvrir(app) {
+      const c = qMer2._c = app.repondre(qMer2.libelle, `<p class="etat">Recherche de la position…</p><div class="jours tab" style="grid-template-columns:repeat(3,1fr)"></div>
+        <div class="puces"><button class="suivre" aria-pressed="true">Suivre le bateau</button><button class="haut" aria-pressed="true">Cap en haut</button></div>`);
+      let suivre = true, capHaut = true, dernier = null, capBateau = 0, vent = null, tVent = 0;
+      c.querySelector('.suivre').onclick = e => { suivre = !suivre; e.target.setAttribute('aria-pressed', suivre); };
+      c.querySelector('.haut').onclick = e => { capHaut = !capHaut; e.target.setAttribute('aria-pressed', capHaut); if (!capHaut) app.map.easeTo({ bearing: 0, duration: 500 }); };
+      app.map.on('dragstart', qMer2._lache = () => { if (suivre) { suivre = false; c.querySelector('.suivre').setAttribute('aria-pressed', 'false'); } });
+      if (!app.map.hasImage('bateau')) app.map.addImage('bateau', imageBateau(), { pixelRatio: 2 });
+      if (!navigator.geolocation) { c.querySelector('.etat').textContent = 'Position indisponible sur cet appareil.'; return; }
+      try { if (navigator.wakeLock) verrou = await navigator.wakeLock.request('screen'); } catch (e) { verrou = null; }
+      veille = navigator.geolocation.watchPosition(async pos => {
+        if (app.active !== qMer2) return;
+        const p = [pos.coords.longitude, pos.coords.latitude], nd = pos.coords.speed != null && pos.coords.speed >= 0 ? pos.coords.speed * 1.94384 : null;
+        if (pos.coords.heading != null && !isNaN(pos.coords.heading) && (nd == null || nd > 0.7)) capBateau = pos.coords.heading;
+        else if (dernier && app.distKm(dernier, p) > 0.02) capBateau = cap(dernier, p);
+        if (!dernier || app.distKm(dernier, p) > 0.02) dernier = p;
+        const f = { type: 'Feature', properties: { cap: capBateau }, geometry: { type: 'Point', coordinates: p } };
+        if (app.map.getSource('bateau')) app.map.getSource('bateau').setData(f);
+        else { app.map.addSource('bateau', { type: 'geojson', data: f }); app.map.addLayer({ id: 'bateau', type: 'symbol', source: 'bateau', layout: { 'icon-image': 'bateau', 'icon-size': 1.5, 'icon-rotate': ['get', 'cap'], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } }); }
+        if (suivre) app.map.easeTo({ center: p, zoom: Math.max(app.map.getZoom(), 13.5), pitch: 55, bearing: capHaut ? capBateau : app.map.getBearing(), duration: 900 });
+        if (Date.now() - tVent > 6e5) { tVent = Date.now(); vent = await V.pointVent(app, p[0], p[1], F); }
+        const i = vent ? maintenant(vent.heures) : 0, al = vent ? V.allure(capBateau, vent.dir[i]) : null;
+        const pres = LIEUX.filter(l => l.type === 'port').map(l => ({ l, d: milles(app.distKm(p, [l.lon, l.lat])), cap: cap(p, [l.lon, l.lat]) })).sort((a, b) => a.d - b.d)[0];
+        c.querySelector('.etat').innerHTML = (vent ? `Vent prévu ici : <span class="fort">${Math.round(vent.kn[i])} nœuds</span> de ${V.rose(vent.dir[i])}, rafales ${Math.round(vent.raf[i])}. ` : '') + `Port le plus proche : ${app.propre(pres.l.nom)}, à ${mi(pres.d)} au ${Math.round(pres.cap)}°.`;
+        c.querySelector('.tab').innerHTML = `<div><b>${nd == null ? '–' : nd.toFixed(1).replace('.', ',')}</b>nœuds</div><div><b>${Math.round(capBateau)}°</b>route ${V.rose(capBateau)}</div><div><b>${al ? al.nom.split(',')[0] : '–'}</b>${al ? Math.round(al.angle) + '° du vent' : 'allure'}</div>`;
+      }, () => { c.querySelector('.etat').textContent = 'Position refusée ou introuvable. Autorise la localisation pour cette page, puis rouvre le thème.'; }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+    },
+    fermer(app) {
+      if (veille != null) { navigator.geolocation.clearWatch(veille); veille = null; }
+      if (verrou) { try { verrou.release(); } catch (e) { } verrou = null; }
+      if (qMer2._lache) app.map.off('dragstart', qMer2._lache);
+      app.retirer('bateau');
+    }
+  };
+  app.question(qMer2);
+})();
+</script>
+</body>
+</html>
