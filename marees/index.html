@@ -228,6 +228,30 @@
   };
 
   // ---------- 4. Heures de passage en un point ----------
+  /* Graphe de passage : la courbe de la marée sur 48 heures, la hauteur du point (trait plein) et la marge de sécurité
+     (tirets). Les créneaux où le point est à sec sont teintés ; un trait vertical marque l'instant présent. */
+  function courbe(s, t0, z, marge) {
+    const W = 330, H = 132, gx = 30, dx = 6, haut = 12, bas = 26, T = 48 * 36e5, pts = [];
+    for (let t = t0; t <= t0 + T; t += 6e5) pts.push([t, niveau(s, t)]);
+    const vals = pts.map(p => p[1]).filter(v => v === v); if (!vals.length) return '';
+    const lo = Math.floor(Math.min(...vals, z - marge) - 0.5), hi = Math.ceil(Math.max(...vals, z) + 0.5);
+    const X = t => gx + (W - gx - dx) * (t - t0) / T, Y = v => haut + (H - haut - bas) * (hi - v) / (hi - lo);
+    let d = ''; pts.forEach((p, i) => { if (p[1] === p[1]) d += (d ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1); });
+    // créneaux à sec, avec la marge
+    let bandes = '', deb = null; const seuil = z - marge;
+    for (const p of pts) { const sec = p[1] < seuil; if (sec && deb == null) deb = p[0]; if ((!sec || p === pts[pts.length - 1]) && deb != null) { bandes += `<rect x="${X(deb).toFixed(1)}" y="${haut}" width="${Math.max(1, X(p[0]) - X(deb)).toFixed(1)}" height="${H - haut - bas}" fill="#2a9d8f" opacity="0.32"/><text x="${((X(deb) + X(p[0])) / 2).toFixed(1)}" y="${haut + 10}" font-size="8.5" fill="#bfeee6" text-anchor="middle">${hhmm(deb)}–${hhmm(p[0])}</text>`; deb = null; } }
+    // repères : toutes les six heures, et le changement de jour
+    let axes = ''; const d0 = new Date(t0); d0.setMinutes(0, 0, 0);
+    for (let t = d0.getTime(); t <= t0 + T; t += 36e5) { if (t < t0) continue; const hh = new Date(t).getHours(); if (hh % 6) continue; axes += `<line x1="${X(t).toFixed(1)}" x2="${X(t).toFixed(1)}" y1="${haut}" y2="${H - bas}" stroke="currentColor" opacity="${hh ? 0.12 : 0.4}"/><text x="${X(t).toFixed(1)}" y="${H - bas + 10}" font-size="8.5" fill="currentColor" opacity="0.75" text-anchor="middle">${hh} h</text>${hh === 0 ? `<text x="${(X(t) + 3).toFixed(1)}" y="${H - 3}" font-size="9" fill="currentColor" opacity="0.9">${jour(t + 36e5)}</text>` : ''}`; }
+    const mt = Date.now(), ici = mt >= t0 && mt <= t0 + T ? `<line x1="${X(mt).toFixed(1)}" x2="${X(mt).toFixed(1)}" y1="${haut}" y2="${H - bas}" stroke="#b8963e" stroke-width="1.5"/><text x="${(X(mt) + 3).toFixed(1)}" y="${H - bas - 3}" font-size="8.5" fill="#b8963e">maintenant</text>` : '';
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Hauteur de la mer sur 48 heures et créneaux où le point est à sec" style="display:block;margin:6px 0 2px">
+      ${bandes}${axes}
+      <text x="2" y="${Y(hi) + 4}" font-size="8.5" fill="currentColor" opacity="0.75">${hi} m</text><text x="2" y="${Y(lo) + 2}" font-size="8.5" fill="currentColor" opacity="0.75">${lo} m</text>
+      <line x1="${gx}" x2="${W - dx}" y1="${Y(z).toFixed(1)}" y2="${Y(z).toFixed(1)}" stroke="#d6be8c" stroke-width="1.6"/><text x="${W - dx}" y="${(Y(z) - 3).toFixed(1)}" font-size="8.5" fill="#d6be8c" text-anchor="end">le point : ${m(z)}</text>
+      <line x1="${gx}" x2="${W - dx}" y1="${Y(seuil).toFixed(1)}" y2="${Y(seuil).toFixed(1)}" stroke="#d6be8c" stroke-width="1" stroke-dasharray="3 3" opacity="0.8"/>
+      <path d="${d}" fill="none" stroke="#6fb3e0" stroke-width="2" stroke-linejoin="round"/>${ici}</svg>
+      <p class="petit2" style="margin:0">Courbe bleue : la mer. Trait sable : le point ; tirets : 50 cm de marge. En vert : à sec.</p>`;
+  }
   async function passage(ll, cible) {
     const s = await maree(), g = memo.g; if (!s || !g || !cible) return;
     const k = app.indice(g, ll.lng, ll.lat); if (k < 0) return;
@@ -238,8 +262,9 @@
     const MARGE = 0.5, t0 = depart(), plages = []; let deb = null;
     for (let t = t0; t <= t0 + 48 * 36e5; t += 3e5) { const sec = niveau(s, t) < z - MARGE; if (sec && deb == null) deb = t; if (!sec && deb != null) { plages.push([deb, t]); deb = null; } }
     if (deb != null) plages.push([deb, t0 + 48 * 36e5]);
+    const suiv = plages.find(p => p[1] > Date.now()) || plages[0];
     cible.innerHTML = `Ce point est à <span class="fort">${m(z)}</span>. ` + (plages.length
-      ? `Avec 50 cm de marge, il est à sec ${plages.slice(0, 4).map(p => `${jour(p[0])} de <span class="fort">${hhmm(p[0])}</span> à <span class="fort">${hhmm(p[1])}</span>`).join(' ; ')}.`
+      ? `Prochain créneau à sec : ${jour(suiv[0])} de <span class="fort">${hhmm(suiv[0])}</span> à <span class="fort">${hhmm(suiv[1])}</span>.` + courbe(s, t0, z, MARGE)
       : (niveau(s, t0) < z ? 'La mer ne l\'atteint pas dans les 48 heures.' : 'Il reste sous l\'eau dans les 48 heures.'))
       + ' <span class="petit">Un point à sec peut être coupé de la côte par un chenal plus bas : regarde tout le trajet, et vérifie les horaires officiels.</span>' + mention(s, t0);
   }
@@ -276,6 +301,7 @@
       const ok = plages.filter(p => (p[1] - p[0]) / 36e5 > marche);
       txt += plages.length
         ? `<p>Avec 50 cm de marge, tout le trajet est à sec ${plages.slice(0, 4).map(p => `${jour(p[0])} de <span class="fort">${hhmm(p[0])}</span> à <span class="fort">${hhmm(p[1])}</span>`).join(' ; ')}.</p>` +
+          courbe(s, t0, d.zmin, MARGE) +
           (ok.length ? `<p>Pour finir à sec, partir au plus tard ${ok.slice(0, 3).map(p => `${jour(p[0])} à <span class="fort">${hhmm(p[1] - marche * 36e5)}</span>`).join(', ')}.</p>` : '<p><span class="fort">Aucune fenêtre n\'est assez longue</span> pour faire le trajet à ce rythme.</p>')
         : `<p><span class="fort">Le trajet n'est jamais entièrement à sec</span> dans les 48 heures : le point bas reste sous l'eau.</p>`;
       return txt + mention(s, t0) + '<p class="petit">Le calcul suit la ligne tracée : un chenal entre deux points n\'est vu que si la ligne le traverse. La vase, les courants et le vent ne sont pas pris en compte.</p>';

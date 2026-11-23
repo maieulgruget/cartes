@@ -183,27 +183,38 @@
     const hdPx = hd ? ctx.getImageData(0, 0, 256, 256) : null;
     if (v2) ctx.drawImage(v2, 0, 0, 256, 256); else { ctx.fillStyle = MER_PLAN; ctx.fillRect(0, 0, 256, 256); }
     const fondPx = ctx.getImageData(0, 0, 256, 256), fond = fondPx.data;
-    if (v2) for (let k = 0; k < fond.length; k += 4) if (Math.abs(fond[k] - 170) < 7 && Math.abs(fond[k + 1] - 213) < 7 && Math.abs(fond[k + 2] - 233) < 7) { fond[k] = MER_RVB[0]; fond[k + 1] = MER_RVB[1]; fond[k + 2] = MER_RVB[2]; }
-    // Le Plan classique a lui aussi des blancs (hors de sa couverture) : un carré entièrement blanc y devient de la mer.
-    if (v2) for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
-      let blanc = true;
-      for (let yy = by * 16; yy < by * 16 + 16 && blanc; yy += 3) for (let xx = bx * 16; xx < bx * 16 + 16; xx += 3) { const k = 4 * (yy * 256 + xx); if (fond[k] < 250 || fond[k + 1] < 250 || fond[k + 2] < 250) { blanc = false; break; } }
-      if (blanc) for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) { const k = 4 * (yy * 256 + xx); fond[k] = MER_RVB[0]; fond[k + 1] = MER_RVB[1]; fond[k + 2] = MER_RVB[2]; }
+    let marin = !v2;   // la tuile est-elle surtout en mer ?
+    if (v2) {
+      // Toute eau du Plan classique (ses bleus varient selon la profondeur et le niveau de zoom) prend le bleu du Plan HD.
+      const eau = new Uint8Array(65536), blanc = new Uint8Array(65536);
+      for (let k = 0, q = 0; k < fond.length; k += 4, q++) {
+        const r = fond[k], g = fond[k + 1], b = fond[k + 2];
+        if (b > 150 && b > r + 35 && g > r + 10) { eau[q] = 1; fond[k] = MER_RVB[0]; fond[k + 1] = MER_RVB[1]; fond[k + 2] = MER_RVB[2]; }
+        else if (r >= 250 && g >= 250 && b >= 250) blanc[q] = 1;
+      }
+      // Ses blancs (hors couverture) deviennent de la mer là où le carré de 16 pixels n'a presque que de l'eau et du blanc,
+      // ce qui épargne les routes blanches des terres.
+      for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
+        let n = 0, nb = 0; for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) { const q = yy * 256 + xx; n += eau[q] + blanc[q]; nb += blanc[q]; }
+        if (nb && n >= 230) for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) { const q = yy * 256 + xx; if (blanc[q]) { fond[4 * q] = MER_RVB[0]; fond[4 * q + 1] = MER_RVB[1]; fond[4 * q + 2] = MER_RVB[2]; } }
+      }
+      let ne = 0, nbl = 0; for (let q = 0; q < 65536; q += 7) { ne += eau[q]; nbl += blanc[q]; } marin = ne > 65536 / 7 * 0.05 || nbl > 65536 / 7 * 0.6;
+      // En mer, ce qui reste blanc dans le Plan classique est un trou de sa couverture.
+      if (marin) for (let q = 0; q < 65536; q++) if (blanc[q]) { fond[4 * q] = MER_RVB[0]; fond[4 * q + 1] = MER_RVB[1]; fond[4 * q + 2] = MER_RVB[2]; }
     }
     if (!hd) ctx.putImageData(fondPx, 0, 0);
     else {
-      // Le Plan HD par-dessus, sauf ses blancs : carrés vides en entier, et pixel par pixel dans les carrés voisins
-      // d'un vide (la lisière de la couverture).
-      const d = hdPx.data, vide = new Uint8Array(256);
-      for (const [bx, by] of vides) vide[(by / 16) * 16 + bx / 16] = 1;
-      for (let by = 0; by < 16; by++) for (let bx = 0; bx < 16; bx++) {
-        let lisiere = false;
-        for (let dy = -1; dy <= 1 && !lisiere; dy++) for (let dx = -1; dx <= 1; dx++) { const yy = by + dy, xx = bx + dx; if (yy >= 0 && xx >= 0 && yy < 16 && xx < 16 && vide[yy * 16 + xx]) { lisiere = true; break; } }
-        if (!vide[by * 16 + bx] && !lisiere) continue;
-        for (let yy = by * 16; yy < by * 16 + 16; yy++) for (let xx = bx * 16; xx < bx * 16 + 16; xx++) {
-          const k = 4 * (yy * 256 + xx);
-          if (vide[by * 16 + bx] || (d[k] >= 205 && d[k + 1] >= 222 && d[k + 2] >= 222)) { d[k] = fond[k]; d[k + 1] = fond[k + 1]; d[k + 2] = fond[k + 2]; }
-        }
+      /* Le Plan HD par-dessus, sauf là où il n'a rien : ses blancs, et le liseré pâle que la compression laisse entre
+         son bleu et son blanc (une couleur à mi-chemin des deux). Le tri se fait pixel par pixel sur toute la tuile. */
+      const d = hdPx.data;
+      let merHd = 0; for (let k = 0; k < d.length; k += 28) if (Math.abs(d[k] - MER_RVB[0]) < 12 && Math.abs(d[k + 1] - MER_RVB[1]) < 12 && Math.abs(d[k + 2] - MER_RVB[2]) < 12) merHd++;
+      const enMer = marin || merHd > 65536 / 7 * 0.05;   // tuile côtière : un blanc des deux plans à la fois est de la mer
+      for (let k = 0; k < d.length; k += 4) {
+        const r = d[k], g = d[k + 1], b = d[k + 2];
+        let vide = r >= 228 && g >= 236 && b >= 236;
+        if (!vide) { const t = (r - MER_RVB[0]) / (255 - MER_RVB[0]); vide = t > 0.1 && Math.abs(g - (MER_RVB[1] + (255 - MER_RVB[1]) * t)) < 22 && Math.abs(b - (MER_RVB[2] + (255 - MER_RVB[2]) * t)) < 22; }
+        if (vide) { if (enMer && fond[k] >= 250 && fond[k + 1] >= 250 && fond[k + 2] >= 250) { d[k] = MER_RVB[0]; d[k + 1] = MER_RVB[1]; d[k + 2] = MER_RVB[2]; } else { d[k] = fond[k]; d[k + 1] = fond[k + 1]; d[k + 2] = fond[k + 2]; } }
+        else if (b > 140 && b > r + 35 && g > r + 10) { d[k] = MER_RVB[0]; d[k + 1] = MER_RVB[1]; d[k + 2] = MER_RVB[2]; }   // les bleus du Plan HD ramenés à un seul
       }
       ctx.putImageData(hdPx, 0, 0);
     }
