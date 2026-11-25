@@ -66,9 +66,17 @@ def komoot(base):
     except Exception as e:
         print(f'  Komoot ne répond pas pour le tour {m.group(1)} ({e}) : GPX seul', file=sys.stderr)
         return None
+    j = alleger(j)
     with open(cache, 'w', encoding='utf-8') as f:
-        json.dump(j, f, ensure_ascii=False)
+        json.dump(j, f, ensure_ascii=False, separators=(',', ':'))
     return j
+
+
+def alleger(j):
+    """Ne garde de la réponse de Komoot que ce dont la carte se sert : ni profil du compte, ni liens, ni images."""
+    emb = j.get('_embedded', {})
+    return {'id': j.get('id'), 'name': j.get('name'), 'sport': j.get('sport'), 'difficulty': {'grade': (j.get('difficulty') or {}).get('grade')},
+            '_embedded': {c: {'items': (emb.get(c) or {}).get('items') or []} for c in ('coordinates', 'way_types', 'surfaces')}}
 
 
 def troncons(items, n):
