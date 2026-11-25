@@ -1,0 +1,30 @@
+name: Randos
+# Refait corse/randos.geojson quand un GPX (ou sa fiche Komoot) est déposé dans corse/gpx/, ou à la demande.
+on:
+  push:
+    branches: [main]
+    paths: ["corse/gpx/**", "relais/randos.py"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  randos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Préparer les randos
+        env:
+          KOMOOT_EMAIL: ${{ secrets.KOMOOT_EMAIL }}
+          KOMOOT_PASSWORD: ${{ secrets.KOMOOT_PASSWORD }}
+        run: python relais/randos.py
+      - name: Déposer le fichier
+        if: success()
+        run: |
+          git config user.name "relais-randos"
+          git config user.email "actions@users.noreply.github.com"
+          git add corse/randos.geojson
+          git add corse/gpx/*.komoot.json 2>/dev/null || true
+          git diff --cached --quiet || (git commit -m "Randos : tracés préparés" && git pull --rebase origin main && git push origin HEAD:main)
