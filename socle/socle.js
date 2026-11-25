@@ -374,14 +374,18 @@
     let exag = exag0, relief3d = false, arbres = false, sourceRelief = 'relief';
     /* « Arbres » : en vue 3D rapprochée (zoom 14,5 et plus), le relief passe du sol nu au modèle de surface du LiDAR HD :
        la forêt, les haies et les bâtiments prennent du volume sous l'image du fond. De plus loin, le sol nu revient :
-       le modèle de surface coûte quatre fois plus de lectures, pour un grain qui ne se verrait pas. */
+       le modèle de surface coûte quatre fois plus de lectures, pour un grain qui ne se verrait pas.
+       Les arbres ne vont qu'avec la photo aérienne : sur une carte dessinée, le couvert gonflé tord les routes, les
+       courbes et les noms. Le bouton passe donc sur la photo, et un autre fond l'éteint. */
     const ZARBRES = 14.5;
-    const poserRelief = () => { const s = arbres && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
+    const poserRelief = () => { const s = arbres && fond === 'ortho' && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
     // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident. Avec les arbres, le relief les porte déjà.
     const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' && sourceRelief !== 'surface' ? 'visible' : 'none');
     const mettre3d = oui => { relief3d = oui; if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
     const mettreArbres = oui => {
-      arbres = oui; bArbres.setAttribute('aria-pressed', oui); if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments();
+      arbres = oui; bArbres.setAttribute('aria-pressed', oui);
+      if (oui && fond !== 'ortho' && fonds.includes('ortho')) mettreFond('ortho');
+      if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments();
       if (oui && map.getZoom() < ZARBRES) { app.occupe(true, 'Arbres : zoome encore un peu pour les voir en volume'); setTimeout(() => app.occupe(false), 2800); }
     };
     map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
@@ -389,7 +393,7 @@
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'false', 'aria-label': 'Arbres et bâtiments en volume, en vue 3D rapprochée' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
+    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'false', 'aria-label': 'Arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
       bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
       bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
     outils.append(bFond, b3d, bArbres, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
@@ -434,7 +438,8 @@
       map.setLayoutProperty('estompe', 'visibility', FONDS[f].estompe ? 'visible' : 'none');
       if (FONDS[f].estompe) map.setPaintProperty('estompe', 'hillshade-exaggeration', FONDS[f].estompe);
       for (const fn of surFond) { try { fn(f); } catch (e) { console.error(e); } }
-      majBatiments();
+      if (arbres && f !== 'ortho') { arbres = false; bArbres.setAttribute('aria-pressed', 'false'); }   // les arbres ne vont qu'avec la photo
+      poserRelief(); majBatiments();
     }
     // Le bouton des fonds ouvre une courte liste : un toucher choisit, un toucher ailleurs referme.
     const listeFonds = el('div', { class: 'listefonds', hidden: '' });

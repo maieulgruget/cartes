@@ -14,7 +14,7 @@ Cartes interactives personnelles, servies par GitHub Pages.
 `socle/` porte ce qui est commun : Plan IGN HD (fond d'ouverture ; son blanc du large est repeint en mer, son blanc de
 terre reste blanc), carte au 1/25 000 (SCAN 25, clé grand public de l'IGN : usage personnel), fond gris, photo, relief et carte géologique du BRGM (métropole) ; retour à la page des cartes ;
 panneau de thème ouvert ou réduit, carte libre par appui long, boussole, liste de fonds (cartes anciennes comprises) ;
-relief LiDAR HD lu à la volée (à l'échelle réelle, accentué sur demande), bouton « Arbres » (en 3D rapprochée, le relief
+relief LiDAR HD lu à la volée (à l'échelle réelle, accentué sur demande), bouton « Arbres » (sur la photo aérienne, en 3D rapprochée, le relief
 prend le modèle de surface : forêt, haies et bâtiments en volume), bâtiments en volume, thèmes regroupés en
 familles (une puce par famille, une rangée de sous-thèmes), signets, recherche, calculs (pentes, soleil, ombres portées).
 
