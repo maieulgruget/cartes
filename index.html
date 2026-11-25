@@ -43,5 +43,20 @@
     <a class="carte" href="corse/"><img src="corse/icone-512.png" alt=""><b>Corse</b><span>Mes randos : tracés sur le relief, profil, pente, sol, survol</span></a>
   </div>
 </main>
+<script>
+/* L'appli posée sur l'écran d'accueil du téléphone garde longtemps cette page en mémoire : une carte ajoutée n'y
+   apparaissait pas. À chaque retour au premier plan, on relit la page sans passer par la mémoire ; si la liste des
+   cartes a changé, on la recharge. */
+(function () {
+  const liste = t => (t.match(/<a class="carte" href="[^"]+"/g) || []).join('|');
+  const verifier = async () => {
+    try {
+      const r = await fetch('./?' + Date.now(), { cache: 'no-store' }); if (!r.ok) return;
+      const t = await r.text(); if (liste(t) && liste(t) !== liste(document.documentElement.outerHTML)) location.replace('./?v=' + Date.now());
+    } catch (e) { /* hors ligne : on garde la page */ }
+  };
+  verifier(); document.addEventListener('visibilitychange', () => { if (!document.hidden) verifier(); });
+})();
+</script>
 </body>
 </html>
