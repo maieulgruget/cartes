@@ -22,6 +22,8 @@
 <script src="../socle/soleil.js"></script>
 <script src="../socle/trace.js"></script>
 <style>
+  .randos-liste { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .randos-liste button { flex: none; text-align: left; border-radius: 12px; }
   .randos-liste button small { display: block; color: var(--muted); font-size: 11.5px; font-weight: 400; }
   .randos-liste button[aria-pressed="true"] small { color: #3a3524; }
   .barres { margin: 6px 0 2px; font-size: 12px; }
@@ -50,7 +52,7 @@
       { nom: 'Monte Rotondo', centre: [9.0579, 42.2161], zoom: 13, pitch: 62, bearing: 30 },
       { nom: 'Monte Cinto', note: 'le toit de l\'île', centre: [8.9459, 42.3795], zoom: 12.8, pitch: 62, bearing: -40 }
     ],
-    sources: 'Itinéraires : mes traces, exportées de Komoot en GPX et préparées par relais/randos.py (distance, dénivelés, et, quand Komoot les donne, type de chemin et nature du sol). Les altitudes du profil sont celles du GPX ; les dénivelés ne comptent une montée ou une descente qu\'au-delà de 3 m. Relief : LiDAR HD de l\'IGN là où il existe, relief mondial ailleurs. Photo aérienne et plan : IGN. Souvenirs de terrain, pas un topo : un sentier a pu changer depuis.'
+    sources: 'Itinéraires : mes tours Komoot partis de Corse (et les GPX déposés), préparés par relais/randos.py (distance, dénivelés, et, quand Komoot les donne, type de chemin et nature du sol). Les altitudes du profil sont celles du GPX ; les dénivelés ne comptent une montée ou une descente qu\'au-delà de 3 m. Relief : LiDAR HD de l\'IGN là où il existe, relief mondial ailleurs. Photo aérienne et plan : IGN. Souvenirs de terrain, pas un topo : un sentier a pu changer depuis.'
   });
   const { map } = app, P = app.propre;
   const km = v => (v >= 100 ? Math.round(v) : v.toFixed(1).replace('.', ',')) + ' km';
@@ -102,9 +104,9 @@
     randos.forEach((f, i) => {
       const c = f.geometry.coordinates, on = i === etat.choisie;
       fc.features.push({ type: 'Feature', properties: { r: 'bord', i, on }, geometry: { type: 'LineString', coordinates: c } });
-      if (!on) { fc.features.push({ type: 'Feature', properties: { r: 'ligne', i, couleur: '#e63946' }, geometry: { type: 'LineString', coordinates: c } }); return; }
+      if (!on) { fc.features.push({ type: 'Feature', properties: { r: 'ligne', i, on, couleur: '#e63946' }, geometry: { type: 'LineString', coordinates: c } }); return; }
       const cl = classes(f, etat.mode), teinte = j => j < 0 ? '#8d99ae' : cl.items[j].couleur;
-      for (let a = 0; a < c.length - 1;) { let b = a + 1; while (b < c.length - 1 && cl.k[b] === cl.k[a]) b++; fc.features.push({ type: 'Feature', properties: { r: 'ligne', i, couleur: teinte(cl.k[a]) }, geometry: { type: 'LineString', coordinates: c.slice(a, b + 1) } }); a = b; }
+      for (let a = 0; a < c.length - 1;) { let b = a + 1; while (b < c.length - 1 && cl.k[b] === cl.k[a]) b++; fc.features.push({ type: 'Feature', properties: { r: 'ligne', i, on, couleur: teinte(cl.k[a]) }, geometry: { type: 'LineString', coordinates: c.slice(a, b + 1) } }); a = b; }
       fc.features.push({ type: 'Feature', properties: { r: 'depart', i }, geometry: { type: 'Point', coordinates: c[0] } }, { type: 'Feature', properties: { r: 'arrivee', i }, geometry: { type: 'Point', coordinates: c[c.length - 1] } });
     });
     if (etat.repere) fc.features.push({ type: 'Feature', properties: { r: 'repere' }, geometry: { type: 'Point', coordinates: etat.repere } });
@@ -113,10 +115,12 @@
   const dessiner = () => map.getSource('randos').setData(donnees());
   map.addSource('randos', { type: 'geojson', data: donnees() });
   const rond = { 'line-cap': 'round', 'line-join': 'round' };
-  map.addLayer({ id: 'randos-bord', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'bord'], layout: rond, paint: { 'line-color': ['case', ['get', 'on'], '#10192a', '#ffffff'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 4, 13, 9], 'line-opacity': 0.9 } });
-  map.addLayer({ id: 'randos-ligne', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'ligne'], layout: rond, paint: { 'line-color': ['get', 'couleur'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 2, 13, 5] } });
+  map.addLayer({ id: 'randos-bord', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'bord'], layout: rond, paint: { 'line-color': ['case', ['get', 'on'], '#10192a', '#ffffff'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, ['case', ['get', 'on'], 2.6, 1.8], 13, ['case', ['get', 'on'], 5.5, 3.6]], 'line-opacity': ['case', ['get', 'on'], 0.85, 0.7] } });
+  map.addLayer({ id: 'randos-ligne', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'ligne'], layout: rond, paint: { 'line-color': ['get', 'couleur'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, ['case', ['get', 'on'], 1.4, 0.9], 13, ['case', ['get', 'on'], 3, 1.8]] } });
   map.addLayer({ id: 'randos-points', type: 'circle', source: 'randos', filter: ['==', ['geometry-type'], 'Point'],
-    paint: { 'circle-radius': ['match', ['get', 'r'], 'repere', 8, 6], 'circle-color': ['match', ['get', 'r'], 'depart', '#2a9d8f', 'arrivee', '#b8963e', '#e63946'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+    paint: { 'circle-radius': ['match', ['get', 'r'], 'repere', 7, 4], 'circle-color': ['match', ['get', 'r'], 'depart', '#2a9d8f', 'arrivee', '#b8963e', '#e63946'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } });
+  // Un tracé fin se touche mal : une bande invisible, plus large, prend le doigt.
+  map.addLayer({ id: 'randos-doigt', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'bord'], paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 22 } });
 
   // Profil : la courbe prend les couleurs du tracé ; le doigt y promène un repère, reporté sur la carte.
   function profil(f, cl) {
@@ -174,7 +178,7 @@
       if (!modes.some(m => m[0] === etat.mode)) etat.mode = 'pente';
       const cl = classes(f, etat.mode), date = p.date ? new Date(p.date + 'T12:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : '';
       const c = app.repondre(randos.length > 1 ? qRandos.libelle : p.nom, `
-        ${randos.length > 1 ? `<div class="puces randos-liste" style="margin-bottom:6px">${randos.map((r, i) => `<button data-i="${i}" aria-pressed="${i === etat.choisie}">${P(r.properties.nom)}<small>${km(r.total)} · +${milliers(r.properties.dplus)} m</small></button>`).join('')}</div>` : ''}
+        ${randos.length > 1 ? `<div class="puces randos-liste" style="margin-bottom:6px">${randos.map((r, i) => `<button data-i="${i}" aria-pressed="${i === etat.choisie}">${P(r.properties.nom)}<small>${km(r.total)} · +${milliers(r.properties.dplus)} m${r.properties.date ? ' · ' + r.properties.date.slice(0, 4) : ''}${r.properties.prevu ? ' · prévu' : ''}</small></button>`).join('')}</div>` : ''}
         <p class="etat"><span class="fort">${km(f.total)}</span>, <span class="fort">+${milliers(p.dplus)} m</span> / −${milliers(p.dmoins)} m, point haut ${milliers(p.altmax)} m${date ? ', ' + P(date) : ''}.</p>
         <div class="profil">${profil(f, cl)}</div>
         <div class="puces">${modes.map(m => `<button data-m="${m[0]}" aria-pressed="${m[0] === etat.mode}">${m[1]}</button>`).join('')}<button class="cadre">Voir en entier</button><button class="survol" aria-pressed="false">Survoler</button></div>
@@ -200,7 +204,7 @@
   };
   app.question(qRandos);
   // Toucher un tracé le choisit (sauf pendant qu'on dessine un itinéraire : le toucher y pose un point).
-  map.on('click', 'randos-bord', e => {
+  map.on('click', 'randos-doigt', e => {
     if (app.active && app.active !== qRandos) return;
     const i = e.features[0].properties.i; if (i !== etat.choisie) { etat.choisie = i; etat.repere = null; dessiner(); }
     if (app.active === qRandos) qRandos.ouvrir(app); else app.choisir(qRandos);
@@ -212,7 +216,8 @@
   famille('Lumière', Socle.lumiere.rasante({ fuseau: F }));
   famille('Lumière', Socle.lumiere.anneau({ fuseau: F }));
   app.question(Socle.lumiere.nuages({ fuseau: F, theme: 'Ciel' }));
-  app.question(Socle.trace({ cle: 'corse', nom: 'Itinéraire en Corse', theme: 'Préparer', libelle: 'Par où passer la prochaine fois ?', pied: 'Tracé posé à la main sur la carte.' }));
+  app.question(Socle.trace({ cle: 'corse', nom: 'Itinéraire en Corse', theme: 'Préparer', libelle: 'Par où passer la prochaine fois ?', sentiers: true, seuilPente: false,
+    intro: 'Touche la carte pour poser le départ, puis chaque étape : le tracé suit les sentiers. Le fond « Carte 25 » les montre le mieux.', pied: 'Tracé calculé sur les sentiers de la BD TOPO.' }));
 
   if (randos.length) { app.choisir(qRandos); if (!avaitVue) cadrer(randos[etat.choisie]); }
 })();

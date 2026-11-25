@@ -1,9 +1,11 @@
 name: Randos
-# Refait corse/randos.geojson quand un GPX (ou sa fiche Komoot) est déposé dans corse/gpx/, ou à la demande.
+# Refait corse/randos.geojson : chaque lundi (nouveaux tours Komoot en Corse), quand un GPX est déposé, ou à la demande.
 on:
+  schedule:
+    - cron: "23 4 * * 1"
   push:
     branches: [main]
-    paths: ["corse/gpx/**", "relais/randos.py"]
+    paths: ["corse/gpx/**", "corse/komoot/**", "relais/randos.py"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -26,5 +28,5 @@ jobs:
           git config user.name "relais-randos"
           git config user.email "actions@users.noreply.github.com"
           git add corse/randos.geojson
-          git add corse/gpx/*.komoot.json 2>/dev/null || true
+          git add corse/gpx/*.komoot.json corse/komoot 2>/dev/null || true
           git diff --cached --quiet || (git commit -m "Randos : tracés préparés" && git pull --rebase origin main && git push origin HEAD:main)
