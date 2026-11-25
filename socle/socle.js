@@ -679,5 +679,38 @@
     return app;
   }
 
+  /* Mise à jour. L'appli posée sur l'écran d'accueil garde la page et ses scripts en mémoire : une nouveauté pouvait
+     mettre longtemps à y arriver. À l'ouverture et à chaque retour au premier plan, on compare l'empreinte des fichiers
+     de la page (celle de la copie en mémoire, celle du serveur) ; s'ils diffèrent, un bouton propose de recharger, après
+     avoir rafraîchi la mémoire du navigateur. Rien ne se recharge tout seul : un tracé en cours n'est pas perdu. */
+  (function () {
+    const fichiers = () => [location.pathname, ...[...document.querySelectorAll('script[src], link[rel="stylesheet"]')].map(n => n.src || n.href).filter(u => u.startsWith(location.origin))];
+    const empreinte = r => r.headers.get('etag') || r.headers.get('last-modified') || '';
+    const vues = {};   // empreintes des copies en cours d'usage, relevées une fois
+    let bouton = null, enCours = false;
+    async function verifier() {
+      if (enCours || bouton) return; enCours = true;
+      try {
+        for (const u of fichiers()) {
+          if (!(u in vues)) { try { vues[u] = empreinte(await fetch(u, { method: 'HEAD', cache: 'force-cache' })); } catch (e) { vues[u] = ''; } }
+          const r = await fetch(u, { method: 'HEAD', cache: 'no-store' }); if (!r.ok) continue;
+          const e = empreinte(r); if (e && vues[u] && e !== vues[u]) { proposer(); break; }
+        }
+      } catch (e) { /* hors ligne : on garde la page */ }
+      enCours = false;
+    }
+    function proposer() {
+      bouton = el('button', { class: 'maj' }, 'Nouvelle version · recharger');
+      bouton.onclick = async () => {
+        bouton.textContent = 'Mise à jour…';
+        try { await Promise.all(fichiers().map(u => fetch(u, { cache: 'reload' }))); } catch (e) { /* on recharge quand même */ }
+        location.reload();
+      };
+      document.body.append(bouton);
+    }
+    setTimeout(verifier, 2500);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) verifier(); });
+  })();
+
   window.Socle = { RGEALTI, altitudeMonde, planMer, creer, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, versMerc, versGeo, distKm, wmts, GEOPF };
 })();
