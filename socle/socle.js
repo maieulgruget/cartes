@@ -299,7 +299,7 @@
       ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
       plan: { type: 'raster', tiles: ['ignplan://{z}/{x}/{y}'], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN © IGN' },
       // Carte au 1/25 000 (SCAN 25) : accès par la clé grand public de l'IGN, réservée à un usage personnel et non commercial.
-      scan25: { type: 'raster', tiles: [`${GEOPF}/private/wmts?apikey=ign_scan_ws&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN25TOUR&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg`], tileSize: 256, minzoom: 6, maxzoom: 16, attribution: 'SCAN 25® © IGN' },
+      scan25: { type: 'raster', tiles: [`${GEOPF}/private/tms/1.0.0/GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN25TOUR/{z}/{x}/{y}.jpeg?apikey=ign_scan_ws`], tileSize: 256, minzoom: 6, maxzoom: 16, attribution: 'SCAN 25® © IGN' },
       ombrage: { type: 'raster', tiles: [wmts('IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'LiDAR HD © IGN' },
       geologie: { type: 'raster', tiles: [wmts('BRGM_SCAN_D_GEOL50', 'image/jpeg')], tileSize: 256, maxzoom: 15, attribution: 'Carte géologique © BRGM' },
       geol250: { type: 'raster', tiles: [wmts('BRGM_SCAN_F_GEOL250', 'image/jpeg')], tileSize: 256, maxzoom: 14, attribution: 'Carte géologique © BRGM' },
