@@ -149,7 +149,22 @@
     }
     let alt = null;
     try { alt = await lireBil(MNT, x0, y1 - t, x0 + t, y1, 256, 256); } catch (e) { alt = null; }
-    if (surface) { try { const s = await lireBil(MNS, x0, y1 - t, x0 + t, y1, 256, 256); if (alt) { for (let k = 0; k < 65536; k++) if (!absent(s[k])) alt[k] = s[k]; } else alt = s; } catch (e) { /* on garde le sol nu */ } }
+    /* Arbres : le modèle de surface brut, point par point, donne un hérisson (chaque cime est un pic, et le maillage de
+       la carte n'en garde qu'un point sur deux). On ne garde donc que la hauteur du couvert au-dessus du sol (surface
+       moins sol nu), sans ce qui fait moins de 2 m (herbes, bruit : routes et prés restent lisses), puis on l'adoucit
+       avant de la reposer sur le sol : la forêt devient un volume aux formes rondes, les lisières restent nettes. */
+    if (surface && alt) {
+      try {
+        const s = await lireBil(MNS, x0, y1 - t, x0 + t, y1, 256, 256), h = new Float32Array(65536), tmp = new Float32Array(65536);
+        for (let k = 0; k < 65536; k++) { const d = absent(s[k]) || absent(alt[k]) ? 0 : s[k] - alt[k]; h[k] = d < 2 ? 0 : Math.min(d, 60); }
+        const r = z >= 16 ? 3 : z >= 15 ? 2 : 1;   // rayon de l'adoucissement, en points : 5 m environ à tous les zooms
+        for (let passe = 0; passe < 2; passe++) {   // deux passes de moyenne glissante, en ligne puis en colonne : proche d'un flou de Gauss
+          for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { let a = 0, n = 0; for (let d = -r; d <= r; d++) { const ii = i + d; if (ii >= 0 && ii < 256) { a += h[j * 256 + ii]; n++; } } tmp[j * 256 + i] = a / n; }
+          for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { let a = 0, n = 0; for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < 256) { a += tmp[jj * 256 + i]; n++; } } h[j * 256 + i] = a / n; }
+        }
+        for (let k = 0; k < 65536; k++) if (!absent(alt[k])) alt[k] += h[k];
+      } catch (e) { /* on garde le sol nu */ }
+    }
     const c = document.createElement('canvas'); c.width = c.height = 256;
     const ctx = c.getContext('2d'), im = ctx.createImageData(256, 256), d = im.data;
     let manque = !alt;
