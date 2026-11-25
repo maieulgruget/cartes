@@ -137,7 +137,8 @@
     return ctx.getImageData(0, 0, 256, 256).data;
   }
   let tuilePlate = null;
-  async function tuileRelief(z, x, y) {
+  // surface = true : modèle de surface (arbres et bâtiments compris), complété par le sol nu là où il manque.
+  async function tuileRelief(z, x, y, surface) {
     const t = 2 * R / (1 << z), x0 = -R + x * t, y1 = R - y * t;
     // En pleine mer (le relief mondial est partout sous -3 m), il n'y a ni LiDAR à demander ni relief à montrer :
     // une tuile plate, faite une fois, évite deux requêtes par tuile.
@@ -148,6 +149,7 @@
     }
     let alt = null;
     try { alt = await lireBil(MNT, x0, y1 - t, x0 + t, y1, 256, 256); } catch (e) { alt = null; }
+    if (surface) { try { const s = await lireBil(MNS, x0, y1 - t, x0 + t, y1, 256, 256); if (alt) { for (let k = 0; k < 65536; k++) if (!absent(s[k])) alt[k] = s[k]; } else alt = s; } catch (e) { /* on garde le sol nu */ } }
     const c = document.createElement('canvas'); c.width = c.height = 256;
     const ctx = c.getContext('2d'), im = ctx.createImageData(256, 256), d = im.data;
     let manque = !alt;
@@ -259,16 +261,17 @@
       const [z, x, y] = params.url.replace('ignplan://', '').split('/').map(Number);
       return { data: await tuilePlan(z, x, y) };
     });
-    maplibregl.addProtocol('ignalti', async (params) => {
+    const relief = (nom, surface) => maplibregl.addProtocol(nom, async (params) => {
       const cle = params.url;
       if (!cacheTuiles.has(cle)) {
-        const [z, x, y] = cle.replace('ignalti://', '').split('/').map(Number);
-        cacheTuiles.set(cle, tuileRelief(z, x, y));
+        const [z, x, y] = cle.replace(nom + '://', '').split('/').map(Number);
+        cacheTuiles.set(cle, tuileRelief(z, x, y, surface));
         if (cacheTuiles.size > 400) cacheTuiles.delete(cacheTuiles.keys().next().value);
       }
       const data = await cacheTuiles.get(cle);
       return { data: data.slice(0) };
     });
+    relief('ignalti', false); relief('ignsurf', true);
   }
 
   // ---------- Météo (Open-Meteo, sans clé) ----------
@@ -310,6 +313,8 @@
       bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
       // Relief en tuiles de 512 points à l'écran : quatre fois moins de tuiles à demander qu'en 256, pour un maillage 3D qui n'y perd rien de visible.
       relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
+      // Relief « avec les arbres » : le modèle de surface du LiDAR HD, lu jusqu'au zoom 16 (un point tous les 2 m environ). Il ne sert que de près.
+      surface: { type: 'raster-dem', tiles: ['ignsurf://{z}/{x}/{y}'], tileSize: 512, minzoom: 12, maxzoom: 16, encoding: 'terrarium', attribution: 'Surface : LiDAR HD © IGN' },
       estompe: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium' }
     });
     style.layers.splice(premierTexte, 0,
@@ -351,18 +356,28 @@
     map.touchZoomRotate.enableRotation(); map.touchPitch.enable();
     await new Promise(res => map.once('load', res));
     const exag0 = cfg.exageration || 1;
-    let exag = exag0, relief3d = false;
-    // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident.
-    const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' ? 'visible' : 'none');
-    const mettre3d = oui => { relief3d = oui; map.setTerrain(oui ? { source: 'relief', exaggeration: exag } : null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
+    let exag = exag0, relief3d = false, arbres = false, sourceRelief = 'relief';
+    /* « Arbres » : en vue 3D rapprochée (zoom 14,5 et plus), le relief passe du sol nu au modèle de surface du LiDAR HD :
+       la forêt, les haies et les bâtiments prennent du volume sous l'image du fond. De plus loin, le sol nu revient :
+       le modèle de surface coûte quatre fois plus de lectures, pour un grain qui ne se verrait pas. */
+    const ZARBRES = 14.5;
+    const poserRelief = () => { const s = arbres && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
+    // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident. Avec les arbres, le relief les porte déjà.
+    const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' && sourceRelief !== 'surface' ? 'visible' : 'none');
+    const mettre3d = oui => { relief3d = oui; if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
+    const mettreArbres = oui => {
+      arbres = oui; bArbres.setAttribute('aria-pressed', oui); if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments();
+      if (oui && map.getZoom() < ZARBRES) { app.occupe(true, 'Arbres : zoome encore un peu pour les voir en volume'); setTimeout(() => app.occupe(false), 2800); }
+    };
+    map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
 
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
+    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'false', 'aria-label': 'Arbres et bâtiments en volume, en vue 3D rapprochée' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
       bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
       bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
-    outils.append(bFond, b3d, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
+    outils.append(bFond, b3d, bArbres, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
       sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
     bas.append(reponse, sous, rang);
@@ -419,6 +434,7 @@
     bFond.onclick = e => { e.stopPropagation(); if (listeFonds.hidden) ouvrirFonds(); else listeFonds.hidden = true; };
     document.addEventListener('click', e => { if (!listeFonds.hidden && !listeFonds.contains(e.target)) listeFonds.hidden = true; });
     b3d.onclick = () => mettre3d(!relief3d);
+    bArbres.onclick = () => mettreArbres(!arbres);
     bNord.onclick = () => map.easeTo({ bearing: 0, duration: 600 });
     // La boussole tourne avec la carte : sa pointe rouge reste tournée vers le nord.
     const tournerBoussole = () => { const b = map.getBearing(); bNord.querySelector('svg').style.transform = `rotate(${-b}deg)`; bNord.classList.toggle('tournee', Math.abs(b) > 1); };
@@ -427,7 +443,7 @@
     const app = {
       map, cfg, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, propre, versGeo, versMerc, distKm,
       get fond() { return fond; }, mettreFond, mettre3d, surFond, altitudeMonde,
-      get relief3d() { return relief3d; }, libre,
+      get relief3d() { return relief3d; }, libre, mettreArbres, get arbres() { return arbres; },
       occupe(oui, texte) { attente.textContent = texte || 'Calcul…'; attente.hidden = !oui; },
       // Emprise de la vue courante, élargie d'une marge (fraction), bornée pour rester raisonnable en vue inclinée.
       emprise(marge) {
@@ -602,7 +618,7 @@
       menu.querySelector('.libre').onclick = () => { menu.hidden = true; libre(true); };
       menu.querySelector('.exag').onclick = e => {
         exag = exag > exag0 ? exag0 : exag0 * 1.8; e.target.setAttribute('aria-pressed', exag > exag0);
-        if (!relief3d) mettre3d(true); else map.setTerrain({ source: 'relief', exaggeration: exag });
+        if (!relief3d) mettre3d(true); else map.setTerrain({ source: sourceRelief, exaggeration: exag });
       };
       menu.querySelector('.autres').onclick = e => { const b = e.target.closest('button[data-u]'); if (b) location.href = b.dataset.u; };
       // Page « méthode » : tous les thèmes de la carte, ce qu'ils calculent, leurs limites ; puis les sources.
