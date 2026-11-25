@@ -376,23 +376,23 @@
        la forêt, les haies et les bâtiments prennent du volume sous l'image du fond. De plus loin, le sol nu revient :
        le modèle de surface coûte quatre fois plus de lectures, pour un grain qui ne se verrait pas.
        Les arbres ne vont qu'avec la photo aérienne : sur une carte dessinée, le couvert gonflé tord les routes, les
-       courbes et les noms. Sur la photo ils sont là d'office, et le bouton (qui n'apparaît que sur ce fond) les retire.
+       courbes et les noms. Sur la photo ils sont là d'office, et le bouton « Couvert » (qui n'apparaît que sur ce fond) les retire.
        Un thème qui dresse ses propres volumes (les cimes, arbre par arbre) demande le sol nu : app.forcerSolNu. */
     const ZARBRES = 14.5;
     const poserRelief = () => { const s = arbres && !solNu && fond === 'ortho' && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
     // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident. Avec les arbres, le relief les porte déjà.
     const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' && sourceRelief !== 'surface' ? 'visible' : 'none');
     const mettre3d = oui => { relief3d = oui; if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
-    const mettreArbres = oui => { arbres = oui; bArbres.setAttribute('aria-pressed', oui); if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments(); };
+    const mettreArbres = oui => { arbres = oui; majArbres(); if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments(); };
     map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
 
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'true', hidden: '', 'aria-label': 'Arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
+    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée' }, 'Couvert'), bSem = el('button', { 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
       bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
       bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
-    outils.append(bFond, b3d, bArbres, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
+    outils.append(bFond, b3d, bArbres, bSem, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
       sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
     bas.append(reponse, sous, rang);
@@ -434,7 +434,7 @@
       map.setLayoutProperty('estompe', 'visibility', FONDS[f].estompe ? 'visible' : 'none');
       if (FONDS[f].estompe) map.setPaintProperty('estompe', 'hillshade-exaggeration', FONDS[f].estompe);
       for (const fn of surFond) { try { fn(f); } catch (e) { console.error(e); } }
-      bArbres.hidden = f !== 'ortho'; poserRelief(); majBatiments();
+      majArbres(); poserRelief(); majBatiments();
     }
     // Le bouton des fonds ouvre une courte liste : un toucher choisit, un toucher ailleurs referme.
     const listeFonds = el('div', { class: 'listefonds', hidden: '' });
@@ -449,7 +449,22 @@
     bFond.onclick = e => { e.stopPropagation(); if (listeFonds.hidden) ouvrirFonds(); else listeFonds.hidden = true; };
     document.addEventListener('click', e => { if (!listeFonds.hidden && !listeFonds.contains(e.target)) listeFonds.hidden = true; });
     b3d.onclick = () => mettre3d(!relief3d);
+    /* Deux boutons. « Couvert », sur la photo seulement : le couvert en volume, allumé d'office. « Arbres », sur tous les
+       fonds : les arbres dressés un par un d'après le LiDAR (socle/arbres.js, chargé à la demande), éteints au départ,
+       qui suivent la carte. Arbres dressés, le relief revient au sol nu : ils remplacent le couvert en volume. */
+    let coucheArbres = null;
+    const chargerArbres = () => window.Socle.arbres ? Promise.resolve() : new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = cfg.racine + 'socle/arbres.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc); });
+    const semantique = () => !!(app._arbres && app._arbres.actif);
+    const majArbres = () => { bArbres.hidden = fond !== 'ortho'; bArbres.setAttribute('aria-pressed', arbres && !semantique()); bSem.setAttribute('aria-pressed', semantique()); };
     bArbres.onclick = () => mettreArbres(!arbres);
+    bSem.onclick = async () => {
+      try { await chargerArbres(); } catch (e) { app.occupe(true, 'Les arbres ne se chargent pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; }
+      if (!coucheArbres) coucheArbres = window.Socle.arbres.couche(app);
+      if (!coucheArbres.surChange.includes(majArbres)) coucheArbres.surChange.push(majArbres);
+      const allumer = !coucheArbres.actif; await coucheArbres.activer(allumer);
+      if (allumer && coucheArbres.message) { app.occupe(true, coucheArbres.message); setTimeout(() => app.occupe(false), 3200); }
+      majArbres();
+    };
     bNord.onclick = () => map.easeTo({ bearing: 0, duration: 600 });
     // La boussole tourne avec la carte : sa pointe rouge reste tournée vers le nord.
     const tournerBoussole = () => { const b = map.getBearing(); bNord.querySelector('svg').style.transform = `rotate(${-b}deg)`; bNord.classList.toggle('tournee', Math.abs(b) > 1); };
@@ -458,7 +473,7 @@
     const app = {
       map, cfg, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, propre, versGeo, versMerc, distKm,
       get fond() { return fond; }, mettreFond, mettre3d, surFond, altitudeMonde,
-      get relief3d() { return relief3d; }, libre, mettreArbres, get arbres() { return arbres; }, forcerSolNu(oui) { solNu = !!oui; poserRelief(); majBatiments(); },
+      get relief3d() { return relief3d; }, libre, mettreArbres, get arbres() { return arbres; }, forcerSolNu(oui) { solNu = !!oui; poserRelief(); majBatiments(); majArbres(); },
       occupe(oui, texte) { attente.textContent = texte || 'Calcul…'; attente.hidden = !oui; },
       // Emprise de la vue courante, élargie d'une marge (fraction), bornée pour rester raisonnable en vue inclinée.
       emprise(marge) {
