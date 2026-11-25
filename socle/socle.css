@@ -177,3 +177,7 @@ details.aide p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 .tranches b { display: block; color: var(--gold); font-size: 12.5px; }
 .jours div[role="button"] { cursor: pointer; }
 .jours div[aria-pressed="true"] { outline: 1px solid var(--gold); }
+
+/* Bouton « Nouvelle version » : discret, en haut au milieu, tant qu'une mise à jour attend. */
+.maj { position: fixed; left: 50%; transform: translateX(-50%); top: calc(64px + env(safe-area-inset-top)); z-index: 7; font-size: 13px; padding: 6px 12px;
+  background: var(--gold); color: #10192a; border-color: var(--gold); font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
