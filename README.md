@@ -28,6 +28,7 @@ tracé. Les réponses de Komoot sont gardées dans `corse/komoot/` ; un numéro 
 tour. La tâche « Randos » le relance chaque lundi, à chaque GPX déposé, ou à la demande.
 
 `socle/trace.js` (thème Itinéraire) sait suivre les sentiers : entre deux points posés, il demande le chemin au calcul
-d'itinéraire piéton de l'IGN (BD TOPO).
+d'itinéraire piéton de l'IGN (BD TOPO). Thème « Préparer » sur les cartes Corse, Réunion, Champignons et Marées ; bouton
+« Suivre les sentiers » (éteint au départ) dans l'itinéraire de la Tarentaise.
 
 Données : IGN (Géoplateforme), BRGM, Shom, OpenStreetMap, Open-Meteo. Versions de travail, à vérifier sur le terrain.

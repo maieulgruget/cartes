@@ -21,6 +21,7 @@
 <script src="../socle/socle.js"></script>
 <script src="../socle/soleil.js"></script>
 <script src="../socle/drone.js"></script>
+<script src="../socle/trace.js"></script>
 </head>
 <body>
 <script>
@@ -54,6 +55,8 @@
   app.question(Socle.lumiere.nuages({ fuseau: F, theme: 'Ciel' }));
   famille('Drone', Socle.drone.camera({ cle: 'reunion', nom: 'Plan de vol — La Réunion', theme: 'Caméra' }));
   famille('Drone', Socle.drone.vol({ fuseau: F }));
+  app.question(Socle.trace({ cle: 'reunion-rando', nom: 'Randonnée à La Réunion', theme: 'Préparer', libelle: 'Par où passer ?', sentiers: true, seuilPente: false,
+    intro: 'Touche la carte pour poser le départ, puis chaque étape : le tracé suit les sentiers. Le fond « Carte 25 » les montre le mieux.', pied: 'Tracé calculé sur les sentiers de la BD TOPO.' }));
 })();
 </script>
 </body>

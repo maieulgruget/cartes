@@ -504,6 +504,8 @@
   const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
   [q1, q3, q4, q2].forEach(q => famille('Mer', q));
   app.question(q5); app.question(q6);
+  app.question(Socle.trace({ cle: 'marees-rando', nom: 'Randonnée sur la côte', theme: 'Préparer', libelle: 'Par où passer à pied ?', sentiers: true, seuilPente: false,
+    intro: 'Touche la carte pour poser le départ, puis chaque étape : le tracé suit les sentiers et le chemin des douaniers. Le fond « Carte 25 » les montre le mieux.', pied: 'Tracé calculé sur les sentiers de la BD TOPO.' }));
   famille('Vent', Socle.vent.theme({ fuseau: 'Europe/Paris', theme: 'Au sol' }));
   famille('Vent', Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 4, theme: 'En altitude' }));
 })();

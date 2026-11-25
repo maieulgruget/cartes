@@ -22,8 +22,8 @@
     /* pts : les points posés. brins : le chemin entre deux points posés (brins[i] va de pts[i] à pts[i + 1]) : une ligne
        droite, ou, avec opts.sentiers, le chemin que le calcul d'itinéraire piéton de l'IGN trouve sur les sentiers et les
        routes de la BD TOPO. */
-    let pts = [], brins = [], surSentiers = !!opts.sentiers;
-    try { const v = JSON.parse(localStorage.getItem(cle)); if (Array.isArray(v)) pts = v; else if (v && v.pts) { pts = v.pts; brins = v.brins || []; surSentiers = opts.sentiers ? v.sentiers !== false : false; } } catch (e) { pts = []; }
+    let pts = [], brins = [], surSentiers = opts.sentiers === true;   // opts.sentiers : true (suivi d'office), 'choix' (bouton proposé, éteint au départ)
+    try { const v = JSON.parse(localStorage.getItem(cle)); if (Array.isArray(v)) pts = v; else if (v && v.pts) { pts = v.pts; brins = v.brins || []; surSentiers = opts.sentiers ? (v.sentiers == null ? surSentiers : !!v.sentiers) : false; } } catch (e) { pts = []; }
     for (let i = 0; i < pts.length - 1; i++) if (!brins[i] || brins[i].length < 2) brins[i] = [pts[i], pts[i + 1]];
     brins.length = Math.max(0, pts.length - 1);
     const garder = () => { try { localStorage.setItem(cle, JSON.stringify({ pts, brins, sentiers: surSentiers })); } catch (e) { } };

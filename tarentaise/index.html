@@ -293,7 +293,7 @@
   // ---------- Itinéraire : profil, temps, pentes traversées et dominantes, soleil ----------
   const T = Socle.traceOutils, L = Socle.lumiere;
   const qTrace = Socle.trace({
-    cle: 'tarentaise', nom: 'Sortie au-dessus des Chapelles', libelle: 'Par où monter ?',
+    cle: 'tarentaise', nom: 'Sortie au-dessus des Chapelles', libelle: 'Par où monter ?', sentiers: 'choix',   // à skis on coupe droit ; l'été, le bouton fait suivre les sentiers
     aide: 'Tracé posé au doigt. La carte en tire le profil et le dénivelé, un temps de montée (dénivelé et distance combinés), la longueur passée sur des pentes de 30° ou plus et leur orientation, les pentes raides qui dominent le tracé à moins de 80 m, et l\'heure d\'arrivée du soleil. Entre deux points, le tracé coupe droit. Les pentes lointaines (couloirs, grandes faces) ne sont pas comptées, et la carte ne sait rien de la neige.',
     intro: 'Touche la carte pour poser le départ, puis chaque point de passage jusqu\'au sommet.',
     pied: 'Outil de préparation : il ne remplace ni le bulletin d\'avalanche ni l\'observation du manteau neigeux.',
