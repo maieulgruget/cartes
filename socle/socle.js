@@ -270,8 +270,41 @@
     ctx.putImageData(im, 0, 0);
     return (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer();
   }
+  /* Photos posées par-dessus la photo courante : une prise de vue plus récente (ortho-express) ou plus fine (très haute
+     résolution), qui ne couvrent qu'une partie du pays. Hors de leur emprise, leurs tuiles manquent, ou sont blanches
+     (le JPEG n'a pas de transparence) : on rend ici ce blanc transparent, pour laisser voir la photo du dessous.
+     Seules les grandes plages blanches sont percées (cœur : tout un voisinage de 5 × 5 blanc ; puis leur lisière claire) :
+     un toit blanc, un névé restent en place. */
+  let tuileVide = null;
+  const vide = () => tuileVide || (tuileVide = (async () => { const c = document.createElement('canvas'); c.width = c.height = 256; return (await new Promise(res => c.toBlob(res, 'image/png'))).arrayBuffer(); })());
+  async function tuileSur(couche, z, x, y) {
+    let brut = null;
+    try { const r = await fetch(wmts(couche, 'image/jpeg').replace('{z}', z).replace('{x}', x).replace('{y}', y)); if (r.ok) brut = await r.arrayBuffer(); } catch (e) { brut = null; }
+    if (!brut) return (await vide()).slice(0);
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    try { ctx.drawImage(await createImageBitmap(new Blob([brut], { type: 'image/jpeg' })), 0, 0); } catch (e) { return brut; }
+    const im = ctx.getImageData(0, 0, 256, 256), d = im.data;
+    let blancs = 0; for (let k = 0; k < 65536; k += 5) if (d[4 * k] > 250 && d[4 * k + 1] > 250 && d[4 * k + 2] > 250) blancs++;
+    if (blancs < 40) return brut;
+    const blanc = new Uint8Array(65536); for (let k = 0; k < 65536; k++) blanc[k] = d[4 * k] > 250 && d[4 * k + 1] > 250 && d[4 * k + 2] > 250 ? 1 : 0;
+    const somme = src => { const I = new Int32Array(257 * 257); for (let j = 0; j < 256; j++) { let l = 0; for (let i = 0; i < 256; i++) { l += src[j * 256 + i]; I[(j + 1) * 257 + i + 1] = I[j * 257 + i + 1] + l; } } return I; };
+    const compte = (I, i, j, r) => { const a = Math.max(0, i - r), b = Math.min(255, i + r), e = Math.max(0, j - r), f = Math.min(255, j + r); return [I[(f + 1) * 257 + b + 1] - I[e * 257 + b + 1] - I[(f + 1) * 257 + a] + I[e * 257 + a], (b - a + 1) * (f - e + 1)]; };
+    const Ib = somme(blanc), coeur = new Uint8Array(65536); let coeurs = 0;
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { const q = compte(Ib, i, j, 2); if (q[0] >= q[1]) { coeur[j * 256 + i] = 1; coeurs++; } }
+    if (!coeurs) return brut;
+    if (coeurs > 65000) return (await vide()).slice(0);
+    const Ic = somme(coeur);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { const k = j * 256 + i; if (d[4 * k] > 205 && d[4 * k + 1] > 205 && d[4 * k + 2] > 205 && compte(Ic, i, j, 4)[0]) d[4 * k + 3] = 0; }
+    ctx.putImageData(im, 0, 0);
+    return (await new Promise(res => c.toBlob(res, 'image/png'))).arrayBuffer();
+  }
   function brancherRelief() {
     if (brancherRelief.fait) return; brancherRelief.fait = true;
+    maplibregl.addProtocol('ignsur', async (params) => {
+      const [couche, z, x, y] = params.url.replace('ignsur://', '').split('/');
+      return { data: await tuileSur(couche, +z, +x, +y) };
+    });
     maplibregl.addProtocol('ignplan', async (params) => {
       const [z, x, y] = params.url.replace('ignplan://', '').split('/').map(Number);
       return { data: await tuilePlan(z, x, y) };
@@ -315,6 +348,12 @@
     const premierTexte = style.layers.findIndex(l => l.type === 'symbol');
     Object.assign(style.sources, {
       ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
+      /* Par-dessus la photo courante (la dernière BD ORTHO de chaque département, à 20 cm) : la photo à très haute
+         résolution (5 à 10 cm), là où elle existe. Le fond « Photo 2025 » y glisse en plus l'ortho-express de l'année, là
+         où elle existe : plus récente, mais produite vite (teintes et ombres moins soignées, parfois prise en hiver), d'où
+         un fond à part plutôt qu'un remplacement. À revoir chaque année : l'ortho-express change de nom avec son millésime. */
+      orthorecent: { type: 'raster', tiles: ['ignsur://ORTHOIMAGERY.ORTHOPHOTOS.ORTHO-EXPRESS.2025/{z}/{x}/{y}'], tileSize: 256, minzoom: 10, maxzoom: 19, attribution: 'Ortho-express 2025 © IGN' },
+      orthothr: { type: 'raster', tiles: ['ignsur://THR.ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}'], tileSize: 256, minzoom: 13, maxzoom: 21, attribution: 'Ortho THR © IGN et partenaires' },
       plan: { type: 'raster', tiles: ['ignplan://{z}/{x}/{y}'], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN © IGN' },
       // Carte au 1/25 000 (SCAN 25) : accès par la clé grand public de l'IGN, réservée à un usage personnel et non commercial.
       scan25: { type: 'raster', tiles: [`${GEOPF}/private/tms/1.0.0/GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN25TOUR/{z}/{x}/{y}.jpeg?apikey=ign_scan_ws`], tileSize: 256, minzoom: 6, maxzoom: 16, attribution: 'SCAN 25® © IGN' },
@@ -334,6 +373,8 @@
     });
     style.layers.splice(premierTexte, 0,
       { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
+      { id: 'orthorecent', type: 'raster', source: 'orthorecent', minzoom: 10, layout: { visibility: 'none' } },
+      { id: 'orthothr', type: 'raster', source: 'orthothr', minzoom: 13, layout: { visibility: 'none' } },
       { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
       { id: 'scan25', type: 'raster', source: 'scan25', layout: { visibility: 'none' } },
       { id: 'ombrage', type: 'raster', source: 'ombrage', layout: { visibility: 'none' } },
@@ -371,6 +412,7 @@
     map.touchZoomRotate.enableRotation(); map.touchPitch.enable();
     await new Promise(res => map.once('load', res));
     const exag0 = cfg.exageration || 1;
+    const surPhoto = () => fond === 'ortho' || fond === 'recent';
     let exag = exag0, relief3d = false, arbres = true, solNu = false, sourceRelief = 'relief';
     /* « Arbres » : en vue 3D rapprochée (zoom 14,5 et plus), le relief passe du sol nu au modèle de surface du LiDAR HD :
        la forêt, les haies et les bâtiments prennent du volume sous l'image du fond. De plus loin, le sol nu revient :
@@ -379,7 +421,7 @@
        courbes et les noms. Sur la photo ils sont là d'office, et le bouton « Couvert » (qui n'apparaît que sur ce fond) les retire.
        Un thème qui dresse ses propres volumes (les cimes, arbre par arbre) demande le sol nu : app.forcerSolNu. */
     const ZARBRES = 14.5;
-    const poserRelief = () => { const s = arbres && !solNu && fond === 'ortho' && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
+    const poserRelief = () => { const s = arbres && !solNu && surPhoto() && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
     // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident. Avec les arbres, le relief les porte déjà.
     const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' && sourceRelief !== 'surface' ? 'visible' : 'none');
     const mettre3d = oui => { relief3d = oui; if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
@@ -411,7 +453,8 @@
       plan: { nom: 'Plan HD', note: 'Plan IGN HD, drapé sur le relief', calques: ['plan'], estompe: 0 },
       scan25: { nom: 'Carte 25', note: 'carte de randonnée au 1/25 000 (SCAN 25)', calques: ['scan25'], estompe: 0, sansNoms: true },
       gris: { nom: 'Gris', note: 'fond sobre, bâtiments en volume de près', calques: [], estompe: 0.4 },
-      ortho: { nom: 'Photo', note: 'photographie aérienne', calques: ['ortho'], estompe: 0.12 },
+      ortho: { nom: 'Photo', note: 'photographie aérienne, la plus fine disponible de près', calques: ['ortho', 'orthothr'], estompe: 0.12 },
+      recent: { nom: 'Photo 2025', note: 'ortho-express 2025 là où elle existe : plus récente, moins soignée', calques: ['ortho', 'orthorecent', 'orthothr'], estompe: 0.12, photo: true },
       ombrage: { nom: 'Relief', note: 'ombrage du LiDAR HD', calques: ['ombrage'], estompe: 0 },
       geologie: { nom: 'Géologie', note: 'cartes géologiques du BRGM, trois échelles', calques: ['geol1m', 'geol250', 'geologie'], estompe: 0.25 },
       carte1950: { nom: 'Carte 1950', note: 'carte topographique des années 1950', calques: ['carte1950'], estompe: 0.12, ancien: true },
@@ -455,7 +498,7 @@
     let coucheArbres = null;
     const chargerArbres = () => window.Socle.arbres ? Promise.resolve() : new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = cfg.racine + 'socle/arbres.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc); });
     const semantique = () => !!(app._arbres && app._arbres.actif);
-    const majArbres = () => { bArbres.hidden = fond !== 'ortho'; bArbres.setAttribute('aria-pressed', arbres && !semantique()); bSem.setAttribute('aria-pressed', semantique()); };
+    const majArbres = () => { bArbres.hidden = !surPhoto(); bArbres.setAttribute('aria-pressed', arbres && !semantique()); bSem.setAttribute('aria-pressed', semantique()); };
     bArbres.onclick = () => mettreArbres(!arbres);
     bSem.onclick = async () => {
       try { await chargerArbres(); } catch (e) { app.occupe(true, 'Les arbres ne se chargent pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; }
