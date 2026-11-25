@@ -23,7 +23,8 @@
 <script src="../socle/trace.js"></script>
 <style>
   .randos-liste { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-  .randos-liste button { flex: none; text-align: left; border-radius: 12px; }
+  .randos-liste button { flex: none; text-align: left; border-radius: 12px; max-width: 13.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .randos-liste button small { overflow: hidden; text-overflow: ellipsis; }
   .randos-liste button small { display: block; color: var(--muted); font-size: 11.5px; font-weight: 400; }
   .randos-liste button[aria-pressed="true"] small { color: #3a3524; }
   .barres { margin: 6px 0 2px; font-size: 12px; }
@@ -39,11 +40,12 @@
 (async function () {
   const F = 'Europe/Paris', avaitVue = location.hash.length > 1;   // une adresse qui porte déjà une vue la garde
   const app = await Socle.creer({
-    id: 'corse', racine: '../', titre: 'Mes randos', sousTitre: 'Corse',
+    id: 'corse', racine: '../', titre: 'Mes randos', sousTitre: 'Corse et France',
     centre: [9.2300, 41.9400], zoom: 9.4, pitch: 50, bearing: -20, pitch3d: 60,
-    recherche: { centre: [9.10, 42.15], rayonKm: 110 },
+    recherche: { centre: [2.5, 46.5], rayonKm: 1100 },
     signets: [
       { nom: 'Toute la Corse', centre: [9.10, 42.15], zoom: 7.7, pitch: 0, bearing: 0 },
+      { nom: 'Toute la France', note: 'un point par rando ; les tracés viennent en zoomant', centre: [2.6, 46.4], zoom: 4.9, pitch: 0, bearing: 0 },
       { nom: 'Aiguilles de Bavella', note: 'le col, 1 218 m', centre: [9.2244, 41.7961], zoom: 13.2, pitch: 62, bearing: -30 },
       { nom: 'Monte Incudine', note: 'le sommet du sud', centre: [9.2073, 41.8494], zoom: 13.2, pitch: 62, bearing: 20 },
       { nom: 'Monte Renoso', centre: [9.1334, 42.0597], zoom: 13, pitch: 62, bearing: -20 },
@@ -52,7 +54,7 @@
       { nom: 'Monte Rotondo', centre: [9.0579, 42.2161], zoom: 13, pitch: 62, bearing: 30 },
       { nom: 'Monte Cinto', note: 'le toit de l\'île', centre: [8.9459, 42.3795], zoom: 12.8, pitch: 62, bearing: -40 }
     ],
-    sources: 'Itinéraires : mes tours Komoot partis de Corse (et les GPX déposés), préparés par relais/randos.py (distance, dénivelés, et, quand Komoot les donne, type de chemin et nature du sol). Les altitudes du profil sont celles du GPX ; les dénivelés ne comptent une montée ou une descente qu\'au-delà de 3 m. Relief : LiDAR HD de l\'IGN là où il existe, relief mondial ailleurs. Photo aérienne et plan : IGN. Souvenirs de terrain, pas un topo : un sentier a pu changer depuis.'
+    sources: 'Itinéraires : mes tours Komoot partis de France (et les GPX déposés), préparés par relais/randos.py ; hors de Corse, chaque tracé est rogné de 400 m à ses deux bouts (distance, dénivelés, et, quand Komoot les donne, type de chemin et nature du sol). Les altitudes du profil sont celles du GPX ; les dénivelés ne comptent une montée ou une descente qu\'au-delà de 3 m. Relief : LiDAR HD de l\'IGN là où il existe, relief mondial ailleurs. Photo aérienne et plan : IGN. Souvenirs de terrain, pas un topo : un sentier a pu changer depuis.'
   });
   const { map } = app, P = app.propre;
   const km = v => (v >= 100 ? Math.round(v) : v.toFixed(1).replace('.', ',')) + ' km';
@@ -72,6 +74,8 @@
       const l = (d[b] - d[a]) * 1000; p[i] = l > 20 ? (c[b][2] - c[a][2]) / l * 100 : 0;
     }
     f.d = d; f.pente = p; f.total = d[d.length - 1];
+    let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const q of c) { o = Math.min(o, q[0]); e = Math.max(e, q[0]); s = Math.min(s, q[1]); n = Math.max(n, q[1]); }
+    f.bornes = [o, s, e, n];
   }
 
   /* Couleurs du tracé. Chaque mode range les points en classes ; le tracé est découpé en tronçons d'une même classe.
@@ -87,7 +91,9 @@
     cycleway: 'piste cyclable', state_road: 'nationale', primary: 'route principale', steps: 'escaliers', ferry: 'bac'
   };
   const TEINTES = ['#b8963e', '#2a9d8f', '#e63946', '#7fb8dc', '#f2a65a', '#a78bca', '#8d99ae', '#c9c46a'];
-  const etat = { choisie: randos.length ? 0 : -1, mode: 'pente' };
+  // À l'ouverture : la rando la plus récente de la vue affichée, sinon la plus récente tout court.
+  const vue0 = map.getBounds(), dedans = randos.findIndex(r => r.bornes[0] < vue0.getEast() && r.bornes[2] > vue0.getWest() && r.bornes[1] < vue0.getNorth() && r.bornes[3] > vue0.getSouth());
+  const etat = { choisie: randos.length ? Math.max(0, dedans) : -1, mode: 'pente' };
   function classes(f, mode) {
     const c = f.geometry.coordinates, n = c.length, k = new Int16Array(n);
     if (mode === 'pente') { for (let i = 0; i < n; i++) { let j = 0; while (j < PENTES.length - 1 && f.pente[i] >= PENTES[j + 1][0]) j++; k[i] = j; } return { k, items: PENTES.map((q, j) => ({ cle: j, couleur: q[1], texte: q[2] })) }; }
@@ -103,6 +109,7 @@
     const fc = { type: 'FeatureCollection', features: [] };
     randos.forEach((f, i) => {
       const c = f.geometry.coordinates, on = i === etat.choisie;
+      fc.features.push({ type: 'Feature', properties: { r: 'loin', i, on }, geometry: { type: 'Point', coordinates: c[c.length >> 1] } });
       fc.features.push({ type: 'Feature', properties: { r: 'bord', i, on }, geometry: { type: 'LineString', coordinates: c } });
       if (!on) { fc.features.push({ type: 'Feature', properties: { r: 'ligne', i, on, couleur: '#e63946' }, geometry: { type: 'LineString', coordinates: c } }); return; }
       const cl = classes(f, etat.mode), teinte = j => j < 0 ? '#8d99ae' : cl.items[j].couleur;
@@ -114,13 +121,16 @@
   }
   const dessiner = () => map.getSource('randos').setData(donnees());
   map.addSource('randos', { type: 'geojson', data: donnees() });
-  const rond = { 'line-cap': 'round', 'line-join': 'round' };
-  map.addLayer({ id: 'randos-bord', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'bord'], layout: rond, paint: { 'line-color': ['case', ['get', 'on'], '#10192a', '#ffffff'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, ['case', ['get', 'on'], 2.6, 1.8], 13, ['case', ['get', 'on'], 5.5, 3.6]], 'line-opacity': ['case', ['get', 'on'], 0.85, 0.7] } });
-  map.addLayer({ id: 'randos-ligne', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'ligne'], layout: rond, paint: { 'line-color': ['get', 'couleur'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, ['case', ['get', 'on'], 1.4, 0.9], 13, ['case', ['get', 'on'], 3, 1.8]] } });
-  map.addLayer({ id: 'randos-points', type: 'circle', source: 'randos', filter: ['==', ['geometry-type'], 'Point'],
+  /* De loin, des dizaines de tracés feraient un fouillis : ils n'arrivent qu'à l'échelle d'une région (zoom 7), et
+     chaque rando n'est d'abord qu'un point discret, que l'on touche pour s'y rendre. */
+  const rond = { 'line-cap': 'round', 'line-join': 'round' }, ZMIN = 7;
+  map.addLayer({ id: 'randos-bord', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'bord'], layout: rond, paint: { 'line-color': ['case', ['get', 'on'], '#10192a', '#ffffff'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, ['case', ['get', 'on'], 2.6, 1.8], 13, ['case', ['get', 'on'], 5.5, 3.6]], 'line-opacity': ['interpolate', ['linear'], ['zoom'], ZMIN - 0.6, 0, ZMIN, ['case', ['get', 'on'], 0.85, 0.7]] } });
+  map.addLayer({ id: 'randos-ligne', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'ligne'], layout: rond, paint: { 'line-color': ['get', 'couleur'], 'line-width': ['interpolate', ['linear'], ['zoom'], 7, ['case', ['get', 'on'], 1.4, 0.9], 13, ['case', ['get', 'on'], 3, 1.8]], 'line-opacity': ['interpolate', ['linear'], ['zoom'], ZMIN - 0.6, 0, ZMIN, 1] } });
+  map.addLayer({ id: 'randos-loin', type: 'circle', source: 'randos', filter: ['==', ['get', 'r'], 'loin'], maxzoom: ZMIN, paint: { 'circle-radius': ['case', ['get', 'on'], 4.5, 3], 'circle-color': ['case', ['get', 'on'], '#b8963e', '#e63946'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1, 'circle-opacity': 0.9 } });
+  map.addLayer({ id: 'randos-points', type: 'circle', source: 'randos', minzoom: ZMIN - 0.6, filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', ['get', 'r'], 'loin']],
     paint: { 'circle-radius': ['match', ['get', 'r'], 'repere', 7, 4], 'circle-color': ['match', ['get', 'r'], 'depart', '#2a9d8f', 'arrivee', '#b8963e', '#e63946'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } });
   // Un tracé fin se touche mal : une bande invisible, plus large, prend le doigt.
-  map.addLayer({ id: 'randos-doigt', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'bord'], paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 22 } });
+  map.addLayer({ id: 'randos-doigt', type: 'line', source: 'randos', filter: ['==', ['get', 'r'], 'bord'], minzoom: ZMIN - 0.6, paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 22 } });
 
   // Profil : la courbe prend les couleurs du tracé ; le doigt y promène un repère, reporté sur la carte.
   function profil(f, cl) {
@@ -170,15 +180,18 @@
 
   const qRandos = {
     theme: 'Randos', libelle: 'Où suis-je passé ?',
-    aide: 'Mes itinéraires, drapés sur le relief. Le tracé choisi se colore selon la pente le long du chemin, l\'altitude, ou, quand Komoot en donne le détail, la nature du sol et le type de chemin. La pente est celle du sentier (lissée sur 150 m), pas celle du versant.',
+    aide: 'Mes itinéraires, drapés sur le relief. De loin, chaque rando est un point ; les tracés arrivent à l\'échelle d\'une région, et la liste ne porte que les randos de la vue affichée. Le tracé choisi se colore selon la pente le long du chemin, l\'altitude, ou, quand Komoot en donne le détail, la nature du sol et le type de chemin. La pente est celle du sentier (lissée sur 150 m), pas celle du versant.',
     ouvrir(app) {
       if (!randos.length) { app.repondre(qRandos.libelle, '<p class="etat">Aucune rando pour l\'instant : dépose un GPX dans corse/gpx/ puis lance relais/randos.py.</p>'); return; }
       const f = randos[etat.choisie], p = f.properties;
+      // La liste ne porte que les randos de la vue affichée (et celle qui est choisie) ; toutes, si la vue n'en contient pas d'autre.
+      const v = map.getBounds(), vues = randos.map((r, i) => [r, i]).filter(([r, i]) => i === etat.choisie || (r.bornes[0] < v.getEast() && r.bornes[2] > v.getWest() && r.bornes[1] < v.getNorth() && r.bornes[3] > v.getSouth()));
+      const proches = vues.length > 1 ? vues : randos.map((r, i) => [r, i]);
       const modes = [['pente', 'Pente'], ['alti', 'Altitude']].concat(p.sol && p.sol.length ? [['sol', 'Sol']] : [], p.chemin && p.chemin.length ? [['chemin', 'Chemin']] : []);
       if (!modes.some(m => m[0] === etat.mode)) etat.mode = 'pente';
       const cl = classes(f, etat.mode), date = p.date ? new Date(p.date + 'T12:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : '';
       const c = app.repondre(randos.length > 1 ? qRandos.libelle : p.nom, `
-        ${randos.length > 1 ? `<div class="puces randos-liste" style="margin-bottom:6px">${randos.map((r, i) => `<button data-i="${i}" aria-pressed="${i === etat.choisie}">${P(r.properties.nom)}<small>${km(r.total)} · +${milliers(r.properties.dplus)} m${r.properties.date ? ' · ' + r.properties.date.slice(0, 4) : ''}${r.properties.prevu ? ' · prévu' : ''}</small></button>`).join('')}</div>` : ''}
+        ${randos.length > 1 ? `<div class="puces randos-liste" style="margin-bottom:6px">${proches.map(([r, i]) => `<button data-i="${i}" aria-pressed="${i === etat.choisie}">${P(r.properties.nom)}<small>${km(r.total)} · +${milliers(r.properties.dplus)} m${r.properties.date ? ' · ' + r.properties.date.slice(0, 4) : ''}${r.properties.prevu ? ' · prévu' : ''}</small></button>`).join('')}</div>` : ''}
         <p class="etat"><span class="fort">${km(f.total)}</span>, <span class="fort">+${milliers(p.dplus)} m</span> / −${milliers(p.dmoins)} m, point haut ${milliers(p.altmax)} m${date ? ', ' + P(date) : ''}.</p>
         <div class="profil">${profil(f, cl)}</div>
         <div class="puces">${modes.map(m => `<button data-m="${m[0]}" aria-pressed="${m[0] === etat.mode}">${m[1]}</button>`).join('')}<button class="cadre">Voir en entier</button><button class="survol" aria-pressed="false">Survoler</button></div>
@@ -204,11 +217,14 @@
   };
   app.question(qRandos);
   // Toucher un tracé le choisit (sauf pendant qu'on dessine un itinéraire : le toucher y pose un point).
-  map.on('click', 'randos-doigt', e => {
+  const prendre = (e, aller) => {
     if (app.active && app.active !== qRandos) return;
     const i = e.features[0].properties.i; if (i !== etat.choisie) { etat.choisie = i; etat.repere = null; dessiner(); }
     if (app.active === qRandos) qRandos.ouvrir(app); else app.choisir(qRandos);
-  });
+    if (aller) cadrer(randos[i]);
+  };
+  map.on('click', 'randos-doigt', e => prendre(e, false));
+  map.on('click', 'randos-loin', e => prendre(e, true));   // de loin, toucher le point d'une rando y conduit
 
   // ---------- La lumière sur le relief, le ciel, et un itinéraire à préparer ----------
   const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));

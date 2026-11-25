@@ -1,4 +1,4 @@
-"""Prépare corse/randos.geojson : mes randos en Corse.
+"""Prépare corse/randos.geojson : mes randos, en Corse d'abord, puis partout en France.
 
     python relais/randos.py            (depuis la racine du dépôt)
 
@@ -9,8 +9,10 @@ Deux sources, réunies dans le même fichier :
    du sol le long du tracé ; « même-nom.bilan.json » peut porter, à défaut, les totaux relevés sur la page du tour.
 
 2. Le compte Komoot lui-même, quand les identifiants sont donnés par l'environnement (KOMOOT_EMAIL, KOMOOT_PASSWORD,
-   jamais écrits dans le dépôt) : la liste des tours du compte est parcourue, et ceux qui partent de Corse sont
+   jamais écrits dans le dépôt) : la liste des tours du compte est parcourue, et ceux qui partent de France sont
    rapportés avec leur tracé, leurs types de chemin et leurs sols. Les tours déjà rattachés à un GPX ne sont pas repris.
+   Hors de Corse, chaque tracé est rogné de 400 m à ses deux bouts avant d'être écrit dans le dépôt, qui est public :
+   un tour qui part de chez soi ne doit pas y dessiner une adresse (ROGNER = 0 pour ne rien rogner).
 
 Les réponses de Komoot sont gardées, allégées, dans corse/gpx/*.komoot.json et corse/komoot/<numéro>.json : un tour
 déjà rapporté n'est pas redemandé. Supprimer son fichier le fait relire ; l'ajouter à corse/komoot/ecartes.txt
@@ -28,6 +30,9 @@ NS = {'g': 'http://www.topografix.com/GPX/1/1'}
 API = 'https://api.komoot.de'
 TOUR = API + '/v007/tours/{id}?_embedded=coordinates,way_types,surfaces&format=coordinate_array'
 CORSE = (8.45, 41.30, 9.65, 43.05)   # ouest, sud, est, nord
+FRANCE = (-5.6, 41.2, 9.9, 51.3)
+ROGNER = 400   # mètres retirés à chaque bout d'un tracé hors de Corse
+dans = (lambda z, lng, lat: z[0] <= lng <= z[2] and z[1] <= lat <= z[3])
 EMAIL, MDP = os.environ.get('KOMOOT_EMAIL'), os.environ.get('KOMOOT_PASSWORD')
 
 
@@ -45,12 +50,40 @@ def demander(url):
         return json.load(r)
 
 
+def rogner(emb, m):
+    """Retire m mètres à chaque bout du tracé (un cinquième de sa longueur s'il est court) et recale les tronçons."""
+    c = emb['coordinates']['items']
+    if m <= 0 or len(c) < 4:
+        return
+    d = [0.0]
+    for a, b in zip(c, c[1:]):
+        d.append(d[-1] + dist((a['lng'], a['lat']), (b['lng'], b['lat'])))
+    m = min(m, d[-1] / 5)
+    i0 = next(i for i, v in enumerate(d) if v >= m)
+    i1 = max(i0 + 1, max(i for i, v in enumerate(d) if d[-1] - v >= m))
+    emb['coordinates']['items'] = c[i0:i1 + 1]
+    for cle in ('way_types', 'surfaces'):
+        items = []
+        for it in emb[cle]['items']:
+            if it.get('from') is None or it.get('to') is None:
+                continue
+            a, b = max(0, int(it['from']) - i0), min(i1 - i0, int(it['to']) - i0)
+            if b > a:
+                items.append({'from': a, 'to': b, 'element': it.get('element')})
+        emb[cle]['items'] = items
+
+
 def alleger(j):
     """Ne garde de la réponse de Komoot que ce dont la carte se sert : ni profil du compte, ni liens, ni images."""
     emb = j.get('_embedded', {})
+    emb = {c: {'items': (emb.get(c) or {}).get('items') or []} for c in ('coordinates', 'way_types', 'surfaces')}
+    c = emb['coordinates']['items']
+    if c and not dans(CORSE, c[0]['lng'], c[0]['lat']):
+        rogner(emb, ROGNER)
+    j = dict(j, _embedded=emb)
     return {'id': j.get('id'), 'name': j.get('name'), 'sport': j.get('sport'), 'type': j.get('type'), 'date': j.get('date'),
             'difficulty': {'grade': (j.get('difficulty') or {}).get('grade')},
-            '_embedded': {c: {'items': (emb.get(c) or {}).get('items') or []} for c in ('coordinates', 'way_types', 'surfaces')}}
+            '_embedded': emb}
 
 
 def tour(ident, cache, jeton=None):
@@ -70,7 +103,7 @@ def tour(ident, cache, jeton=None):
 
 
 def tours_du_compte():
-    """Numéros des tours du compte qui partent de Corse. Liste vide sans identifiants, ou si Komoot refuse."""
+    """Numéros des tours du compte qui partent de France. Liste vide sans identifiants, ou si Komoot refuse."""
     if not (EMAIL and MDP):
         print('  pas d\'identifiants Komoot : GPX seuls')
         return []
@@ -82,11 +115,11 @@ def tours_du_compte():
             j = demander(f'{API}/v007/users/{moi}/tours/?page={page}&limit=100')
             for t in (j.get('_embedded') or {}).get('tours') or []:
                 p = t.get('start_point') or {}
-                if 'lng' in p and CORSE[0] <= p['lng'] <= CORSE[2] and CORSE[1] <= p['lat'] <= CORSE[3]:
+                if 'lng' in p and dans(FRANCE, p['lng'], p['lat']):
                     ids.append(t['id'])
             pages = (j.get('page') or {}).get('totalPages', 1)
             page += 1
-        print(f'  compte Komoot : {len(ids)} tour(s) en Corse')
+        print(f'  compte Komoot : {len(ids)} tour(s) en France')
         return ids
     except Exception as e:
         print(f'  la liste des tours Komoot n\'a pas pu être lue ({e})', file=sys.stderr)
@@ -164,7 +197,7 @@ for chemin in sorted(glob.glob(os.path.join(DOSSIER, '*.gpx'))):
     f = rando(props, pts)
     if f: features.append(f)
 
-# 2. Les tours du compte Komoot qui partent de Corse, plus ceux déjà rapportés lors d'un passage précédent
+# 2. Les tours du compte Komoot qui partent de France, plus ceux déjà rapportés lors d'un passage précédent
 ecartes = set()
 if os.path.exists(os.path.join(CACHE, 'ecartes.txt')):
     ecartes = set(re.findall(r'\d{5,}', open(os.path.join(CACHE, 'ecartes.txt'), encoding='utf-8').read()))
