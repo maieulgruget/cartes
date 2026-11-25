@@ -1,5 +1,5 @@
 name: Randos
-# Refait corse/randos.geojson : chaque lundi (nouveaux tours Komoot en Corse), quand un GPX est déposé, ou à la demande.
+# Refait corse/randos.geojson : chaque lundi (nouveaux tours Komoot), quand un GPX est déposé, ou à la demande.
 on:
   schedule:
     - cron: "23 4 * * 1"
