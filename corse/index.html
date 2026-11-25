@@ -21,6 +21,7 @@
 <script src="../socle/socle.js"></script>
 <script src="../socle/soleil.js"></script>
 <script src="../socle/trace.js"></script>
+<script src="../socle/survol.js"></script>
 <style>
   .randos-liste { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
   .randos-liste button { flex: none; text-align: left; border-radius: 12px; max-width: 13.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -152,26 +153,14 @@
   }
   const barres = (titre, lignes) => { const max = Math.max(...lignes.map(l => l[1])); return `<b>${P(titre)}</b>` + lignes.map(l => `<div><span>${P(l[0])}</span><span><i style="width:${Math.max(1, l[1] / max * 100).toFixed(0)}%"></i></span><span>${l[1] < 0.1 ? '< 100 m' : km(l[1])}</span></div>`).join(''); };
 
-  // Survol : la caméra suit le tracé, tournée vers la suite du chemin.
+  // Survol : la caméra suit le tracé et s'arrête aux points hauts (socle/survol.js).
   let vol = null;
-  const arreter = () => { if (vol) { cancelAnimationFrame(vol.raf); vol = null; const b = document.querySelector('.reponse .survol'); if (b) { b.setAttribute('aria-pressed', 'false'); b.textContent = 'Survoler'; } } };
-  const indiceA = (f, s) => { let a = 0, b = f.d.length - 1; while (b - a > 1) { const m = (a + b) >> 1; f.d[m] < s ? a = m : b = m; } return a; };
+  const arreter = () => { if (vol) { const v = vol; vol = null; v.arreter(); } };
   function survoler(f, bouton, suivre) {
     if (vol) { arreter(); return; }
-    if (!app.relief3d) app.mettre3d(true);
-    const c = f.geometry.coordinates, duree = Math.min(120000, Math.max(20000, f.total * 1300));
-    let t0 = null, cap = map.getBearing(); vol = { raf: 0 }; bouton.setAttribute('aria-pressed', 'true'); bouton.textContent = 'Arrêter';
-    const pas = t => {
-      if (!vol) return; if (t0 === null) t0 = t;
-      const u = Math.min(1, (t - t0) / duree), s = u * f.total, i = indiceA(f, s), j = indiceA(f, Math.min(f.total, s + 1.5)), r = Math.PI / 180;
-      const y = Math.sin((c[j][0] - c[i][0]) * r) * Math.cos(c[j][1] * r), x = Math.cos(c[i][1] * r) * Math.sin(c[j][1] * r) - Math.sin(c[i][1] * r) * Math.cos(c[j][1] * r) * Math.cos((c[j][0] - c[i][0]) * r);
-      if (j > i) cap += ((((Math.atan2(y, x) / r - cap) % 360) + 540) % 360 - 180) * 0.03;
-      map.jumpTo({ center: [c[i][0], c[i][1]], zoom: 13.2, pitch: 62, bearing: cap }); suivre(i);
-      if (u < 1) vol.raf = requestAnimationFrame(pas); else arreter();
-    };
-    vol.raf = requestAnimationFrame(pas);
+    bouton.setAttribute('aria-pressed', 'true'); bouton.textContent = 'Arrêter';
+    vol = Socle.survol.lancer(app, f.geometry.coordinates, { suivre, fin() { vol = null; const b = document.querySelector('.reponse .survol'); if (b) { b.setAttribute('aria-pressed', 'false'); b.textContent = 'Survoler'; } } });
   }
-  map.on('dragstart', arreter);
 
   function cadrer(f) {
     let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of f.geometry.coordinates) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }

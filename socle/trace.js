@@ -40,7 +40,7 @@
         return [a, ...l, b];
       } catch (e) { return [a, b]; }
     }
-    let d = null, tour = 0;
+    let d = null, tour = 0, vol = null;
 
     function dessinerLigne(app) {
       const fc = { type: 'FeatureCollection', features: [] };
@@ -143,12 +143,20 @@
       theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi.' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats.'),
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
-          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
+          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="vol" aria-pressed="false">Survoler</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
         q._c = c;
         if (opts.sentiers) c.querySelector('.sent').onclick = e => { surSentiers = !surSentiers; e.currentTarget.setAttribute('aria-pressed', surSentiers); garder(); };
         c.querySelector('.undo').onclick = () => { pts.pop(); brins.length = Math.max(0, pts.length - 1); garder(); calculer(app, c); };
         c.querySelector('.raz').onclick = () => { pts.length = 0; brins.length = 0; garder(); calculer(app, c); };
         c.querySelector('.gpx').onclick = gpx;
+        // Survol du tracé, avec haltes aux points hauts (socle/survol.js, chargé à la demande).
+        c.querySelector('.vol').onclick = async e => {
+          const b = e.currentTarget; if (vol) { vol.arreter(); return; } if (!d) return;
+          if (!S.survol) { try { await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = app.cfg.racine + 'socle/survol.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc); }); } catch (err) { return; } }
+          if (!d || app.active !== q) return;
+          const dd = d; b.setAttribute('aria-pressed', 'true'); b.textContent = 'Arrêter';
+          vol = S.survol.lancer(app, dd.xy.map((p, i) => [p[0], p[1], dd.z[i]]), { suivre(i) { dd.repere = dd.xy[i]; dessinerLigne(app); }, fin() { vol = null; dd.repere = null; if (app.active === q) dessinerLigne(app); b.setAttribute('aria-pressed', 'false'); b.textContent = 'Survoler'; } });
+        };
         c.querySelector('.imp').onclick = () => imprimer(app);
         dessinerLigne(app); await calculer(app, c);
       },
@@ -157,7 +165,7 @@
         if (avant) { if (surSentiers) app.occupe(true, 'Recherche du sentier…'); const b = await brin(avant, p); app.occupe(false); if (app.active !== q || pts[pts.length - 1] !== avant) return; brins.push(b); }
         pts.push(p); garder(); dessinerLigne(app); calculer(app, q._c);
       },
-      fermer(app) { tour++; app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); }
+      fermer(app) { tour++; if (vol) vol.arreter(); app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); }
     };
     q.relancer = app => { if (app.active === q) calculer(app, q._c); };
     return q;
