@@ -14,8 +14,8 @@ Cartes interactives personnelles, servies par GitHub Pages.
 `socle/` porte ce qui est commun : Plan IGN HD (fond d'ouverture ; son blanc du large est repeint en mer, son blanc de
 terre reste blanc), carte au 1/25 000 (SCAN 25, clé grand public de l'IGN : usage personnel), fond gris, photo, relief et carte géologique du BRGM (métropole) ; retour à la page des cartes ;
 panneau de thème ouvert ou réduit, carte libre par appui long, boussole, liste de fonds (cartes anciennes comprises) ;
-relief LiDAR HD lu à la volée (à l'échelle réelle, accentué sur demande), bouton « Arbres » (en 3D rapprochée, le relief
-prend le modèle de surface : forêt, haies et bâtiments en volume), bâtiments en volume, thèmes regroupés en
+relief LiDAR HD lu à la volée (à l'échelle réelle, accentué sur demande), arbres en volume sur la photo aérienne (en 3D rapprochée, le relief
+prend le modèle de surface adouci ; le bouton « Arbres » les retire), bâtiments en volume, thèmes regroupés en
 familles (une puce par famille, une rangée de sous-thèmes), signets, recherche, calculs (pentes, soleil, ombres portées).
 
 `socle/fonds.js` : fonds marins du Shom (modèle HOMONIM à 100 m, relu sur sa palette de couleurs), isobathes, profil
@@ -27,6 +27,9 @@ par une tâche planifiée : tant que ce fichier manque, la carte interroge le se
 partent de France (hors de Corse, rognés de 400 m à chaque bout, le dépôt étant public) (secrets `KOMOOT_EMAIL` et `KOMOOT_PASSWORD`), avec le type de chemin et la nature du sol le long du
 tracé. Les réponses de Komoot sont gardées dans `corse/komoot/` ; un numéro ajouté à `corse/komoot/ecartes.txt` écarte un
 tour. La tâche « Randos » le relance chaque lundi, à chaque GPX déposé, ou à la demande.
+
+`socle/arbres.js` (thème « Cimes ») : autour du centre de la vue, il repère chaque cime dans la hauteur du couvert (surface
+moins sol du LiDAR HD) et dresse un cône par arbre, coloré par hauteur ; sur la carte de La Réunion, dans la famille Drone.
 
 `socle/trace.js` (thème Itinéraire) sait suivre les sentiers : entre deux points posés, il demande le chemin au calcul
 d'itinéraire piéton de l'IGN (BD TOPO). Thème « Préparer » sur les cartes Corse, Réunion, Champignons et Marées ; bouton
