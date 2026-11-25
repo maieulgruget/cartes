@@ -12,7 +12,7 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Mes randos (Corse) | `corse/` | où je suis passé : tracés drapés sur le relief, profil, pente le long du chemin, altitude, sol et type de chemin (Komoot), survol ; lumière ; itinéraire à préparer |
 
 `socle/` porte ce qui est commun : Plan IGN HD (fond d'ouverture ; son blanc du large est repeint en mer, son blanc de
-terre reste blanc), fond gris, photo, relief et carte géologique du BRGM (métropole) ; retour à la page des cartes ;
+terre reste blanc), carte au 1/25 000 (SCAN 25, clé grand public de l'IGN : usage personnel), fond gris, photo, relief et carte géologique du BRGM (métropole) ; retour à la page des cartes ;
 panneau de thème ouvert ou réduit, carte libre par appui long, boussole, liste de fonds (cartes anciennes comprises) ;
 relief LiDAR HD lu à la volée (à l'échelle réelle, accentué sur demande), bâtiments en volume, thèmes regroupés en
 familles (une puce par famille, une rangée de sous-thèmes), signets, recherche, calculs (pentes, soleil, ombres portées).
@@ -22,8 +22,12 @@ le long d'une route. `relais/lieux.py` prépare `voile/lieux.json` (ports, caps,
 rang d'apparition) ; `relais/balises.py` prépare `voile/balises.json` (balises d'OpenStreetMap), à lancer à la main ou
 par une tâche planifiée : tant que ce fichier manque, la carte interroge le service d'OpenStreetMap zone par zone.
 
-`relais/randos.py` prépare `corse/randos.geojson` à partir des GPX de `corse/gpx/` ; un fichier `nom.komoot` (numéro du
-tour) à côté d'un GPX lui fait demander à Komoot le type de chemin et la nature du sol le long du tracé (tour privé :
-secrets `KOMOOT_EMAIL` et `KOMOOT_PASSWORD`). La tâche « Randos » le relance à chaque GPX déposé.
+`relais/randos.py` prépare `corse/randos.geojson` : les GPX de `corse/gpx/`, et tous les tours du compte Komoot qui
+partent de Corse (secrets `KOMOOT_EMAIL` et `KOMOOT_PASSWORD`), avec le type de chemin et la nature du sol le long du
+tracé. Les réponses de Komoot sont gardées dans `corse/komoot/` ; un numéro ajouté à `corse/komoot/ecartes.txt` écarte un
+tour. La tâche « Randos » le relance chaque lundi, à chaque GPX déposé, ou à la demande.
+
+`socle/trace.js` (thème Itinéraire) sait suivre les sentiers : entre deux points posés, il demande le chemin au calcul
+d'itinéraire piéton de l'IGN (BD TOPO).
 
 Données : IGN (Géoplateforme), BRGM, Shom, OpenStreetMap, Open-Meteo. Versions de travail, à vérifier sur le terrain.

@@ -19,13 +19,32 @@
   function trace(opts) {
     opts = opts || {};
     const cle = 'cartes.trace.' + (opts.cle || 'defaut');
-    let pts = []; try { pts = JSON.parse(localStorage.getItem(cle)) || []; } catch (e) { pts = []; }
-    const garder = () => { try { localStorage.setItem(cle, JSON.stringify(pts)); } catch (e) { } };
+    /* pts : les points posés. brins : le chemin entre deux points posés (brins[i] va de pts[i] à pts[i + 1]) : une ligne
+       droite, ou, avec opts.sentiers, le chemin que le calcul d'itinéraire piéton de l'IGN trouve sur les sentiers et les
+       routes de la BD TOPO. */
+    let pts = [], brins = [], surSentiers = !!opts.sentiers;
+    try { const v = JSON.parse(localStorage.getItem(cle)); if (Array.isArray(v)) pts = v; else if (v && v.pts) { pts = v.pts; brins = v.brins || []; surSentiers = opts.sentiers ? v.sentiers !== false : false; } } catch (e) { pts = []; }
+    for (let i = 0; i < pts.length - 1; i++) if (!brins[i] || brins[i].length < 2) brins[i] = [pts[i], pts[i + 1]];
+    brins.length = Math.max(0, pts.length - 1);
+    const garder = () => { try { localStorage.setItem(cle, JSON.stringify({ pts, brins, sentiers: surSentiers })); } catch (e) { } };
+    const chemin = () => { const l = []; brins.forEach((b, i) => { for (let k = i ? 1 : 0; k < b.length; k++) l.push(b[k]); }); return l; };
+    async function brin(a, b) {
+      if (!surSentiers) return [a, b];
+      try {
+        const r = await fetch(`${S.GEOPF}/navigation/itineraire?resource=bdtopo-osrm&profile=pedestrian&optimization=shortest&start=${a[0]},${a[1]}&end=${b[0]},${b[1]}&geometryFormat=geojson&getSteps=false`);
+        const g = r.ok ? (await r.json()).geometry : null, c = g && g.coordinates;
+        if (!c || c.length < 2) return [a, b];
+        // Le calcul part du chemin le plus proche : on raccorde aux points posés. Un détour démesuré (pas de sentier ici) : ligne droite.
+        const droit = S.distKm(a, b), l = c.map(q => [+q[0].toFixed(6), +q[1].toFixed(6)]);
+        if (S.distKm(a, l[0]) > Math.max(0.4, droit) || S.distKm(b, l[l.length - 1]) > Math.max(0.4, droit)) return [a, b];
+        return [a, ...l, b];
+      } catch (e) { return [a, b]; }
+    }
     let d = null, tour = 0;
 
     function dessinerLigne(app) {
       const fc = { type: 'FeatureCollection', features: [] };
-      if (pts.length > 1) fc.features.push({ type: 'Feature', properties: { r: 'ligne' }, geometry: { type: 'LineString', coordinates: pts } });
+      if (pts.length > 1) fc.features.push({ type: 'Feature', properties: { r: 'ligne' }, geometry: { type: 'LineString', coordinates: chemin() } });
       if (d && d.raide.length) fc.features.push({ type: 'Feature', properties: { r: 'raide' }, geometry: { type: 'MultiLineString', coordinates: d.raide } });
       pts.forEach((p, i) => fc.features.push({ type: 'Feature', properties: { r: i === 0 ? 'depart' : i === pts.length - 1 ? 'arrivee' : 'point' }, geometry: { type: 'Point', coordinates: p } }));
       if (d && d.repere) fc.features.push({ type: 'Feature', properties: { r: 'repere' }, geometry: { type: 'Point', coordinates: d.repere } });
@@ -59,7 +78,8 @@
       const moi = ++tour; d = null;
       if (pts.length < 2) { c.querySelector('.profil').innerHTML = ''; c.querySelector('.bilan').innerHTML = ''; c.querySelector('.etat').textContent = pts.length ? 'Départ posé. Touche la carte pour poser le point suivant.' : (opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.'); dessinerLigne(app); return; }
       // emprise du tracé, élargie pour que les calculs voient le relief alentour
-      let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of pts) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
+      const lg = chemin();
+      let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of lg) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
       const latm = (s + n) / 2, mx = Math.max((e - o) * 0.3, 0.006 / Math.cos(latm * Math.PI / 180)), my = Math.max((n - s) * 0.3, 0.006);
       const b = [o - mx, s - my, e + mx, n + my], largM = (b[2] - b[0]) * 111200 * Math.cos(latm * Math.PI / 180);
       app.occupe(true, 'Lecture du relief…');
@@ -67,12 +87,12 @@
       app.occupe(false); if (moi !== tour || app.active !== q) return;
       const a = app.pentes(g);
       // échantillonnage régulier le long du tracé
-      const seg = []; let total = 0; for (let i = 1; i < pts.length; i++) { const l = app.distKm(pts[i - 1], pts[i]) * 1000; seg.push(l); total += l; }
-      const pas = Math.max(g.pas * 0.8, total / 500), dist = [], z = [], xy = [], pt = [], ex = [];
+      const seg = []; let total = 0; for (let i = 1; i < lg.length; i++) { const l = app.distKm(lg[i - 1], lg[i]) * 1000; seg.push(l); total += l; }
+      const pas = Math.max(g.pas * 0.8, total / 800), dist = [], z = [], xy = [], pt = [], ex = [];
       for (let i = 0, acc = 0; i < seg.length; i++) {
         const nb = Math.max(1, Math.round(seg[i] / pas));
         for (let k = (i ? 1 : 0); k <= nb; k++) {
-          const f = k / nb, lon = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, lat = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f, kk = app.indice(g, lon, lat);
+          const f = k / nb, lon = lg[i][0] + (lg[i + 1][0] - lg[i][0]) * f, lat = lg[i][1] + (lg[i + 1][1] - lg[i][1]) * f, kk = app.indice(g, lon, lat);
           dist.push(acc + seg[i] * f); z.push(altitude(g, lon, lat)); xy.push([lon, lat]); pt.push(kk >= 0 ? a.pente[kk] : NaN); ex.push(kk >= 0 ? a.expo[kk] : NaN);
         }
         acc += seg[i];
@@ -104,7 +124,7 @@
       if (!d) return;
       const m = app.map, vue = { center: m.getCenter(), zoom: m.getZoom(), pitch: m.getPitch(), bearing: m.getBearing() };
       app.occupe(true, 'Préparation de la fiche…');
-      let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of pts) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
+      let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of chemin()) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
       const carte = document.querySelector('.reponse'); carte.style.visibility = 'hidden';
       m.fitBounds([[o, s], [e, n]], { padding: 60, pitch: 0, bearing: 0, duration: 0 });
       await Promise.race([new Promise(r => m.once('idle', r)), new Promise(r => setTimeout(r, 7000))]);
@@ -120,18 +140,23 @@
     }
 
     const q = {
-      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats.',
+      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi.' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats.'),
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
-          <div class="puces" style="margin-top:8px"><button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
+          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
         q._c = c;
-        c.querySelector('.undo').onclick = () => { pts.pop(); garder(); calculer(app, c); };
-        c.querySelector('.raz').onclick = () => { pts.length = 0; garder(); calculer(app, c); };
+        if (opts.sentiers) c.querySelector('.sent').onclick = e => { surSentiers = !surSentiers; e.currentTarget.setAttribute('aria-pressed', surSentiers); garder(); };
+        c.querySelector('.undo').onclick = () => { pts.pop(); brins.length = Math.max(0, pts.length - 1); garder(); calculer(app, c); };
+        c.querySelector('.raz').onclick = () => { pts.length = 0; brins.length = 0; garder(); calculer(app, c); };
         c.querySelector('.gpx').onclick = gpx;
         c.querySelector('.imp').onclick = () => imprimer(app);
         dessinerLigne(app); await calculer(app, c);
       },
-      toucher(app, ll) { pts.push([+ll.lng.toFixed(6), +ll.lat.toFixed(6)]); garder(); dessinerLigne(app); calculer(app, q._c); },
+      async toucher(app, ll) {
+        const p = [+ll.lng.toFixed(6), +ll.lat.toFixed(6)], avant = pts[pts.length - 1];
+        if (avant) { if (surSentiers) app.occupe(true, 'Recherche du sentier…'); const b = await brin(avant, p); app.occupe(false); if (app.active !== q || pts[pts.length - 1] !== avant) return; brins.push(b); }
+        pts.push(p); garder(); dessinerLigne(app); calculer(app, q._c);
+      },
       fermer(app) { tour++; app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); }
     };
     q.relancer = app => { if (app.active === q) calculer(app, q._c); };

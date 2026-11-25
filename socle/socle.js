@@ -298,6 +298,8 @@
     Object.assign(style.sources, {
       ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
       plan: { type: 'raster', tiles: ['ignplan://{z}/{x}/{y}'], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Plan IGN © IGN' },
+      // Carte au 1/25 000 (SCAN 25) : accès par la clé grand public de l'IGN, réservée à un usage personnel et non commercial.
+      scan25: { type: 'raster', tiles: [`${GEOPF}/private/wmts?apikey=ign_scan_ws&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN25TOUR&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg`], tileSize: 256, minzoom: 6, maxzoom: 16, attribution: 'SCAN 25® © IGN' },
       ombrage: { type: 'raster', tiles: [wmts('IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'LiDAR HD © IGN' },
       geologie: { type: 'raster', tiles: [wmts('BRGM_SCAN_D_GEOL50', 'image/jpeg')], tileSize: 256, maxzoom: 15, attribution: 'Carte géologique © BRGM' },
       geol250: { type: 'raster', tiles: [wmts('BRGM_SCAN_F_GEOL250', 'image/jpeg')], tileSize: 256, maxzoom: 14, attribution: 'Carte géologique © BRGM' },
@@ -313,6 +315,7 @@
     style.layers.splice(premierTexte, 0,
       { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
       { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
+      { id: 'scan25', type: 'raster', source: 'scan25', layout: { visibility: 'none' } },
       { id: 'ombrage', type: 'raster', source: 'ombrage', layout: { visibility: 'none' } },
       // Géologie à trois échelles, enchaînées selon le zoom : le million de loin, le 1/250 000, puis le 1/50 000.
       { id: 'geol1m', type: 'raster', source: 'geol1m', maxzoom: 7.5, layout: { visibility: 'none' } },
@@ -376,6 +379,7 @@
        écarter (cfg.geologie = false, cfg.fondsExclus = ['etatmajor', …]). */
     const FONDS = {
       plan: { nom: 'Plan HD', note: 'Plan IGN HD, drapé sur le relief', calques: ['plan'], estompe: 0 },
+      scan25: { nom: 'Carte 25', note: 'carte de randonnée au 1/25 000 (SCAN 25)', calques: ['scan25'], estompe: 0, sansNoms: true },
       gris: { nom: 'Gris', note: 'fond sobre, bâtiments en volume de près', calques: [], estompe: 0.4 },
       ortho: { nom: 'Photo', note: 'photographie aérienne', calques: ['ortho'], estompe: 0.12 },
       ombrage: { nom: 'Relief', note: 'ombrage du LiDAR HD', calques: ['ombrage'], estompe: 0 },
@@ -386,7 +390,7 @@
     };
     const exclus = (cfg.fondsExclus || []).concat(cfg.geologie === false ? ['geologie'] : []);
     const fonds = Object.keys(FONDS).filter(f => !exclus.includes(f)), IMAGES = [...new Set(Object.values(FONDS).flatMap(f => f.calques))];
-    let fond = 'gris';
+    let fond = 'gris', nomsEteints = false;
     const surFond = [];   // fonctions prévenues à chaque changement de fond
     function mettreFond(f) {
       if (!FONDS[f]) f = 'plan';
@@ -395,6 +399,8 @@
       for (const id of IMAGES) map.setLayoutProperty(id, 'visibility', FONDS[f].calques.includes(id) ? 'visible' : 'none');
       // L'ombrage du relief est retiré pour de bon là où il n'a rien à faire : réglé à zéro, il laissait encore un voile
       // clair par tuiles entières (bandes pâles à bords droits sur le Plan et le Relief).
+      // Une carte déjà écrite (le 1/25 000) éteint les noms du fond, qui s'y liraient deux fois.
+      if (!!FONDS[f].sansNoms !== nomsEteints) { nomsEteints = !!FONDS[f].sansNoms; for (const id of textes) map.setLayoutProperty(id, 'visibility', nomsEteints ? 'none' : 'visible'); }
       map.setLayoutProperty('estompe', 'visibility', FONDS[f].estompe ? 'visible' : 'none');
       if (FONDS[f].estompe) map.setPaintProperty('estompe', 'hillshade-exaggeration', FONDS[f].estompe);
       for (const fn of surFond) { try { fn(f); } catch (e) { console.error(e); } }
