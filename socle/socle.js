@@ -389,10 +389,10 @@
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée' }, 'Couvert'), bSem = el('button', { 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
+    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée' }, 'Couvert'), bSurvol = el('button', { 'aria-pressed': 'false', hidden: '', 'aria-label': 'Survoler le tracé affiché' }, 'Survol'), bSem = el('button', { 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
       bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
       bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
-    outils.append(bFond, b3d, bArbres, bSem, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
+    outils.append(bFond, b3d, bArbres, bSem, bSurvol, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
       sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
     bas.append(reponse, sous, rang);
@@ -457,6 +457,25 @@
     const semantique = () => !!(app._arbres && app._arbres.actif);
     const majArbres = () => { bArbres.hidden = fond !== 'ortho'; bArbres.setAttribute('aria-pressed', arbres && !semantique()); bSem.setAttribute('aria-pressed', semantique()); };
     bArbres.onclick = () => mettreArbres(!arbres);
+    /* « Survol » : un mode de lecture de la carte, pas un réglage d'un thème. Le bouton apparaît dès qu'un thème propose
+       un tracé à suivre (une rando choisie, un itinéraire dessiné) : app.survol.proposer(cle, () => ({ pts, suivre, fin }) ou null).
+       Le dernier tracé proposé l'emporte. socle/survol.js est chargé à la demande. */
+    const tracesVol = new Map(); let volEnCours = null;
+    const traceVol = () => { let t = null; for (const f of tracesVol.values()) { try { const v = f(); if (v && v.pts && v.pts.length > 1) t = v; } catch (e) { /* tracé indisponible */ } } return t; };
+    const survol = {
+      proposer(cle, f) { tracesVol.delete(cle); tracesVol.set(cle, f); survol.maj(); },
+      retirer(cle) { tracesVol.delete(cle); survol.maj(); },
+      maj() { bSurvol.hidden = !volEnCours && !traceVol(); },
+      arreter() { if (volEnCours) volEnCours.arreter(); },
+      get enCours() { return !!volEnCours; }
+    };
+    bSurvol.onclick = async () => {
+      if (volEnCours) { volEnCours.arreter(); return; }
+      const t = traceVol(); if (!t) return;
+      if (!window.Socle.survol) { try { await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = cfg.racine + 'socle/survol.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc); }); } catch (e) { app.occupe(true, 'Le survol ne se charge pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; } }
+      bSurvol.setAttribute('aria-pressed', 'true');
+      volEnCours = window.Socle.survol.lancer(app, t.pts, { suivre: t.suivre, fin(alafin) { volEnCours = null; bSurvol.setAttribute('aria-pressed', 'false'); survol.maj(); if (t.fin) t.fin(alafin); } });
+    };
     bSem.onclick = async () => {
       try { await chargerArbres(); } catch (e) { app.occupe(true, 'Les arbres ne se chargent pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; }
       if (!coucheArbres) coucheArbres = window.Socle.arbres.couche(app);
@@ -473,7 +492,7 @@
     const app = {
       map, cfg, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, propre, versGeo, versMerc, distKm,
       get fond() { return fond; }, mettreFond, mettre3d, surFond, altitudeMonde,
-      get relief3d() { return relief3d; }, libre, mettreArbres, get arbres() { return arbres; }, forcerSolNu(oui) { solNu = !!oui; poserRelief(); majBatiments(); majArbres(); },
+      get relief3d() { return relief3d; }, libre, survol, mettreArbres, get arbres() { return arbres; }, forcerSolNu(oui) { solNu = !!oui; poserRelief(); majBatiments(); majArbres(); },
       occupe(oui, texte) { attente.textContent = texte || 'Calcul…'; attente.hidden = !oui; },
       // Emprise de la vue courante, élargie d'une marge (fraction), bornée pour rester raisonnable en vue inclinée.
       emprise(marge) {

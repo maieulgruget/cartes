@@ -21,7 +21,6 @@
 <script src="../socle/socle.js"></script>
 <script src="../socle/soleil.js"></script>
 <script src="../socle/trace.js"></script>
-<script src="../socle/survol.js"></script>
 <style>
   .randos-liste { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
   .randos-liste button { flex: none; text-align: left; border-radius: 12px; max-width: 13.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -153,14 +152,9 @@
   }
   const barres = (titre, lignes) => { const max = Math.max(...lignes.map(l => l[1])); return `<b>${P(titre)}</b>` + lignes.map(l => `<div><span>${P(l[0])}</span><span><i style="width:${Math.max(1, l[1] / max * 100).toFixed(0)}%"></i></span><span>${l[1] < 0.1 ? '< 100 m' : km(l[1])}</span></div>`).join(''); };
 
-  // Survol : la caméra suit le tracé et s'arrête aux points hauts (socle/survol.js).
-  let vol = null;
-  const arreter = () => { if (vol) { const v = vol; vol = null; v.arreter(); } };
-  function survoler(f, bouton, suivre) {
-    if (vol) { arreter(); return; }
-    bouton.setAttribute('aria-pressed', 'true'); bouton.textContent = 'Arrêter';
-    vol = Socle.survol.lancer(app, f.geometry.coordinates, { suivre, fin() { vol = null; const b = document.querySelector('.reponse .survol'); if (b) { b.setAttribute('aria-pressed', 'false'); b.textContent = 'Survoler'; } } });
-  }
+  // Survol : la rando choisie est proposée au bouton « Survol » des outils de la carte (socle/survol.js).
+  const arreter = () => app.survol.arreter();
+  let suivreVol = null;   // le panneau des randos, quand il est ouvert, suit le survol sur le profil
 
   function cadrer(f) {
     let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of f.geometry.coordinates) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
@@ -183,7 +177,7 @@
         ${randos.length > 1 ? `<div class="puces randos-liste" style="margin-bottom:6px">${proches.map(([r, i]) => `<button data-i="${i}" aria-pressed="${i === etat.choisie}">${P(r.properties.nom)}<small>${km(r.total)} · +${milliers(r.properties.dplus)} m${r.properties.date ? ' · ' + r.properties.date.slice(0, 4) : ''}${r.properties.prevu ? ' · prévu' : ''}</small></button>`).join('')}</div>` : ''}
         <p class="etat"><span class="fort">${km(f.total)}</span>, <span class="fort">+${milliers(p.dplus)} m</span> / −${milliers(p.dmoins)} m, point haut ${milliers(p.altmax)} m${date ? ', ' + P(date) : ''}.</p>
         <div class="profil">${profil(f, cl)}</div>
-        <div class="puces">${modes.map(m => `<button data-m="${m[0]}" aria-pressed="${m[0] === etat.mode}">${m[1]}</button>`).join('')}<button class="cadre">Voir en entier</button><button class="survol" aria-pressed="false">Survoler</button></div>
+        <div class="puces">${modes.map(m => `<button data-m="${m[0]}" aria-pressed="${m[0] === etat.mode}">${m[1]}</button>`).join('')}<button class="cadre">Voir en entier</button></div>
         <div class="legende"></div>
         ${p.bilan && !(p.sol && p.sol.length) ? `<div class="barres">${p.bilan.sol ? barres('Nature du sol', p.bilan.sol) : ''}${p.bilan.chemin ? barres('Type de chemin', p.bilan.chemin) : ''}</div><p class="petit">Sol et chemin : totaux de la page Komoot du tour. Leur détail le long du tracé arrivera quand le relais aura pu interroger Komoot.</p>` : ''}`);
       const l = longueurs(f, cl);
@@ -197,14 +191,18 @@
         const j = cl.k[i]; phrase.innerHTML = `km <span class="fort">${f.d[i].toFixed(1).replace('.', ',')}</span> · ${milliers(q[2])} m · pente ${f.pente[i] > 0 ? '+' : ''}${Math.round(f.pente[i])} %${etat.mode !== 'pente' && etat.mode !== 'alti' && j >= 0 ? ' · ' + P(cl.items[j].texte) : ''}`;
         etat.repere = [q[0], q[1]]; dessiner();
       };
-      const doigt = e => { if (vol) return; const r = svg.getBoundingClientRect(), s = Math.max(0, Math.min(1, ((e.clientX - r.left) / r.width * 320 - 4) / 312)) * f.total; montrer(indiceA(f, s)); };
+      const doigt = e => { if (app.survol.enCours) return; const r = svg.getBoundingClientRect(), s = Math.max(0, Math.min(1, ((e.clientX - r.left) / r.width * 320 - 4) / 312)) * f.total; montrer(indiceA(f, s)); };
       svg.addEventListener('pointerdown', doigt); svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons || e.pressure > 0) doigt(e); });
-      svg.addEventListener('pointerleave', () => { if (!vol) { cur.setAttribute('opacity', '0'); phrase.innerHTML = repos; etat.repere = null; dessiner(); } });
-      c.querySelector('.survol').onclick = e => survoler(f, e.currentTarget, montrer);
+      svg.addEventListener('pointerleave', () => { if (!app.survol.enCours) { cur.setAttribute('opacity', '0'); phrase.innerHTML = repos; etat.repere = null; dessiner(); } });
+      suivreVol = montrer;
     },
-    fermer() { arreter(); etat.repere = null; dessiner(); }
+    fermer() { suivreVol = null; etat.repere = null; dessiner(); }
   };
   app.question(qRandos);
+  app.survol.proposer('randos', () => {
+    const f = randos[etat.choisie]; if (!f) return null;
+    return { pts: f.geometry.coordinates, suivre(i) { if (suivreVol && app.active === qRandos) suivreVol(i); else { const q = f.geometry.coordinates[i]; etat.repere = [q[0], q[1]]; dessiner(); } }, fin() { etat.repere = null; dessiner(); } };
+  });
   // Toucher un tracé le choisit (sauf pendant qu'on dessine un itinéraire : le toucher y pose un point).
   const prendre = (e, aller) => {
     if (app.active && app.active !== qRandos) return;
