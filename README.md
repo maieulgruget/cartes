@@ -32,6 +32,9 @@ tour. La tâche « Randos » le relance chaque lundi, à chaque GPX déposé, ou
 LiDAR HD) et dresse un arbre à sa hauteur ; le relevé suit la carte. Sur toutes les cartes et tous les fonds par le bouton
 « Arbres » ; sur la carte de La Réunion aussi par le thème « Cimes » (famille Drone : hauteurs en couleurs, légende).
 
+`socle/survol.js` : survol d'un tracé, la caméra suit le chemin et fait halte au départ, aux points hauts (nommés d'après
+les lieux-dits de l'IGN) et à l'arrivée. Bouton « Survoler » des randos et de tout itinéraire tracé.
+
 `socle/trace.js` (thème Itinéraire) sait suivre les sentiers : entre deux points posés, il demande le chemin au calcul
 d'itinéraire piéton de l'IGN (BD TOPO). Thème « Préparer » sur les cartes Corse, Réunion, Champignons et Marées ; bouton
 « Suivre les sentiers » (éteint au départ) dans l'itinéraire de la Tarentaise.
