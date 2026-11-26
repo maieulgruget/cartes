@@ -307,6 +307,13 @@ body.pleintheme .bas, body.pleintheme .repere { display: none !important; }
 /* ☰ + nom du thème : rend le panneau complet (même signe que le bouton qui ramène l'interface en carte libre). */
 .p-theme { align-self: flex-start; pointer-events: auto; background: var(--gold); color: #10192a; border-color: var(--gold); font-weight: 600; font-size: 14px; padding: 8px 14px 8px 11px; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
 .p-theme span { margin-right: 4px; }
+/* En-tête du plein écran : thème, thèmes voisins de la famille, bascule du calque. Une ligne, qui défile au besoin. */
+.p-entete { display: flex; gap: 6px; align-items: center; max-width: 100%; overflow-x: auto; scrollbar-width: none; pointer-events: auto; padding-bottom: 2px; }
+.p-entete::-webkit-scrollbar { display: none; }
+.p-entete > * { flex: none; white-space: nowrap; }
+.p-voisin, .p-oeil { font-size: 13px; padding: 7px 11px; backdrop-filter: blur(6px); }
+.p-oeil[aria-pressed="false"] { opacity: 0.6; text-decoration: line-through; }
+.legende .unite { color: var(--muted); border: 0 !important; background: none !important; padding-left: 0 !important; padding-right: 0 !important; }
 .pilote:not(.plein) .p-tete { align-items: flex-start; }
 .plein .p-tete { right: 60px; align-items: flex-start; }
 .plein .p-etat { border-radius: 12px; text-align: left; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
@@ -345,3 +352,4 @@ body.pleintheme .bas, body.pleintheme .repere { display: none !important; }
 .p-rang button { font-size: 14px; padding: 9px 14px; backdrop-filter: blur(6px); }
 .p-rang button[hidden] { display: none; }
 .p-rang .p-date { font-size: 15px; padding: 7px 9px; }
+.p-oeil[aria-pressed="true"] { background: var(--panel); color: var(--ink); border-color: var(--gold); font-weight: 400; }

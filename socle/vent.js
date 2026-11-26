@@ -84,7 +84,7 @@
         const i = k % N, j = (k - i) / N, [lon, lat] = S.versGeo(x0 + (i + 0.5) / N * (x1 - x0), y1 - (j + 0.5) / N * (y1 - y0)), w = vent(ch, h, lon, lat);
         if (!w) return null; const col = classe(force(w))[1]; return [col[0], col[1], col[2], 255];
       });
-      app.poser('ventfond', g, url, 0.5); app.map.setPaintProperty('ventfond', 'raster-resampling', 'linear');
+      app.poser('ventfond', g, url, 0.32); app.map.setPaintProperty('ventfond', 'raster-resampling', 'linear');
     }
     function dire(app, c) {
       if (!ch) return;
@@ -119,7 +119,7 @@
         const c = app.repondre(q.libelle, `<p class="etat">Lecture du vent…</p>
           <div class="ligne"><button class="now">Maintenant</button><input type="range" class="hv" min="0" max="23" value="${h}" style="flex:1;min-width:120px"><span class="fort hh" style="min-width:74px;text-align:right"></span></div>
           <p class="petit2" style="margin:8px 0 0">Force du vent, en nœuds (1 nœud = 1,85 km/h) :</p>
-          <div class="legende">${CLASSES.map(k => `<span><i style="background:rgb(${k[1].join()})"></i>${k[2]}</span>`).join('')}</div>
+          <div class="legende"><span class="unite">nœuds :</span>${CLASSES.map(k => `<span><i style="background:rgb(${k[1].join()})"></i>${k[2]}</span>`).join('')}</div>
           <p class="petit">Glisse pour avancer heure par heure sur 24 heures. Touche la carte pour le vent en un point.</p>`);
         q._c = c;
         toile = document.createElement('canvas'); toile.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none';
