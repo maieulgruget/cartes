@@ -26,6 +26,9 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
 /* Boussole : la pointe rouge montre le nord et tourne avec la carte. */
 .outils button.boussole { min-width: 0; width: 44px; height: 44px; padding: 0; border-radius: 50%; position: relative; display: flex; align-items: center; justify-content: center; }
 .outils button.boussole svg { transition: transform .12s linear; }
+.outils button.rond { font-weight: 600; font-size: 13.5px; }
+.outils button.rond { min-width: 0; width: 44px; height: 44px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.menu .rech .go { display: flex; align-items: center; padding: 8px 12px; }
 .outils button.boussole span { position: absolute; top: 1px; left: 0; right: 0; text-align: center; font-size: 8.5px; color: var(--muted); line-height: 1; display: none; }
 .outils button.boussole.tournee { border-color: var(--gold); }
 /* Liste des fonds de carte */

@@ -389,10 +389,21 @@
     // --- Interface ---
     const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
     const outils = el('div', { class: 'outils' });
-    const bFond = el('button', { class: 'fond', 'aria-label': 'Choisir le fond de carte' }, 'Gris'), b3d = el('button', { 'aria-pressed': 'false' }, '3D'), bArbres = el('button', { 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée' }, 'Couvert'), bSurvol = el('button', { 'aria-pressed': 'false', hidden: '', 'aria-label': 'Survoler le tracé affiché' }, 'Survol'), bSem = el('button', { 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR' }, 'Arbres'), bRech = el('button', { 'aria-label': 'Chercher un lieu' }, 'Chercher'),
-      bIci = el('button', { 'aria-label': 'Aller à ma position' }, 'Ici'), bRetour = el('button', { 'aria-label': 'Revenir à la vue précédente', hidden: '' }, '↩ Retour'), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
-      bMaison = el('button', { 'aria-label': 'Aller à la maison' }, 'Maison');
-    outils.append(bFond, b3d, bArbres, bSem, bSurvol, bNord, bRech, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
+    // Pictogrammes des outils (trait de 1,8, couleur du texte) : la colonne reste étroite et se lit sans mots.
+    const picto = d => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    const PICTO = {
+      ici: picto('<circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7.5"/><path d="M12 1.8v3M12 19.2v3M1.8 12h3M19.2 12h3"/>'),
+      maison: picto('<path d="M3.5 11.2 12 4l8.5 7.2"/><path d="M5.8 9.6V20h12.4V9.6"/><path d="M10 20v-5.4h4V20"/>'),
+      loupe: picto('<circle cx="10.5" cy="10.5" r="6.2"/><path d="m15.2 15.2 5 5"/>'),
+      fond: picto('<path d="m12 3.5 9 4.8-9 4.8-9-4.8z"/><path d="m3.6 12.4 8.4 4.5 8.4-4.5"/><path d="m3.6 16.2 8.4 4.5 8.4-4.5"/>'),
+      arbre: picto('<path d="M12 2.8 7.6 9h2.2L6 14.6h4.6"/><path d="M12 2.8 16.4 9h-2.2L18 14.6h-4.6"/><path d="M12 12.5V21"/><path d="M9 21h6"/>'),
+      couvert: picto('<path d="M6.6 14.6a4.1 4.1 0 0 1-.5-8 5 5 0 0 1 9.3-1.3 4.4 4.4 0 0 1 2.2 8.5 3.6 3.6 0 0 1-3 1H8.4a3.6 3.6 0 0 1-1.8-.2z"/><path d="M12 11v10"/><path d="m12 15.5 2.6-2.2"/>'),
+      survol: picto('<path d="M4 19c2.5-6 5-2 7.5-7S16 5 20 5"/><path d="m16.8 3.6 3.6 1.3-1.3 3.6"/><circle cx="4" cy="19" r="1.3"/>'),
+      retour: picto('<path d="M9 7 4.5 11.5 9 16"/><path d="M4.5 11.5H14a5.5 5.5 0 0 1 0 11h-2" transform="translate(0 -3.2)"/>')
+    };
+    const bFond = el('button', { class: 'rond fond', 'aria-label': 'Choisir le fond de carte', title: 'Fond de carte' }, PICTO.fond), b3d = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Relief en 3D', title: 'Relief en 3D' }, '3D'), bArbres = el('button', { class: 'rond', 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée', title: 'Couvert en volume' }, PICTO.couvert), bSurvol = el('button', { class: 'rond', 'aria-pressed': 'false', hidden: '', 'aria-label': 'Survoler le tracé affiché', title: 'Survol du tracé' }, PICTO.survol), bSem = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR', title: 'Arbres' }, PICTO.arbre), bIci = el('button', { class: 'rond', 'aria-label': 'Aller à ma position' }, PICTO.ici), bRetour = el('button', { class: 'rond', 'aria-label': 'Revenir à la vue précédente', hidden: '', title: 'Vue précédente' }, PICTO.retour), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
+      bMaison = el('button', { class: 'rond', 'aria-label': 'Aller à la maison' }, PICTO.maison);
+    outils.append(bFond, b3d, bArbres, bSem, bSurvol, bNord, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
       sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
     bas.append(reponse, sous, rang);
@@ -424,7 +435,7 @@
     const surFond = [];   // fonctions prévenues à chaque changement de fond
     function mettreFond(f) {
       if (!FONDS[f]) f = 'plan';
-      fond = f; bFond.textContent = FONDS[f].nom;
+      fond = f; bFond.setAttribute('aria-label', 'Fond de carte : ' + FONDS[f].nom); bFond.title = 'Fond : ' + FONDS[f].nom;
       if ((f === 'gris') !== grisAllume) { grisAllume = f === 'gris'; for (const id of dessinGris) map.setLayoutProperty(id, 'visibility', grisAllume ? 'visible' : 'none'); }
       for (const id of IMAGES) map.setLayoutProperty(id, 'visibility', FONDS[f].calques.includes(id) ? 'visible' : 'none');
       // L'ombrage du relief est retiré pour de bon là où il n'a rien à faire : réglé à zéro, il laissait encore un voile
@@ -647,9 +658,9 @@
     function aller(v) { retenir(); if (v.pitch > 5 && !relief3d) mettre3d(true); map.flyTo({ center: v.centre, zoom: v.zoom, pitch: v.pitch || 0, bearing: v.bearing || 0, duration: 1800 }); menu.hidden = true; }
     function dessinerMenu() {
       const persos = garde.lire(cleSignets, []);
-      menu.innerHTML = `<div><h3>Lieux</h3><ul class="lieux"></ul>
+      menu.innerHTML = `<div><h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go" aria-label="Chercher">${PICTO.loupe}</button></div><ul class="res"></ul>
+        <h3>Lieux</h3><ul class="lieux"></ul>
         <h3>Garder la vue actuelle</h3><div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue" maxlength="40"><button class="garder">Garder</button></div>
-        <h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go">Chercher</button></div><ul class="res"></ul>
         <h3>Carte libre</h3><p style="margin:0"><button class="libre">Ne garder que la carte</button></p><p class="sources" style="margin:4px 0 0">Range le titre, les boutons et le panneau ; le choix du fond reste. Un appui long sur la carte fait la même chose, et les fait revenir.</p>
         <h3>Relief</h3><p style="margin:0"><button class="exag" aria-pressed="${exag > exag0}">Relief accentué (hauteurs × 1,8)</button></p><p class="sources" style="margin:4px 0 0">Par défaut, le relief est à l'échelle réelle. De loin il paraît plat : l'accentuer aide à le lire, mais fausse les pentes.</p>
         <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, et avec quelle fiabilité</button></p>
@@ -704,7 +715,6 @@
       menu.querySelector('.q').onkeydown = e => { if (e.key === 'Enter') chercher(); };
     }
     bTitre.onclick = () => { dessinerMenu(); menu.hidden = false; };
-    bRech.onclick = () => { dessinerMenu(); menu.hidden = false; const q = menu.querySelector('.q'); q.scrollIntoView({ block: 'center' }); q.focus(); };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
     if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
     // Fond d'ouverture : celui de la carte, sinon le Plan IGN HD. Le dernier fond choisi n'est pas repris.
