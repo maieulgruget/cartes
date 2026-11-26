@@ -115,21 +115,102 @@
     const fc = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { r: 'drone', t: Math.round(d.h) + ' m' }, geometry: { type: 'Point', coordinates: [d.lon, d.lat] } }] };
     if (cible) fc.features.push({ type: 'Feature', properties: { r: 'axe' }, geometry: { type: 'LineString', coordinates: [[d.lon, d.lat], cible] } }, { type: 'Feature', properties: { r: 'centre' }, geometry: { type: 'Point', coordinates: cible } });
     const map = app.map;
-    if (map.getSource('drone')) { map.getSource('drone').setData(fc); return; }
+    if (map.getSource('drone')) { map.getSource('drone').setData(fc); leverMat(app, d.lon, d.lat, d.h); return; }
     map.addSource('drone', { type: 'geojson', data: fc });
     map.addLayer({ id: 'drone-axe', type: 'line', source: 'drone', filter: ['==', ['get', 'r'], 'axe'], paint: { 'line-color': '#b8963e', 'line-width': 2, 'line-dasharray': [1, 1.5] } });
     map.addLayer({ id: 'drone-centre', type: 'circle', source: 'drone', filter: ['==', ['get', 'r'], 'centre'], paint: { 'circle-radius': 4, 'circle-color': '#ffffff', 'circle-stroke-color': '#b8963e', 'circle-stroke-width': 2 } });
-    map.addLayer({ id: 'drone-point', type: 'circle', source: 'drone', filter: ['==', ['get', 'r'], 'drone'], paint: { 'circle-radius': 8, 'circle-color': '#b8963e', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } });
+    map.addLayer({ id: 'drone-point', type: 'circle', source: 'drone', filter: ['==', ['get', 'r'], 'drone'], paint: { 'circle-radius': 5, 'circle-color': '#b8963e', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
+    leverMat(app, d.lon, d.lat, d.h);
     map.addLayer({ id: 'drone-h', type: 'symbol', source: 'drone', filter: ['==', ['get', 'r'], 'drone'], layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12, 'text-offset': [0, -1.5], 'text-allow-overlap': true }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
   }
-  const couchesDrone = ['drone-h', 'drone-point', 'drone-centre', 'drone-axe'];
+  const couchesDrone = ['drone-h', 'dronemat', 'drone-point', 'drone-centre', 'drone-axe'];
+
+  /* Le drone à sa hauteur : une tête dorée au bout d'un trait blanc qui la relie au point de décollage. En vue 3D, elle
+     monte et descend avec le réglage de la hauteur, sans attendre le calcul. La hauteur est vraie ; les largeurs sont
+     recalculées au zoom pour rester lisibles (un trait de 30 cm ne se verrait pas de loin). */
+  let matCourant = null;
+  function leverMat(app, lon, lat, h) {
+    const map = app.map; matCourant = { app, lon, lat, h };
+    const res = 40075016.7 * Math.cos(lat * RAD) / (512 * Math.pow(2, map.getZoom()));   // mètres par point d'écran
+    const tour = (r, n) => [Array.from({ length: n + 1 }, (_, k) => decaler(lon, lat, r, 45 + k * 360 / n))];
+    const trait = Math.max(0.3, res * 1.3), tete = Math.max(1.2, res * 5.5);
+    const fc = { type: 'FeatureCollection', features: [
+      { type: 'Feature', properties: { base: 0, haut: Math.max(1, h), c: '#ffffff' }, geometry: { type: 'Polygon', coordinates: tour(trait, 4) } },
+      { type: 'Feature', properties: { base: Math.max(0, h - tete * 0.7), haut: h + tete * 0.7, c: '#b8963e' }, geometry: { type: 'Polygon', coordinates: tour(tete, 10) } }] };
+    if (map.getSource('dronemat')) { map.getSource('dronemat').setData(fc); return; }
+    map.addSource('dronemat', { type: 'geojson', data: fc });
+    map.addLayer({ id: 'dronemat', type: 'fill-extrusion', source: 'dronemat', paint: { 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-height': ['get', 'haut'], 'fill-extrusion-opacity': 0.95, 'fill-extrusion-vertical-gradient': false } });
+    if (!map._droneMat) { map._droneMat = true; map.on('zoom', () => { if (matCourant && map.getSource('dronemat')) leverMat(matCourant.app, matCourant.lon, matCourant.lat, matCourant.h); }); }
+  }
+
+  /* ---------- Réglage en plein écran ----------
+     Sur un téléphone, le panneau des réglages cache la carte au moment où l'on a besoin de la voir. Ce mode range tout
+     (comme la carte libre) et pose les commandes sur les bords, sous les pouces : une glissière par côté, un cadran de
+     cap en bas. Le geste est relatif : on glisse depuis n'importe où sur la commande, la valeur ne saute pas sous le doigt.
+     o = { glissieres: [{ cote, nom, min, max, unite, lire, ecrire }], cap: { lire, ecrire }, boutons: [{ texte, actif, action }],
+           geste: { actif, debut, bouge } (glisser sur la carte elle-même, pour la vue caméra), etat: () => phrase courte, surFin }. */
+  function pilote(app, o) {
+    const map = app.map, racine = document.createElement('div'), borne = (v, a, b) => Math.max(a, Math.min(b, v));
+    let ouvert = true; const etaitLibre = document.body.classList.contains('libre');
+    if (!app.relief3d) app.mettre3d(true);   // à plat, on ne verrait pas le drone monter
+    racine.className = 'pilote';
+    racine.innerHTML = `<div class="p-geste" hidden></div><div class="p-tete"><div class="p-haut"><button class="p-fin">Terminer</button>${(o.boutons || []).map((b, i) => `<button data-b="${i}"></button>`).join('')}</div><p class="p-etat"></p></div>`;
+    document.body.append(racine); document.body.classList.add('pilotage'); app.libre(true);
+    function glisser(el, debut, bouge) {
+      let dep = null; const fin = () => { dep = null; el.classList.remove('tenu'); };
+      el.addEventListener('pointerdown', e => { e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch (x) { } dep = Object.assign(debut(e), { x: e.clientX, y: e.clientY }); el.classList.add('tenu'); });
+      el.addEventListener('pointermove', e => { if (dep) bouge(dep, e.clientX - dep.x, e.clientY - dep.y, e); });
+      el.addEventListener('pointerup', fin); el.addEventListener('pointercancel', fin);
+    }
+    const majs = (o.glissieres || []).map(gl => {
+      const el = document.createElement('div'); el.className = 'p-gliss ' + gl.cote; el.innerHTML = `<b>${gl.nom}</b><div class="p-rail"><i></i><span></span></div>`; racine.append(el);
+      const rail = el.querySelector('.p-rail'), bouton = rail.querySelector('i'), val = rail.querySelector('span');
+      glisser(el, () => ({ v: gl.lire(), h: rail.clientHeight || 200 }), (dep, dx, dy) => gl.ecrire(borne(Math.round(dep.v - dy / dep.h * (gl.max - gl.min)), gl.min, gl.max)));
+      return () => { const v = gl.lire(); const f = (v - gl.min) / (gl.max - gl.min); bouton.style.bottom = `calc(4px + (100% - 38px) * ${f})`; val.style.bottom = `calc(6px + (100% - 38px) * ${f})`; val.textContent = Math.round(v) + gl.unite; };
+    });
+    let majCadran = () => { };
+    if (o.cap) {
+      const el = document.createElement('div'); el.className = 'p-cadran';
+      const traits = Array.from({ length: 12 }, (_, k) => `<line x1="0" y1="${k % 3 ? -51 : -48}" x2="0" y2="-55" transform="rotate(${k * 30})"/>`).join('');
+      el.innerHTML = `<svg viewBox="-64 -64 128 128" aria-hidden="true"><g class="rose">${traits}${['N', 'E', 'S', 'O'].map((t, k) => `<text y="-37" transform="rotate(${k * 90})"${k ? '' : ' class="nord"'}>${t}</text>`).join('')}</g><path class="aig" d="M0 -62 L7 -47 L-7 -47 Z"/></svg><span></span>`;
+      racine.append(el);
+      const rose = el.querySelector('.rose'), aig = el.querySelector('.aig'), txt = el.querySelector('span');
+      const angle = e => { const r = el.getBoundingClientRect(); return Math.atan2(e.clientX - (r.left + r.width / 2), (r.top + r.height / 2) - e.clientY) / RAD; };
+      glisser(el, e => ({ v: o.cap.lire(), a: angle(e) }), (dep, dx, dy, e) => o.cap.ecrire(((Math.round(dep.v + angle(e) - dep.a) % 360) + 360) % 360));
+      // La rose suit la carte (son N montre le nord de l'écran) ; l'aiguille montre le cap.
+      majCadran = () => { const c = o.cap.lire(), b = map.getBearing(); rose.setAttribute('transform', `rotate(${-b})`); aig.setAttribute('transform', `rotate(${c - b})`); txt.innerHTML = `${Math.round(c) % 360}°<small>${cap8(c)}</small>`; };
+      map.on('rotate', majCadran);
+    }
+    const geste = racine.querySelector('.p-geste'), etatEl = racine.querySelector('.p-etat');
+    if (o.geste) glisser(geste, () => o.geste.debut(), (dep, dx, dy) => o.geste.bouge(dep, dx, dy, geste.clientHeight || 600));
+    const touche = e => { if (e.key === 'Escape') { e.stopPropagation(); api.fermer(); } };
+    window.addEventListener('keydown', touche, true);
+    const api = {
+      maj() {
+        if (!ouvert) return; majs.forEach(f => f()); majCadran();
+        racine.querySelectorAll('[data-b]').forEach(b => { const d = o.boutons[+b.dataset.b]; b.textContent = d.texte(); if (d.actif) b.setAttribute('aria-pressed', String(!!d.actif())); });
+        geste.hidden = !(o.geste && o.geste.actif());
+        const t = o.etat ? o.etat() : ''; etatEl.innerHTML = t; etatEl.hidden = !t;
+      },
+      fermer() {
+        if (!ouvert) return; ouvert = false;
+        map.off('rotate', majCadran); window.removeEventListener('keydown', touche, true); racine.remove();
+        document.body.classList.remove('pilotage'); if (!etaitLibre) app.libre(false);
+        if (o.surFin) o.surFin();
+      }
+    };
+    racine.querySelector('.p-fin').onclick = api.fermer;
+    racine.querySelectorAll('[data-b]').forEach(b => { b.onclick = () => { o.boutons[+b.dataset.b].action(); api.maj(); }; });
+    api.maj();
+    return api;
+  }
 
   /* ---------- Thème 1 : que verra la caméra ? ---------- */
   function camera(opts) {
     opts = opts || {};
     let plan = garde.lire(clePlan(opts.cle || 'defaut'), []);
     const garderPlan = () => garde.ecrire(clePlan(opts.cle || 'defaut'), plan);
-    let d = null, tour = 0, viser = false, apercu = null, masques = new Set(), dernier = null;
+    let d = null, tour = 0, viser = false, apercu = null, masques = new Set(), dernier = null, pil = null;
 
     function curseur(cls, lib, min, max, pas, val, unite) {
       return `<div class="ligne"><label style="min-width:72px">${lib}</label><input type="range" class="${cls}" min="${min}" max="${max}" step="${pas}" value="${val}" style="flex:1;min-width:110px"><span class="fort v-${cls}" style="min-width:44px;text-align:right">${val}${unite}</span></div>`;
@@ -184,6 +265,7 @@
       c.querySelector('.etat').innerHTML = txt;
       c.querySelector('.alerte').innerHTML = hMax > 125 ? `<p class="petit">Attention : en avançant dans l'axe, le sol descend et le drone se trouverait jusqu'à ${Math.round(hMax)} m au-dessus. Le thème Vol montre où.</p>` : '';
       dernier = { centre };
+      if (pil) pil.maj();
     }
 
     function peindre(app, g, cls, dist, dmax) {
@@ -206,7 +288,37 @@
       const opt = map.calculateCameraOptionsFromCameraLngLatAltRotation([d.lon, d.lat], d.zSol + etat.h, etat.cap, Math.min(85, 90 + etat.nacelle), 0);
       map.setCenterClampedToGround(false);   // sinon la carte ramène le centre de la vue au sol et la caméra n'est plus où on l'a mise
       map.jumpTo(opt);
+      if (pil) pil.maj();
       b.textContent = 'Quitter la vue caméra'; b.setAttribute('aria-pressed', 'true');
+    }
+    // Replace la vue caméra sur les réglages du moment (en plein écran, elle suit les commandes).
+    function placer(app) {
+      if (!apercu || !d || d.zSol == null) return;
+      app.map.jumpTo(app.map.calculateCameraOptionsFromCameraLngLatAltRotation([d.lon, d.lat], d.zSol + etat.h, etat.cap, Math.min(85, 90 + etat.nacelle), 0));
+    }
+    function synchro(c) {
+      for (const [cls, cle, u] of [['h', 'h', ' m'], ['cap', 'cap', '°'], ['nac', 'nacelle', '°']]) { c.querySelector('.' + cls).value = etat[cle]; c.querySelector('.v-' + cls).textContent = Math.round(etat[cle]) + u; }
+    }
+    /* Plein écran : hauteur à droite, nacelle à gauche, cap au cadran du bas. En vue caméra, glisser sur l'écran
+       tourne et incline la caméra, comme on regarde autour de soi ; la vue suit le doigt. */
+    function pleinEcran(app, c) {
+      if (pil) return;
+      const changer = (cle, v) => { etat[cle] = v; synchro(c); if (d) leverMat(app, d.lon, d.lat, etat.h); placer(app); pil.maj(); q._relancer(); };
+      pil = pilote(app, {
+        glissieres: [
+          { cote: 'droite', nom: 'Hauteur', min: 10, max: 120, unite: ' m', lire: () => etat.h, ecrire: v => changer('h', v) },
+          { cote: 'gauche', nom: 'Nacelle', min: -90, max: 0, unite: '°', lire: () => etat.nacelle, ecrire: v => changer('nacelle', v) }],
+        cap: { lire: () => etat.cap, ecrire: v => changer('cap', v) },
+        boutons: [
+          { texte: () => 'Vue caméra', actif: () => !!apercu, action: () => vueCamera(app, c) },
+          { texte: () => 'Ajouter la prise', action: () => c.querySelector('.ajout').click() }],
+        geste: {
+          actif: () => !!apercu, debut: () => ({ cap: etat.cap, nac: etat.nacelle }),
+          bouge: (dep, dx, dy, H) => { const k = angles(etat.diag).v / H; etat.cap = ((Math.round(dep.cap - dx * k) % 360) + 360) % 360; changer('nacelle', Math.max(-90, Math.min(0, Math.round(dep.nac + dy * k)))); }
+        },
+        etat: () => !d ? 'Touche la carte pour poser le drone.' : `<span class="fort">${Math.round(etat.h)} m</span> au-dessus du décollage${d.zSol != null ? ` (${Math.round(d.zSol + etat.h)} m d'altitude)` : ''} · ${plan.length} prise${plan.length > 1 ? 's' : ''}`,
+        surFin: () => { if (apercu) vueCamera(app, c); pil = null; }
+      });
     }
     function quitterApercu(app) {
       if (!apercu) return; const map = app.map;
@@ -228,19 +340,21 @@
           <div class="ligne"><label style="min-width:72px">Drone</label><select class="mod">${MODELES.map(x => `<option value="${x.id}"${x.id === etat.modele ? ' selected' : ''}>${x.nom}</option>`).join('')}</select></div>
           <div class="ligne angle" style="display:${etat.modele === 'autre' ? 'flex' : 'none'}"><label style="min-width:72px">Angle</label><input type="range" class="diag" min="40" max="120" step="1" value="${etat.diag}" style="flex:1;min-width:110px"><span class="fort v-diag">${Math.round(etat.diag)}°</span></div>
           ${curseur('h', 'Hauteur', 10, 120, 5, etat.h, ' m')}${curseur('cap', 'Cap', 0, 355, 5, etat.cap, '°')}${curseur('nac', 'Nacelle', -90, 0, 5, etat.nacelle, '°')}
-          <div class="puces"><button class="viser" aria-pressed="false">Viser un point</button><button class="apercu" aria-pressed="false">Vue caméra</button></div>
+          <div class="puces"><button class="plein">Régler en plein écran</button><button class="viser" aria-pressed="false">Viser un point</button><button class="apercu" aria-pressed="false">Vue caméra</button></div>
           <p class="petit2 nplan" style="margin-top:8px"></p>
           <div class="puces"><button class="ajout">Ajouter la prise</button><button class="exp undo">Retirer la dernière</button><button class="exp kml">KML</button><button class="exp csv">Litchi (CSV)</button><button class="exp raz">Effacer</button></div>
           <p class="petit">Le format Litchi est celui que je connais de leurs missions : à ouvrir dans Litchi Mission Hub et à contrôler avant tout vol.</p>`);
         q._c = c;
         masques = app.legende(c, [{ cle: 'vu', couleur: '#e0b85c', texte: 'vu par la caméra' }, { cle: 'cache', couleur: '#28345a', texte: 'caché par le relief' }], () => { if (d && d.g) peindre(app, d.g, d.cls, recalcDist(d), dmaxDe(d)); }, masques);
         const relancer = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => { retenirReglages(); calculer(app, c); }, 220); }; })();
+        q._relancer = relancer;
         const lier = (cls, cle, unite) => { const inp = c.querySelector('.' + cls); inp.oninput = () => { etat[cle] = +inp.value; c.querySelector('.v-' + cls).textContent = Math.round(etat[cle]) + unite; if (apercu) { quitterApercu(app); c.querySelector('.apercu').textContent = 'Vue caméra'; c.querySelector('.apercu').setAttribute('aria-pressed', 'false'); } relancer(); }; };
         lier('h', 'h', ' m'); lier('cap', 'cap', '°'); lier('nac', 'nacelle', '°'); lier('diag', 'diag', '°');
         c.querySelector('.mod').onchange = e => { etat.modele = e.target.value; const mo = modele(); if (mo.id !== 'autre') etat.diag = mo.diag; c.querySelector('.angle').style.display = mo.id === 'autre' ? 'flex' : 'none'; c.querySelector('.diag').value = etat.diag; c.querySelector('.v-diag').textContent = Math.round(etat.diag) + '°'; relancer(); };
         c.querySelector('.viser').onclick = e => { viser = !viser; e.target.setAttribute('aria-pressed', viser); if (viser && !d) c.querySelector('.etat').textContent = 'Pose d\'abord le drone, puis touche ce qu\'il doit viser.'; else if (viser) c.querySelector('.etat').textContent = 'Touche le point à viser : le cap et la nacelle s\'y orientent.'; };
         c.querySelector('.apercu').onclick = () => vueCamera(app, c);
-        c.querySelector('.ajout').onclick = () => { if (!d || d.zSol == null) return; plan.push({ lon: +d.lon.toFixed(7), lat: +d.lat.toFixed(7), zSol: +d.zSol.toFixed(1), h: etat.h, cap: etat.cap, nacelle: etat.nacelle }); garderPlan(); majPlan(app, c); };
+        c.querySelector('.plein').onclick = () => pleinEcran(app, c);
+        c.querySelector('.ajout').onclick = () => { if (!d || d.zSol == null) return; plan.push({ lon: +d.lon.toFixed(7), lat: +d.lat.toFixed(7), zSol: +d.zSol.toFixed(1), h: etat.h, cap: etat.cap, nacelle: etat.nacelle }); garderPlan(); majPlan(app, c); if (pil) { pil.maj(); app.occupe(true, `Prise ${plan.length} ajoutée`); setTimeout(() => app.occupe(false), 1400); } };
         c.querySelector('.undo').onclick = () => { plan.pop(); garderPlan(); majPlan(app, c); };
         c.querySelector('.raz').onclick = () => { plan = []; garderPlan(); majPlan(app, c); };
         c.querySelector('.kml').onclick = () => plan.length && exporter((opts.cle || 'drone') + '-plan.kml', 'application/vnd.google-earth.kml+xml', kml(plan, opts.nom || 'Plan de vol'));
@@ -265,9 +379,9 @@
           d = { lon: ll.lng, lat: ll.lat };
           if (!garde.lire('cartes.drone.reglages', null)) { etat.cap = ((Math.round(app.map.getBearing() / 5) * 5) % 360 + 360) % 360; c.querySelector('.cap').value = etat.cap; c.querySelector('.v-cap').textContent = etat.cap + '°'; }
         }
-        calculer(app, c);
+        calculer(app, c); if (pil) pil.maj();
       },
-      fermer(app) { tour++; quitterApercu(app); viser = false; app.retirer('dronevue', ...couchesDrone, ...couchesPlan); for (const s of ['drone', 'droneplan']) if (app.map.getSource(s)) app.map.removeSource(s); }
+      fermer(app) { tour++; if (pil) pil.fermer(); quitterApercu(app); viser = false; app.retirer('dronevue', ...couchesDrone, ...couchesPlan); for (const s of ['drone', 'droneplan']) if (app.map.getSource(s)) app.map.removeSource(s); matCourant = null; }
     };
     // Distances gardées implicitement : on les recalcule pour repeindre après une bascule de légende.
     function recalcDist(dd) { const g = dd.g, [ci, cj] = position(g, dd.lon, dd.lat), out = new Float32Array(g.w * g.h); for (let k = 0; k < out.length; k++) if (dd.cls[k] === 1) { const i = k % g.w, j = (k - i) / g.w; out[k] = Math.hypot(i - ci, j - cj) * g.pas; } dd._dist = out; return out; }
@@ -279,7 +393,7 @@
   function vol(opts) {
     opts = opts || {};
     const F = opts.fuseau || 'UTC';
-    let d = null, tour = 0, masques = new Set();
+    let d = null, tour = 0, masques = new Set(), pil = null;
     const COUL = { haut: [231, 111, 81, 150], dessous: [120, 20, 30, 170], cache: [40, 52, 86, 150], ok: [42, 157, 143, 70] };
 
     async function calculer(app, c) {
@@ -307,6 +421,7 @@
       dessinerDrone(app, { lon: d.lon, lat: d.lat, h: etat.hVol }, null);
       c.querySelector('.etat').innerHTML = `Décollage à <span class="fort">${Math.round(z0)} m</span>, vol à ${Math.round(etat.hVol)} m au-dessus, soit ${Math.round(zv)} m d'altitude. Dans un rayon de 1,5 km, le drone serait à plus de 120 m du sol sur <span class="fort">${Math.round(100 * nHaut / nTot)} %</span> de la zone, et hors de vue derrière le relief sur <span class="fort">${Math.round(100 * nCache / nTot)} %</span>.`;
       vent(app, c, moi);
+      if (pil) pil.maj();
     }
     function peindre(app, g, cls) {
       const cle = ['', 'ok', 'haut', 'cache', 'dessous'];
@@ -350,15 +465,26 @@
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="legende"></div>
           <div class="ligne"><label style="min-width:72px">Hauteur</label><input type="range" class="hv" min="20" max="120" step="5" value="${etat.hVol}" style="flex:1;min-width:110px"><span class="fort v-hv">${etat.hVol} m</span></div>
+          <div class="puces"><button class="plein">Régler en plein écran</button></div>
           <div class="vent"></div>`);
         q._c = c;
         masques = app.legende(c, [{ cle: 'ok', couleur: 'rgb(42,157,143)', texte: 'en vue, sous 120 m' }, { cle: 'haut', couleur: 'rgb(231,111,81)', texte: 'plus de 120 m du sol' }, { cle: 'cache', couleur: '#28345a', texte: 'hors de vue' }, { cle: 'dessous', couleur: 'rgb(120,20,30)', texte: 'relief plus haut que le drone' }], () => { if (d && d.g) peindre(app, d.g, d.cls); }, masques);
         const inp = c.querySelector('.hv'); let t;
-        inp.oninput = () => { etat.hVol = +inp.value; c.querySelector('.v-hv').textContent = etat.hVol + ' m'; clearTimeout(t); t = setTimeout(() => { retenirReglages(); calculer(app, c); }, 220); };
+        const relancer = () => { clearTimeout(t); t = setTimeout(() => { retenirReglages(); calculer(app, c); }, 220); };
+        inp.oninput = () => { etat.hVol = +inp.value; c.querySelector('.v-hv').textContent = etat.hVol + ' m'; if (d) leverMat(app, d.lon, d.lat, etat.hVol); relancer(); };
+        // Plein écran : la hauteur seule, à droite ; la carte reste libre pour regarder où passe la limite des 120 m.
+        c.querySelector('.plein').onclick = () => {
+          if (pil) return;
+          pil = pilote(app, {
+            glissieres: [{ cote: 'droite', nom: 'Hauteur', min: 20, max: 120, unite: ' m', lire: () => etat.hVol, ecrire: v => { etat.hVol = v; inp.value = v; c.querySelector('.v-hv').textContent = v + ' m'; if (d) leverMat(app, d.lon, d.lat, v); pil.maj(); relancer(); } }],
+            etat: () => !d ? 'Touche la carte à l\'endroit d\'où tu décolles.' : `Vol à <span class="fort">${Math.round(etat.hVol)} m</span> au-dessus du décollage${d.z0 != null ? `, soit ${Math.round(d.z0 + etat.hVol)} m d'altitude` : ''}`,
+            surFin: () => { pil = null; }
+          });
+        };
         await calculer(app, c);
       },
       toucher(app, ll) { d = { lon: ll.lng, lat: ll.lat }; calculer(app, q._c); },
-      fermer(app) { tour++; app.retirer('volzone', 'volcercles', ...couchesDrone); if (app.map.getSource('drone')) app.map.removeSource('drone'); }
+      fermer(app) { tour++; if (pil) pil.fermer(); app.retirer('volzone', 'volcercles', ...couchesDrone); if (app.map.getSource('drone')) app.map.removeSource('drone'); matCourant = null; }
     };
     return q;
   }
