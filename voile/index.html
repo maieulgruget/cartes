@@ -225,23 +225,15 @@
   // ---------- 2. Mer : vagues, houle, température ----------
   /* Les vagues sont dessinées sur la carte : un signe par point du modèle, tourné dans le sens où elles vont, d'autant
      plus grand que la mer est forte, avec la hauteur en mètres. */
-  function imageVague() {
-    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.lineCap = 'round';
-    for (const passe of [['#16324f', 7.5], ['#ffffff', 4]]) {
-      x.strokeStyle = passe[0]; x.lineWidth = passe[1];
-      for (const [y, r] of [[40, 21], [28, 16], [17, 11]]) { x.beginPath(); x.arc(32, y + r * 0.72, r, -0.78 * Math.PI, -0.22 * Math.PI); x.stroke(); }
-    }
-    return x.getImageData(0, 0, 64, 64);
-  }
   const qMer = {
     plein: () => ({ bloc: '.tab' }),
     theme: 'Mer', libelle: 'Comment est la mer ?', h: 0, champ: null,
-    aide: 'Hauteur, direction et période des vagues, houle et température de surface, heure par heure, d\'après le modèle de vagues d\'Open-Meteo. Sur la carte, chaque signe est un point du modèle : les trois crêtes avancent dans le sens des vagues, leur taille suit la hauteur, écrite à côté. La hauteur est la hauteur significative : la moyenne du tiers des vagues les plus hautes, certaines vagues la dépassent nettement. La maille est de plusieurs kilomètres : près de la côte, dans une calanque ou à l\'abri d\'une île, la mer réelle peut être très différente.',
+    aide: 'Hauteur, direction et période des vagues, houle et température de surface, heure par heure, d\'après le modèle de vagues d\'Open-Meteo. Sur la carte, la mer est couverte de petites crêtes qui avancent dans le sens des vagues : leur largeur suit la hauteur, leur cadence la période, et la hauteur est écrite de loin en loin. Les valeurs sont interpolées entre les points du modèle, et les crêtes ne sont dessinées qu\'en mer (d\'après le relief mondial, à cent mètres près : le fond d\'un port peut rester vide). Leur semis se resserre ou s\'éclaircit avec le zoom, pour garder la même densité à l\'écran. La hauteur est la hauteur significative : la moyenne du tiers des vagues les plus hautes, certaines vagues la dépassent nettement. La maille est de plusieurs kilomètres : près de la côte, dans une calanque ou à l\'abri d\'une île, la mer réelle peut être très différente.',
     async ouvrir(app) {
       const c = qMer._c = app.repondre(qMer.libelle, `<p class="etat">Lecture de l'état de la mer…</p>
         <div class="ligne"><button class="now">Maintenant</button><input type="range" class="hm" min="0" max="23" value="${qMer.h}" style="flex:1;min-width:120px"><span class="fort v-hm" style="min-width:74px;text-align:right"></span></div>
         <p class="pt petit2">Touche la mer pour le détail en un point.</p><div class="tab"></div>`);
-      if (!map.hasImage('vague')) map.addImage('vague', imageVague(), { pixelRatio: 2 });
+      qMer.toile(app);
       c.querySelector('.hm').oninput = e => { qMer.h = +e.target.value; qMer.dessiner(app); if (qMer.dernier) qMer.detail(app); };
       c.querySelector('.now').onclick = () => { qMer.h = 0; c.querySelector('.hm').value = 0; qMer.dessiner(app); if (qMer.dernier) qMer.detail(app); };
       app.suivre(qMer, () => qMer.charger(app)); await qMer.charger(app);
@@ -263,17 +255,73 @@
     },
     dessiner(app) {
       const ch = qMer.champ, c = qMer._c; if (!ch) return;
-      const i = Math.min(ch.heures.length - 1, maintenant(ch.heures) + qMer.h);
+      const i = qMer.i = Math.min(ch.heures.length - 1, maintenant(ch.heures) + qMer.h);
       c.querySelector('.v-hm').textContent = qMer.h === 0 ? 'maintenant' : hh(ch.heures[i]);
-      const fc = { type: 'FeatureCollection', features: ch.liste.filter(p => p.h.wave_height[i] != null).map(p => ({ type: 'Feature', properties: { m: p.h.wave_height[i], rot: (p.h.wave_direction[i] + 180) % 360, t: fr(p.h.wave_height[i].toFixed(1)) + ' m' }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) };
-      if (map.getSource('vagues')) map.getSource('vagues').setData(fc);
-      else {
-        map.addSource('vagues', { type: 'geojson', data: fc });
-        map.addLayer({ id: 'vagues', type: 'symbol', source: 'vagues', layout: { 'icon-image': 'vague', 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map', 'icon-size': ['interpolate', ['linear'], ['get', 'm'], 0, 0.7, 0.5, 1, 1.5, 1.5, 3, 2.1, 5, 2.7], 'icon-allow-overlap': true,
-          'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1.7], 'text-anchor': 'top', 'text-allow-overlap': true }, paint: { 'text-color': '#16324f', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+      qMer.semer();
+      const hs = ch.liste.map(p => p.h.wave_height[i]).filter(v => v != null);
+      c.querySelector('.etat').innerHTML = hs.length ? `Dans la vue, à ${hh(ch.heures[i])} : vagues de <span class="fort">${fr(Math.min(...hs).toFixed(1))} à ${fr(Math.max(...hs).toFixed(1))} m</span>.` : 'Pas de mer dans cette vue pour le modèle : déplace la carte vers le large.';
+    },
+    /* La mer est texturée de petites crêtes : un semis régulier (un peu bousculé) posé sur la mer, à densité constante à
+       l'écran (son pas suit le zoom : c'est la généralisation), jamais à terre. Chaque crête avance dans le sens des
+       vagues, à la cadence de leur période ; sa largeur dit leur hauteur. Les valeurs sont interpolées entre les points
+       du modèle (pondération par l'inverse du carré de la distance). */
+    champAu(lon, lat) {
+      const ch = qMer.champ, i = qMer.i; let sw = 0, sm = 0, sx = 0, sy = 0, sp = 0; const k = Math.cos(lat * RAD);
+      for (const p of ch.liste) {
+        const m = p.h.wave_height[i]; if (m == null) continue;
+        const dx = (p.lon - lon) * k, dy = p.lat - lat, w = 1 / (dx * dx + dy * dy + 1e-7), a = p.h.wave_direction[i] * RAD;
+        sw += w; sm += w * m; sx += w * Math.sin(a); sy += w * Math.cos(a); sp += w * (p.h.wave_period[i] || 5);
       }
-      const hs = fc.features.map(f => f.properties.m);
-      c.querySelector('.etat').innerHTML = hs.length ? `Dans la vue, à ${hh(ch.heures[i])} : vagues de <span class="fort">${fr(Math.min(...hs).toFixed(1))} à ${fr(Math.max(...hs).toFixed(1))} m</span>, sur ${hs.length} points du modèle.` : 'Pas de mer dans cette vue pour le modèle : déplace la carte vers le large.';
+      return sw ? { m: sm / sw, dir: (Math.atan2(sx, sy) / RAD + 360) % 360, per: sp / sw } : null;
+    },
+    semer() {
+      if (!qMer.champ || qMer.i == null) return;
+      const zr = Math.round(map.getZoom()), pas = 58 / (512 * Math.pow(2, zr)), bd = map.getBounds(), cache = qMer.mer = qMer.mer || new Map();
+      const mx = lon => (lon + 180) / 360, my = lat => (1 - Math.asinh(Math.tan(lat * RAD)) / Math.PI) / 2;
+      const i0 = Math.floor(mx(bd.getWest()) / pas) - 1, i1 = Math.ceil(mx(bd.getEast()) / pas) + 1, j0 = Math.floor(my(bd.getNorth()) / pas) - 1, j1 = Math.ceil(my(bd.getSouth()) / pas) + 1;
+      const semis = [];
+      if ((i1 - i0) * (j1 - j0) < 4000) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        // Un tirage fixe par case : le semis ne bouge pas quand on déplace la carte.
+        const g = Math.sin(i * 127.1 + j * 311.7) * 43758.5453, r1 = g - Math.floor(g), g2 = Math.sin(i * 269.5 + j * 183.3) * 24634.6345, r2 = g2 - Math.floor(g2);
+        const x = (i + 0.5 + (r1 - 0.5) * 0.6) * pas, y = (j + 0.5 + (r2 - 0.5) * 0.6) * pas, lon = x * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) / RAD;
+        const f = qMer.champAu(lon, lat); if (!f) continue;
+        const cle = zr + '/' + i + '/' + j, pt = { lon, lat, f, ph: r1, cle, ecrit: i % 3 === 0 && j % 3 === 0 };
+        if (!cache.has(cle)) { cache.set(cle, null); Socle.altitudeMonde(lon, lat).then(a => cache.set(cle, !(a >= -0.5)), () => cache.set(cle, true)); }
+        semis.push(pt);
+      }
+      if (cache.size > 20000) cache.clear();
+      qMer.semis = semis;
+    },
+    toile(app) {
+      if (qMer.cv) return;
+      const cv = qMer.cv = document.createElement('canvas'); cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none'; document.body.append(cv);
+      const caler = () => { const dpr = Math.min(2, window.devicePixelRatio || 1); qMer.dpr = dpr; cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr); };
+      caler(); qMer.caler = caler; addEventListener('resize', caler);
+      qMer.surBouge = () => qMer.semer(); map.on('moveend', qMer.surBouge);
+      let avant = 0;
+      const image = t => {
+        qMer.anim = requestAnimationFrame(image); if (t - avant < 40) return; avant = t;
+        const x = cv.getContext('2d'), dpr = qMer.dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, innerWidth, innerHeight);
+        const semis = qMer.semis, cache = qMer.mer; if (!semis || !cache) return;
+        const W = innerWidth, H = innerHeight; x.lineCap = 'round'; x.font = '600 12px "Source Sans Pro", system-ui, sans-serif'; x.textAlign = 'center';
+        for (const p of semis) {
+          if (cache.get(p.cle) !== true) continue;
+          const a = map.project([p.lon, p.lat]); if (a.x < -30 || a.y < -30 || a.x > W + 30 || a.y > H + 30) continue;
+          // Sens de marche à l'écran : on projette un point un peu plus loin dans le sens où vont les vagues.
+          const cap = (p.f.dir + 180) * RAD, d = 0.002, b = map.project([p.lon + d * Math.sin(cap) / Math.cos(p.lat * RAD), p.lat + d * Math.cos(cap)]);
+          let vx = b.x - a.x, vy = b.y - a.y; const n = Math.hypot(vx, vy) || 1; vx /= n; vy /= n;
+          const larg = 9 + 8 * Math.min(4, p.f.m), course = 34, T = Math.max(2.4, Math.min(7, p.f.per * 0.55)) * 1000;
+          for (let k = 0; k < 2; k++) {
+            const f = ((t / T + p.ph + k * 0.5) % 1), cx = a.x + vx * (f - 0.5) * course, cy = a.y + vy * (f - 0.5) * course, al = Math.sin(Math.PI * f);
+            const ex = -vy * larg / 2, ey = vx * larg / 2;
+            x.beginPath(); x.moveTo(cx - ex, cy - ey); x.quadraticCurveTo(cx + vx * larg * 0.42, cy + vy * larg * 0.42, cx + ex, cy + ey);
+            x.strokeStyle = `rgba(16,42,70,${0.5 * al})`; x.lineWidth = 3.4; x.stroke();
+            x.strokeStyle = `rgba(255,255,255,${0.95 * al})`; x.lineWidth = 1.6; x.stroke();
+          }
+          if (p.ecrit) { const tx = fr(p.f.m.toFixed(1)) + ' m'; x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.9)'; x.strokeText(tx, a.x, a.y + 30); x.fillStyle = '#16324f'; x.fillText(tx, a.x, a.y + 30); }
+        }
+      };
+      qMer.anim = requestAnimationFrame(image);
     },
     async detail(app) {
       const ll = qMer.dernier, c = qMer._c, moi = qMer.tourPt = (qMer.tourPt || 0) + 1;
@@ -288,7 +336,7 @@
       app.bulle(ll, `Vagues <span class="fort">${m(hr.wave_height[i0])}</span><small>de ${V.rose(hr.wave_direction[i0])}, toutes les ${Math.round(hr.wave_period[i0])} s</small>`);
     },
     toucher(app, ll) { qMer.dernier = ll; qMer._c.querySelector('.pt').textContent = 'Lecture du point…'; qMer.detail(app); },
-    fermer(app) { qMer.tour = (qMer.tour || 0) + 1; qMer.dernier = null; app.retirer('vagues'); }
+    fermer(app) { qMer.tour = (qMer.tour || 0) + 1; qMer.dernier = null; cancelAnimationFrame(qMer.anim); if (qMer.cv) { qMer.cv.remove(); qMer.cv = null; } if (qMer.surBouge) map.off('moveend', qMer.surBouge); removeEventListener('resize', qMer.caler); qMer.semis = null; }
   };
   app.question(qMer);
 
