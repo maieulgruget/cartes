@@ -762,7 +762,7 @@
       repondre(titre, html) {
         reponse.hidden = false; if (masque) { masque = false; appliquerMasque(); }
         reponse.classList.toggle('replie', garde.lire(clePanneau(), '') === 'reduit'); reponse.classList.remove('aveclegende');
-        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && (app.active.plein !== false || app.active.pleinPropre) ? '<button class="grand">⤢ Plein écran</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
+        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && (app.active.plein !== false || app.active.pleinPropre) ? '<button class="grand">⤢ Plein écran</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="info" aria-label="Comprendre ce thème" hidden>?</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
         reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
         if (reponse.querySelector('h2 .grand')) {
           // Un thème peut avoir son propre plein écran (q.pleinPropre : le drone, dont les commandes s'accrochent au point).
@@ -778,9 +778,13 @@
         reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.setAttribute('aria-pressed', !masque); appliquerMasque(); };
         // Les explications (ce qui est calculé, comment, avec quelle fiabilité) se rangent sous un seul intitulé.
         const corps = reponse.querySelector('.corps'), notes = [...corps.querySelectorAll(':scope > p.petit')], q = app.active;
-        if (notes.length || (q && q.aide)) {
-          const det = el('details', { class: 'aide' }, '<summary>Ce que montre la carte</summary>' + (q && q.aide ? `<p>${q.aide}</p>` : ''));
-          notes.forEach(p => det.append(p)); corps.append(det);
+        /* Le panneau ne porte que la réponse. Tout ce qui explique (ce que la carte calcule, comment, avec quelle fiabilité)
+           sort du panneau et s'ouvre en fenêtre par le bouton « ? » : un schéma s'il y en a un (q.schema), l'explication
+           du thème phrase par phrase, puis les précisions propres à la vue affichée. */
+        notes.forEach(p => p.remove());
+        if (notes.length || (q && (q.aide || q.schema))) {
+          const b = reponse.querySelector('h2 .info'); b.hidden = false;
+          b.onclick = () => comprendre(q, titre, notes.map(p => p.innerHTML));
         }
         const plier = () => { const r = reponse.classList.toggle('replie'); garde.ecrire(clePanneau(), r ? 'reduit' : 'ouvert'); if (!r) { reponse.classList.remove('aveclegende'); reponse.querySelector('h2 .leg').setAttribute('aria-pressed', 'false'); } };
         reponse.querySelector('h2 span').onclick = plier; reponse.querySelector('h2 .pli').onclick = plier;
@@ -1188,6 +1192,20 @@
       } catch (e) { const boite = menu.querySelector('.qr'); if (boite) boite.innerHTML = '<p class="sources">Le code ne se dessine pas pour l\'instant : copie le lien.</p>'; }
     }
 
+    // Fenêtre « Comprendre » d'un thème : schéma, explication en phrases courtes, précisions de la vue.
+    const phrases = t => String(t || '').split(/(?<=[.!?…])\s+(?=[A-ZÀ-ÝÉ«])/).map(x => x.trim()).filter(Boolean);
+    function comprendre(q, titre, notes) {
+      const aide = q && q.aide ? phrases(q.aide) : [];
+      menu.innerHTML = `<div class="comprendre"><h3>${propre((q && (q.theme || q.libelle)) || titre)}</h3>
+        ${q && q.schema ? `<div class="schema">${q.schema}</div>` : ''}
+        ${aide.length ? `<ul class="points">${aide.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+        ${notes.length ? `<h4>Sur cette vue</h4><ul class="points">${notes.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+        <p style="text-align:right;margin:12px 0 0"><button class="tout">Toute la carte</button> <button class="fermer">Fermer</button></p></div>`;
+      menu.hidden = false;
+      menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
+      menu.querySelector('.tout').onclick = () => { dessinerMenu(); menu.querySelector('.methode').click(); };
+    }
+
     // --- Menu : signets (des vues), recherche de lieux, sources ---
     const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['greolieres', 'Champignons 06', 'Gréolières, Bar-sur-Loup, Sophia'], ['voile', 'Voile', 'de Cerbère à Menton, et la Corse'], ['corse', 'Randos', 'Corse et France, sur le relief']];
     const cleSignets = 'cartes.signets.' + cfg.id;
@@ -1293,7 +1311,7 @@
       menu.querySelector('.autres').onclick = e => { const b = e.target.closest('button[data-u]'); if (b) location.href = b.dataset.u; };
       // Page « méthode » : tous les thèmes de la carte, ce qu'ils calculent, leurs limites ; puis les sources.
       menu.querySelector('.methode').onclick = () => {
-        menu.innerHTML = `<div><h3>Comprendre la carte</h3>${app.questions.map(q => `<h4>${propre(q.theme || q.libelle)} — ${propre(q.libelle)}</h4><p class="sources">${q.aide || 'Ouvre ce thème : son panneau décrit ce qu\'il montre.'}</p>`).join('')}
+        menu.innerHTML = `<div><h3>Comprendre la carte</h3>${app.questions.map(q => `<h4>${propre(q.theme || q.libelle)} — ${propre(q.libelle)}</h4>${q.schema ? `<div class="schema">${q.schema}</div>` : ''}${q.aide ? `<ul class="points">${phrases(q.aide).map(x => `<li>${x}</li>`).join('')}</ul>` : '<p class="sources">Ouvre ce thème : son panneau décrit ce qu\'il montre.</p>'}`).join('')}
           <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p><p style="text-align:right;margin:10px 0 0"><button class="retour">Retour</button> <button class="fermer">Fermer</button></p></div>`;
         menu.querySelector('.retour').onclick = dessinerMenu; menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
       };
