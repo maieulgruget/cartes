@@ -127,6 +127,10 @@ body.libre .outils button.fond { opacity: 0.85; }
   #fiche .fort { font-weight: 700; color: #1a2e4a; }
   #fiche .petit, #fiche .pied { color: #555; font-size: 9pt; }
   #fiche .legende { display: none; }
+  #fiche table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10pt; font-variant-numeric: tabular-nums; }
+  #fiche th, #fiche td { text-align: right; padding: 3px 5px; border-bottom: 1px solid #ccc; }
+  #fiche th { color: #555; font-weight: 600; }
+  #fiche th:first-child, #fiche td:first-child { text-align: left; }
   @page { size: A4; margin: 14mm; }
 }
 
@@ -268,9 +272,12 @@ body.pilotage .repere, body.pilotage .outils, body.pilotage .listefonds, body.pi
 .pilote { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
 .pilote > * { pointer-events: auto; }
 .p-geste { position: absolute; inset: 0; touch-action: none; cursor: grab; }
-.p-geste[hidden], .p-ancre[hidden], .p-visee[hidden], .p-etat[hidden] { display: none; }
+.p-geste[hidden], .p-ancre[hidden], .p-nac[hidden], .p-haut .p-centre[hidden], .p-etat[hidden], .p-actions button[hidden] { display: none; }
 .p-tete { position: absolute; left: 10px; right: 10px; top: calc(10px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none !important; }
 .p-haut { display: flex; gap: 6px; justify-content: center; pointer-events: auto; }
+/* Recentrer : ramène la carte sur le point quand on s'en est éloigné en la faisant glisser. */
+.p-haut .p-centre:not([hidden]) { display: flex; }
+.p-haut .p-centre { width: 40px; height: 40px; padding: 0; align-items: center; justify-content: center; color: var(--gold); backdrop-filter: blur(6px); }
 .p-haut .p-fin { background: var(--gold); color: #10192a; border-color: var(--gold); font-weight: 600; font-size: 14px; padding: 9px 16px; }
 .p-etat { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; text-align: center; max-width: 100%; backdrop-filter: blur(6px); }
 .p-etat .fort { color: var(--gold); font-weight: 600; }
@@ -287,17 +294,31 @@ body.pilotage .repere, body.pilotage .outils, body.pilotage .listefonds, body.pi
 .p-barre { left: 92px; top: -85px; width: 44px; height: 170px; border-radius: 22px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(6px);
   touch-action: none; cursor: ns-resize; user-select: none; -webkit-user-select: none; }
 .p-barre.tenu { border-color: var(--gold); }
-.reponse .exports[hidden], .reponse .nplan[hidden], .reponse .pose[hidden] { display: none; }
+.reponse .pose[hidden], .reponse .dplan[hidden], .reponse .dprise[hidden] { display: none; }
+/* Valeurs d'une prise dans le panneau : elles se règlent sur la carte ; toucher un chiffre permet de le taper. */
+.reponse .valeurs button { display: flex; gap: 6px; align-items: baseline; color: var(--muted); font-size: 12.5px; padding: 6px 11px; }
+.reponse .valeurs b { color: var(--gold); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.reponse .valeurs input { width: 3.2em; font-size: 16px; padding: 0 2px; background: transparent; border: 0; border-bottom: 1px solid var(--gold); color: var(--gold); text-align: right; border-radius: 0; }
+/* Plan de vol en tableau : une ligne par prise, celle qu'on règle est surlignée. */
+.reponse table.prises { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; margin: 2px 0 8px; }
+.reponse table.prises th { color: var(--muted); font-weight: 400; font-size: 11.5px; text-align: right; padding: 2px 6px; }
+.reponse table.prises td { text-align: right; padding: 9px 6px; border-top: 1px solid rgba(255,255,255,0.08); white-space: nowrap; }
+.reponse table.prises th:first-child, .reponse table.prises td:first-child { text-align: left; color: var(--gold); font-weight: 600; }
+.reponse table.prises tbody tr { cursor: pointer; }
+.reponse table.prises tr[aria-selected="true"] { background: rgba(184, 150, 62, 0.18); }
+.reponse .dprise { margin-bottom: 8px; }
+.reponse .puces button:disabled { opacity: 0.4; cursor: default; }
 .p-barre b { position: absolute; left: 50%; top: -24px; transform: translateX(-50%); font-size: 11.5px; font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap; pointer-events: none; }
 .pilote:not(.plein) .p-etat { border-radius: 12px; }
 .p-barre i { position: absolute; left: 4px; right: 4px; height: 30px; border-radius: 15px; background: var(--gold); box-shadow: 0 2px 8px rgba(0,0,0,.4); pointer-events: none; }
 .p-barre span { position: absolute; left: 50px; white-space: nowrap; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 7px; font-size: 15px; font-weight: 600; color: var(--gold); pointer-events: none; }
 .p-actions { position: absolute; left: 10px; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
 .p-actions button { font-size: 14px; padding: 10px 14px; backdrop-filter: blur(6px); }
-.p-visee { position: absolute; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(280px, calc(100% - 20px)); background: #101c2e; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
-.p-visee .ligne { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-.p-visee label { color: var(--muted); font-size: 12px; }
-.p-visee b { color: var(--gold); min-width: 34px; text-align: right; }
+/* Nacelle : la même barre que la hauteur, à gauche du point (placée par le script) ; sa valeur reste dessous, fixe.
+   En vue caméra, elle passe sur le bord droit de l'écran. */
+.pilote > .p-nac { position: absolute; left: 0; top: 0; }
+.pilote > .p-nac.bord { left: auto; right: calc(12px + env(safe-area-inset-right)); top: 50%; margin-top: -85px; }
+.p-nac span { left: 50%; top: calc(100% + 6px); bottom: auto; transform: translateX(-50%); }
 
 /* ---------- Plein écran d'un thème : phrase en haut, réglage principal en bas ---------- */
 body.pleintheme .bas, body.pleintheme .repere { display: none !important; }

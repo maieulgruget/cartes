@@ -44,6 +44,13 @@ tour. La tâche « Randos » le relance chaque lundi, à chaque GPX déposé, ou
 LiDAR HD) et dresse un arbre à sa hauteur ; le relevé suit la carte. Sur toutes les cartes et tous les fonds par le bouton
 « Arbres » ; sur la carte de La Réunion aussi par le thème « Cimes » (famille Drone : hauteurs en couleurs, légende).
 
+`socle/drone.js` (famille Drone, carte de La Réunion) : thème « Caméra », ce qu'une photo de drone montrera, drapé sur
+le relief. Tout se règle sur la carte, en plein écran : hauteur à droite du point, nacelle à gauche, cap autour, bouton
+pour recentrer ; le panneau garde les valeurs (un toucher sur un chiffre pour taper une valeur exacte) et le plan de vol
+en tableau. Toucher le point d'une prise la reprend (ce qu'elle voit, réglages, déplacement, retrait) ; le tableau change
+son rang. « Bilan du plan » réunit toutes les prises (vu par une, par plusieurs, caché par le relief) ; exports KML,
+Litchi (CSV) et fiche à imprimer. Thème « Vol » : limite des 120 m, vue directe, vent.
+
 `socle/survol.js` : survol d'un tracé, la caméra suit le chemin et fait halte au départ, aux points hauts (nommés d'après
 les lieux-dits de l'IGN) et à l'arrivée. Bouton « Survol » des outils de la carte, dès qu'une rando est choisie ou
 qu'un itinéraire est tracé ; caméra rapprochée, barre de pause, d'allure et de halte suivante.
