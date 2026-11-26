@@ -287,6 +287,9 @@ body.pilotage .repere, body.pilotage .outils, body.pilotage .listefonds, body.pi
 .p-barre { left: 92px; top: -85px; width: 44px; height: 170px; border-radius: 22px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(6px);
   touch-action: none; cursor: ns-resize; user-select: none; -webkit-user-select: none; }
 .p-barre.tenu { border-color: var(--gold); }
+.reponse .exports[hidden], .reponse .nplan[hidden], .reponse .pose[hidden] { display: none; }
+.p-barre b { position: absolute; left: 50%; top: -24px; transform: translateX(-50%); font-size: 11.5px; font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap; pointer-events: none; }
+.pilote:not(.plein) .p-etat { border-radius: 12px; }
 .p-barre i { position: absolute; left: 4px; right: 4px; height: 30px; border-radius: 15px; background: var(--gold); box-shadow: 0 2px 8px rgba(0,0,0,.4); pointer-events: none; }
 .p-barre span { position: absolute; left: 50px; white-space: nowrap; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 7px; font-size: 15px; font-weight: 600; color: var(--gold); pointer-events: none; }
 .p-actions { position: absolute; left: 10px; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
