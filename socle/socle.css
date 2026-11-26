@@ -41,10 +41,7 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 30px; }
 .listefonds button[aria-pressed="true"] small { color: #3a3524; }
 .listefonds p { margin: 8px 4px 2px; font-size: 11.5px; color: var(--gold); }
 /* Carte libre : tout est rangé sauf le bouton des fonds et le repère. */
-body.libre .titre, body.libre .cartes, body.libre .bas, body.libre .outils button:not(.fond):not(.loupe):not(.ici) { display: none; }
-.outils button.loupe { display: none; }
-body.libre .outils button.loupe { display: flex; opacity: 0.85; }
-body.libre .outils button.ici { opacity: 0.85; }
+body.libre .titre, body.libre .cartes, body.libre .bas, body.libre .outils button:not(.fond) { display: none; }
 body.libre .outils button.fond { opacity: 0.85; }
 .repere { position: fixed; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 3; width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 17px; color: var(--muted); opacity: 0.8; backdrop-filter: blur(6px); }
 .repere[hidden] { display: none; }
@@ -210,3 +207,11 @@ body.libre .barrevol { opacity: 0.9; }
 .heures b { display: block; color: var(--gold); font-size: 12.5px; }
 .heures div.nuit { background: rgba(255,255,255,0.02); }
 .heures small { color: var(--muted); }
+/* Menu : vues gardées (une ligne, sa croix), vues proposées repliées, réglages en puces. */
+.menu li.vue { display: flex; gap: 6px; align-items: stretch; }
+.menu li.vue button:first-child { flex: 1; min-width: 0; }
+.menu li.vue .oter { width: 40px; flex: none; text-align: center; padding: 0; color: var(--muted); }
+.menu details.pli { margin: 8px 0 0; }
+.menu details.pli summary { color: var(--muted); font-size: 13px; cursor: pointer; padding: 4px 0; }
+.menu .puces { display: flex; flex-wrap: wrap; gap: 6px; }
+.menu .miennes + .rech { margin-top: 6px; }
