@@ -592,8 +592,9 @@
       repondre(titre, html) {
         reponse.hidden = false; masque = false;
         reponse.classList.toggle('replie', garde.lire(clePanneau(), '') === 'reduit'); reponse.classList.remove('aveclegende');
-        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button><button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
+        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && app.active.plein ? '<button class="grand" aria-label="Régler en plein écran">⤢</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
         reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
+        if (reponse.querySelector('h2 .grand')) reponse.querySelector('h2 .grand').onclick = () => { const a = app.active; if (a && a.plein) app.plein(a.plein(app)); };
         reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.setAttribute('aria-pressed', !masque); appliquerMasque(); };
         // Les explications (ce qui est calculé, comment, avec quelle fiabilité) se rangent sous un seul intitulé.
         const corps = reponse.querySelector('.corps'), notes = [...corps.querySelectorAll(':scope > p.petit')], q = app.active;
@@ -606,6 +607,53 @@
         reponse.querySelector('h2 .leg').onclick = e => { e.target.setAttribute('aria-pressed', reponse.classList.toggle('aveclegende')); };
         reponse.classList.toggle('sanslegende', !corps.querySelector('.legende'));
         return reponse.querySelector('.corps');
+      },
+      /* Plein écran d'un thème : le panneau est rangé, la carte prend tout l'écran, et le réglage principal du thème est
+         posé dessus, sous le pouce. La phrase de réponse du panneau est recopiée en haut (elle suit le calcul toute seule) ;
+         « Détails » rouvre le panneau, pour la légende, les autres réglages et les explications.
+         Un thème s'y prête en déclarant q.plein = app => ({ ruban, date, boutons }) :
+           ruban   { min, max, pas, echelle (points d'écran par unité), lire, ecrire, texte(v), graduations: [{ v, texte }], plages: () => [[de, à]] }
+                   un ruban qu'on fait défiler sous un repère fixe (une heure, un niveau) ; le geste est relatif ;
+           date    { lire, ecrire } ; boutons [{ texte, action }]. */
+      plein(o) {
+        if (pleinCourant) pleinCourant.fermer();
+        const etaitLibre = document.body.classList.contains('libre'), racine = el('div', { class: 'pilote plein' });
+        racine.innerHTML = `<div class="p-tete"><p class="p-etat"></p></div><div class="p-bas">${o.ruban ? '<div class="p-lecture"></div><div class="p-ruban"><div class="p-bande"></div><i></i></div>' : ''}<div class="p-rang">${o.date ? '<input type="date" class="p-date">' : ''}${(o.boutons || []).map((b, i) => `<button data-b="${i}">${propre(b.texte)}</button>`).join('')}<button class="p-fin">Détails</button></div></div>`;
+        document.body.append(racine); document.body.classList.add('pleintheme'); libre(true);
+        const etatEl = racine.querySelector('.p-etat'), src = reponse.querySelector('.corps > .etat');
+        const copier = () => { etatEl.innerHTML = src ? src.innerHTML : ''; etatEl.hidden = !etatEl.textContent.trim(); };
+        const veille = new MutationObserver(copier); if (src) veille.observe(src, { childList: true, characterData: true, subtree: true });
+        const r = o.ruban, k = r ? (r.echelle || 1) : 1, bande = racine.querySelector('.p-bande'), lecture = racine.querySelector('.p-lecture'), ruban = racine.querySelector('.p-ruban');
+        if (r) {
+          bande.style.width = (r.max - r.min) * k + 'px';
+          bande.innerHTML = '<div class="p-plages"></div>' + (r.graduations || []).map(g => `<span style="left:${(g.v - r.min) * k}px"${g.texte ? '' : ' class="fin"'}>${g.texte || ''}</span>`).join('');
+          let dep = null; const fin = () => { dep = null; ruban.classList.remove('tenu'); };
+          ruban.addEventListener('pointerdown', e => { e.preventDefault(); try { ruban.setPointerCapture(e.pointerId); } catch (x) { } dep = { x: e.clientX, v: r.lire() }; ruban.classList.add('tenu'); });
+          ruban.addEventListener('pointermove', e => { if (!dep) return; const v = Math.max(r.min, Math.min(r.max, Math.round((dep.v - (e.clientX - dep.x) / k) / r.pas) * r.pas)); if (v !== r.lire()) { r.ecrire(v); api.maj(); } });
+          ruban.addEventListener('pointerup', fin); ruban.addEventListener('pointercancel', fin);
+        }
+        const date = racine.querySelector('.p-date'); if (date) date.onchange = () => { if (date.value) { o.date.ecrire(date.value); api.maj(); } };
+        racine.querySelectorAll('[data-b]').forEach(b => { b.onclick = () => { o.boutons[+b.dataset.b].action(); api.maj(); }; });
+        const touche = e => { if (e.key === 'Escape') { e.stopPropagation(); api.fermer(); } };
+        window.addEventListener('keydown', touche, true);
+        const api = {
+          maj() {
+            if (r) {
+              const v = r.lire(); lecture.textContent = r.texte ? r.texte(v) : v; bande.style.transform = `translateX(${-(v - r.min) * k}px)`;
+              if (r.plages) bande.querySelector('.p-plages').innerHTML = r.plages().map(pl => `<i style="left:${(pl[0] - r.min) * k}px;width:${(pl[1] - pl[0]) * k}px"></i>`).join('');
+            }
+            if (date) date.value = o.date.lire();
+            copier();
+          },
+          fermer() {
+            if (pleinCourant !== api) return; pleinCourant = null;
+            veille.disconnect(); window.removeEventListener('keydown', touche, true); racine.remove();
+            document.body.classList.remove('pleintheme'); if (!etaitLibre) libre(false);
+          }
+        };
+        racine.querySelector('.p-fin').onclick = () => api.fermer();
+        pleinCourant = api; api.maj();
+        return api;
       },
       /* Légende interactive : chaque niveau se masque ou se rétablit d'un toucher. items = [{ cle, couleur, texte }].
          Renvoie l'ensemble des clés masquées ; surChange est appelé à chaque bascule. */
@@ -645,6 +693,7 @@
         f.membres.push(q); q.bouton = f.bouton;
       },
       async choisir(q) {
+        if (pleinCourant) pleinCourant.fermer();
         if (app.active) { const a = app.active; a.bouton.setAttribute('aria-pressed', 'false'); app.active = null; try { a.fermer && a.fermer(app); } catch (e) { console.error(e); } }
         reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle(); if (masque) { masque = false; appliquerMasque(); }
         sous.hidden = true; sous.innerHTML = '';
@@ -669,7 +718,7 @@
     };
     // Couches du fond de carte, relevées une fois : tout ce qui s'y ajoute ensuite appartient à un thème.
     const couchesFond = new Set(map.getStyle().layers.map(l => l.id).concat(['maposition']));
-    let masque = false, bulleCarte = null;
+    let masque = false, bulleCarte = null, pleinCourant = null;
     function appliquerMasque() { for (const l of map.getStyle().layers) if (!couchesFond.has(l.id)) map.setLayoutProperty(l.id, 'visibility', masque ? 'none' : 'visible'); }
     map.on('sourcedata', () => { if (masque) appliquerMasque(); });
     let avale = 0;   // un appui long ne compte pas comme un toucher de la carte

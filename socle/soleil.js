@@ -68,9 +68,21 @@
         h.oninput = () => { etat.minutes = +h.value; demander(); };
         jour.onchange = () => { if (jour.value) { etat.jour = jour.value; demander(); } };
         brancherMaintenant(c, opts.fuseau, demander);
+        /* Plein écran : l'heure se règle sur un ruban qu'on fait défiler (un point d'écran par minute), le jour y est
+           teinté du lever au coucher du soleil ; la date et « Maintenant » sont à côté. */
+        q._plein = () => ({
+          ruban: {
+            min: 0, max: 1430, pas: 10, echelle: 1, texte: hm, lire: () => etat.minutes, ecrire: v => { etat.minutes = v; h.value = v; demander(); },
+            graduations: Array.from({ length: 24 }, (_, i) => ({ v: i * 60, texte: i % 2 ? '' : i + ' h' })),
+            plages: () => { const ct = app.map.getCenter(); let de = null; const out = []; for (let m = 0; m <= 1440; m += 10) { const haut = m < 1440 && app.soleil(instant(opts.fuseau, etat.jour, m), ct.lat, ct.lng).hauteur > 0; if (haut && de == null) de = m; if (!haut && de != null) { out.push([de, m]); de = null; } } return out; }
+          },
+          date: { lire: () => etat.jour, ecrire: v => { jour.value = v; jour.onchange(); } },
+          boutons: [{ texte: 'Maintenant', action: () => c.querySelector('.now').click() }]
+        });
         app.suivre(q, recharger);
         await recharger();
       },
+      plein() { return q._plein(); },   // le panneau montre son bouton « plein écran » dès l'ouverture
       toucher(app, ll) { heuresDeSoleil(app, memo.g, ll, opts, document.querySelector('.reponse .etat')); },
       fermer(app) { app.retirer('ombres', 'pointsoleil'); }
     };
