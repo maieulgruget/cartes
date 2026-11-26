@@ -402,8 +402,9 @@
       retour: picto('<path d="M9 7 4.5 11.5 9 16"/><path d="M4.5 11.5H14a5.5 5.5 0 0 1 0 11h-2" transform="translate(0 -3.2)"/>')
     };
     const bFond = el('button', { class: 'rond fond', 'aria-label': 'Choisir le fond de carte', title: 'Fond de carte' }, PICTO.fond), b3d = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Relief en 3D', title: 'Relief en 3D' }, '3D'), bArbres = el('button', { class: 'rond', 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée', title: 'Couvert en volume' }, PICTO.couvert), bSurvol = el('button', { class: 'rond', 'aria-pressed': 'false', hidden: '', 'aria-label': 'Survoler le tracé affiché', title: 'Survol du tracé' }, PICTO.survol), bSem = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR', title: 'Arbres' }, PICTO.arbre), bIci = el('button', { class: 'rond', 'aria-label': 'Aller à ma position' }, PICTO.ici), bRetour = el('button', { class: 'rond', 'aria-label': 'Revenir à la vue précédente', hidden: '', title: 'Vue précédente' }, PICTO.retour), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
-      bMaison = el('button', { class: 'rond', 'aria-label': 'Aller à la maison' }, PICTO.maison);
-    outils.append(bFond, b3d, bArbres, bSem, bSurvol, bNord, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
+      bMaison = el('button', { class: 'rond', 'aria-label': 'Aller à la maison' }, PICTO.maison),
+      bLoupe = el('button', { class: 'rond loupe', 'aria-label': 'Chercher un lieu', title: 'Chercher un lieu' }, PICTO.loupe);   // visible sur la carte libre seulement : ailleurs, la recherche est dans le menu des lieux
+    outils.append(bFond, bLoupe, b3d, bArbres, bSem, bSurvol, bNord, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
       sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
     bas.append(reponse, sous, rang);
@@ -617,6 +618,7 @@
       if (oui && !garde.lire('cartes.librevu', false)) { garde.ecrire('cartes.librevu', true); app.occupe(true, 'Carte libre : appui long, ou ☰, pour retrouver les boutons'); setTimeout(() => app.occupe(false), 3200); }
     }
     bRepere.onclick = () => libre(false);
+    bLoupe.onclick = () => { dessinerMenu(); menu.hidden = false; const q = menu.querySelector('.q'); q.focus(); };
     {
       const zone = map.getCanvasContainer(); let minuterie = null, depart = null;
       const annuler = () => { clearTimeout(minuterie); minuterie = null; };
@@ -717,6 +719,9 @@
     bTitre.onclick = () => { dessinerMenu(); menu.hidden = false; };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
     if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
+    /* À l'ouverture, la carte d'abord : carte libre (le fond, la loupe, et ☰ pour tout retrouver), sauf si la carte demande
+       l'inverse (cfg.ouverture = 'complete'). Les thèmes restent à un toucher. */
+    if (cfg.ouverture !== 'complete') libre(true);
     // Fond d'ouverture : celui de la carte, sinon le Plan IGN HD. Le dernier fond choisi n'est pas repris.
     mettreFond(fonds.includes(cfg.fond) ? cfg.fond : 'plan');
     window.carteApp = app;
