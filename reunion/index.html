@@ -32,6 +32,7 @@
   const app = await Socle.creer({
     id: 'reunion', racine: '../', titre: 'Où est la lumière', sousTitre: 'La Réunion',
     photo: 'ORTHOIMAGERY.ORTHOPHOTOS2022',   // la dernière BD ORTHO est voilée sur les sommets (Piton des Neiges, Salazes) ; 2022 y est nette
+    arbres: 'option',   // ici les arbres dressés se demandent (bouton « Arbres », thème Cimes) : ils ne viennent pas d'office
     geologie: false, fondsExclus: ['etatmajor', 'cassini'],   // la carte géologique du BRGM et les cartes anciennes ne couvrent que la métropole
     fondsEnPlus: ['photo1950'],   // l'île photographiée d'avion dans les années 1950 : à comparer avec la photo d'aujourd'hui
     centre: [55.4700, -21.0950], zoom: 11.3, pitch: 55, bearing: 20, pitch3d: 60,

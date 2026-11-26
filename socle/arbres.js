@@ -54,11 +54,11 @@
      touchent le centre de la vue (un à quatre), et recommence quand la carte se déplace. Les carrés déjà relevés sont
      gardés (huit au plus, les moins récemment vus partent les premiers) : revenir sur ses pas ne relit pas le LiDAR, et
      la carte ne s'alourdit pas sans fin. Elle reste allumée d'un thème à l'autre, jusqu'à ce qu'on l'éteigne. */
-  const COTE = 400, GARDES = 8, MARGE = 6;
+  const COTE = 400, GARDES = 8, MARGE = 6, ZMIN = 14.7;   // les arbres arrivent un peu avant les bâtiments en volume (zoom 15,3)
   function couche(app) {
     if (app._arbres) return app._arbres;
     const m = app.map, masques = new Set(), carres = new Map();
-    let tour = 0, minuterie = null, pasLon = 0, horloge = 0;
+    let tour = 0, minuterie = null, pasLon = 0, horloge = 0, opacite = 1;
     const pasLat = COTE / 110540;
     const voulus = () => {   // carrés que touche un carré de 200 m centré sur la vue
       const ctr = m.getCenter(); if (!pasLon) pasLon = COTE / (111320 * Math.cos(ctr.lat * Math.PI / 180));
@@ -80,25 +80,26 @@
         m.addSource('cimes-zone', { type: 'geojson', data: zone });
         m.addLayer({ id: 'cimes-zone', type: 'line', source: 'cimes-zone', paint: { 'line-color': '#b8963e', 'line-width': 1, 'line-dasharray': [2, 3], 'line-opacity': 0.5 } });
         m.addSource('cimes3d', { type: 'geojson', data: volumes(c.arbres) });
-        m.addLayer({ id: 'cimes3d', type: 'fill-extrusion', source: 'cimes3d', paint: { 'fill-extrusion-color': ['get', c.parHauteur ? 'couleur' : 'vert'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-height': ['get', 'haut'], 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true } });
+        m.addLayer({ id: 'cimes3d', type: 'fill-extrusion', source: 'cimes3d', paint: { 'fill-extrusion-color': ['get', c.parHauteur ? 'couleur' : 'vert'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-height': ['get', 'haut'], 'fill-extrusion-opacity': opacite, 'fill-extrusion-vertical-gradient': true } });
       }
       c.filtrer();
     }
     const c = {
       actif: false, arbres: [], parHauteur: false, message: '', masques, cote: COTE, surChange: [], get carres() { return carres.size; },
+      voiler(v) { opacite = v; if (m.getLayer('cimes3d')) m.setPaintProperty('cimes3d', 'fill-extrusion-opacity', v); },   // arbres discrets (d'office) ou pleins (demandés)
       teinter() { if (m.getLayer('cimes3d')) m.setPaintProperty('cimes3d', 'fill-extrusion-color', ['get', c.parHauteur ? 'couleur' : 'vert']); },
       filtrer() { if (m.getLayer('cimes3d')) m.setFilter('cimes3d', masques.size ? ['!', ['in', ['get', 'c'], ['literal', [...masques].map(Number)]]] : null); },
-      async activer(oui) {
+      async activer(oui, sans3d) {
         if (oui === c.actif) return;
         c.actif = oui;
         if (!oui) { tour++; app.retirer('cimes3d', 'cimes-zone'); app.forcerSolNu(false); carres.clear(); c.arbres = []; c.message = ''; prevenir(); return; }
-        app.forcerSolNu(true); if (!app.relief3d) app.mettre3d(true);   // les arbres se posent sur le sol nu, pas sur le couvert en volume
+        app.forcerSolNu(true); if (!sans3d && !app.relief3d) app.mettre3d(true);   // les arbres se posent sur le sol nu, pas sur le couvert en volume
         prevenir(); await c.relever();
       },
       // Le relevé : les carrés autour du centre de la vue qui manquent encore sont lus dans le LiDAR, les autres sont repris tels quels.
       async relever() {
         const moi = ++tour;
-        if (m.getZoom() < 15) { if (!c.arbres.length) { c.message = 'Zoome de plus près (un hameau, une ravine) : les arbres se dresseront autour du centre de la vue.'; prevenir(); } return; }
+        if (m.getZoom() < ZMIN) { if (!c.arbres.length) { c.message = 'Zoome de plus près (un hameau, une ravine) : les arbres se dresseront autour du centre de la vue.'; prevenir(); } return; }
         const l = voulus(), manquent = l.filter(([i, j]) => !carres.has(i + '/' + j));
         for (const [i, j] of l) { const k = carres.get(i + '/' + j); if (k) k.vu = ++horloge; }
         if (!manquent.length) return;
