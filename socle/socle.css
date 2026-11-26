@@ -172,6 +172,8 @@ details.aide p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 .frise i { display: block; height: 26px; border-radius: 4px; margin: 2px 0; }
 .frise .ok i { box-shadow: 0 0 0 2px var(--gold); }
 .frise .ok b { color: var(--gold); }
+.frise .ici i { box-shadow: 0 0 0 2px #fff; }
+.frise .ici b { color: #fff; font-weight: 700; }
 .frise b { font-weight: 400; display: block; height: 14px; white-space: nowrap; }
 .frise span { display: block; font-size: 13px; line-height: 1.1; height: 15px; }
 .frise .nj { border-left: 1px solid var(--line); margin-left: 3px; padding-left: 3px; }
@@ -307,13 +309,18 @@ body.pleintheme .bas, body.pleintheme .repere { display: none !important; }
 .p-theme span { margin-right: 4px; }
 .pilote:not(.plein) .p-tete { align-items: flex-start; }
 .plein .p-tete { right: 60px; align-items: flex-start; }
-.plein .p-etat { border-radius: 12px; text-align: left; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+.plein .p-etat { border-radius: 12px; text-align: left; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.p-etat small { color: var(--muted); font-size: 12px; }
 .plein .p-etat[hidden], .p-legende[hidden], .p-bloc[hidden] { display: none; }
-.p-legende { margin: 0; pointer-events: auto; gap: 5px 6px; }
+/* La légende tient sur une ligne, qui défile du doigt. */
+.p-legende { margin: 0; pointer-events: auto; gap: 5px 6px; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.p-legende::-webkit-scrollbar { display: none; }
+.p-legende > * { flex: none; white-space: nowrap; }
+.pilote:not(.plein) .p-legende { max-width: calc(100vw - 20px); }
 .p-legende > span { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px 3px 7px; color: var(--ink); backdrop-filter: blur(6px); }
 .p-bas { position: absolute; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none !important; }
 .p-bas > * { pointer-events: auto; }
-.p-bloc { width: calc(100% - 20px); max-width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px 6px; backdrop-filter: blur(6px); max-height: 30vh; overflow: auto; }
+.p-bloc { width: calc(100% - 20px); max-width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px 6px; backdrop-filter: blur(6px); max-height: 24vh; overflow: auto; font-size: 13px; }
 .p-bloc .frise { margin: 4px 0 0; }
 .p-bloc svg { max-width: 100%; height: auto; display: block; }
 .p-lecture { background: var(--gold); color: #10192a; font-weight: 700; font-size: 19px; border-radius: 999px; padding: 3px 14px; font-variant-numeric: tabular-nums; }
@@ -325,7 +332,15 @@ body.pleintheme .bas, body.pleintheme .repere { display: none !important; }
 .p-bande span.fin { top: 0; bottom: 60%; border-left-color: rgba(255,255,255,.22); }
 .p-plages i { position: absolute; top: 0; height: 100%; background: rgba(233, 196, 106, 0.22); }
 .p-plages { position: absolute; inset: 0; }
-.p-rang { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 0 10px; }
+.p-rangs { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.p-rangs[hidden], .p-lecture[hidden] { display: none; }
+.p-rang { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 0 10px; margin: 0; }
+/* Une rangée recopiée du panneau tient sur une ligne et défile du doigt (une dizaine d'espèces, de massifs…). */
+.p-rangs .p-rang { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.p-rangs .p-rang::-webkit-scrollbar { display: none; }
+.p-rangs .p-rang > * { flex: none; }
+.p-rangs .p-rang::before, .p-rangs .p-rang::after { content: ''; margin: auto; }
+.p-bloc > * + * { margin-top: 6px; }
 .p-rang:empty { display: none; }
 .p-rang button { font-size: 14px; padding: 9px 14px; backdrop-filter: blur(6px); }
 .p-rang button[hidden] { display: none; }

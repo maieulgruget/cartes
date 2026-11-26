@@ -150,7 +150,8 @@
       },
       // Plein écran : les deux bascules du panneau ; la légende des hauteurs, en haut, masque une classe d'un toucher.
       plein() { return { boutons: ['.teinte', '.oter'] }; },
-      fermer() { if (ctl && suivi) ctl.surChange.splice(ctl.surChange.indexOf(suivi), 1); suivi = null; }   // les arbres restent sur la carte
+      // Les arbres restent sur la carte, mais reprennent leur vert : les couleurs par hauteur n'ont de sens qu'avec ce thème et sa légende.
+      fermer() { if (ctl && suivi) ctl.surChange.splice(ctl.surChange.indexOf(suivi), 1); suivi = null; if (ctl && ctl.parHauteur) { ctl.parHauteur = false; ctl.teinter(); } }
     };
     return q;
   }

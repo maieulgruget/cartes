@@ -259,7 +259,7 @@
         app.suivre(q, calculer); await calculer();
       },
       // Plein écran : le jour à choisir ; la légende, en haut, se touche pour ne garder que le matin ou le soir.
-      plein() { const jour = document.querySelector('.reponse .jour'); return { date: { lire: () => etat.jour, ecrire: v => { jour.value = v; jour.onchange({ target: jour }); } }, boutons: ['.now'] }; },
+      plein() { return { boutons: ['.now'] }; },
       fermer(app) { tour++; app.retirer('rasante'); }
     };
     return q;
@@ -372,7 +372,7 @@
     let tour = 0;
     const q = {
       theme: opts.theme || 'Nuages', libelle: opts.libelle || 'Le ciel sera-t-il dégagé ?',
-      aide: 'Couverture nuageuse prévue par Open-Meteo au point touché, heure par heure, en frise : chaque case va du bleu (ciel clair) au gris (couvert). La première frise montre les nuages bas (ceux qui bouchent les cirques et les sommets) ; la seconde, tous les nuages, quand le modèle les distingue. Les créneaux dégagés (30 % de nuages bas au plus) sont cerclés d\'or. La maille du modèle fait plusieurs kilomètres : il donne la tendance du secteur, pas le nuage accroché à un rempart précis. Sous les tropiques, les nuages montent souvent dans les hauts dès la fin de matinée.',
+      aide: 'Couverture nuageuse prévue par Open-Meteo au point touché, heure par heure, en frise : chaque case va du bleu (ciel clair) au gris (couvert). La première frise montre les nuages bas (ceux qui bouchent les cirques et les sommets) ; la seconde, tous les nuages, quand le modèle les distingue. Les créneaux dégagés (30 % de nuages bas au plus) sont cerclés d\'or, l\'heure qu\'il est de blanc. Quand le modèle donne la même valeur pour les nuages bas et pour le total, une seule frise est affichée. La maille du modèle fait plusieurs kilomètres : il donne la tendance du secteur, pas le nuage accroché à un rempart précis. Sous les tropiques, les nuages montent souvent dans les hauts dès la fin de matinée.',
       async ouvrir(app) { q._c = app.repondre(q.libelle, `<p class="etat">Lecture du ciel…</p><div class="tab"></div>`); await q.lire(app, app.map.getCenter()); },
       async lire(app, ll) {
         const c = q._c, moi = ++tour;
@@ -389,11 +389,12 @@
         // Une case par heure : sa teinte va du bleu du ciel clair au gris du ciel couvert.
         const teinte = v => { const f = Math.min(1, Math.max(0, v / 100)); return `rgb(${Math.round(118 + 20 * f)},${Math.round(190 - 48 * f)},${Math.round(236 - 80 * f)})`; };
         const picto = v => v <= 15 ? '☀️' : v <= 40 ? '🌤️' : v <= 75 ? '⛅' : '☁️';
-        const bande = (val, pictos) => `<div class="frise">${jour.map((x, n) => { const v = val(x), nj = n > 0 && x.t.slice(0, 10) !== jour[n - 1].t.slice(0, 10); return `<div class="${v != null && v <= 30 ? 'ok' : ''}${nj ? ' nj' : ''}" title="${x.hh} h : ${v == null ? '–' : Math.round(v) + ' %'}">${pictos ? `<span>${v == null ? '' : picto(v)}</span>` : ''}<i style="background:${v == null ? '#39455c' : teinte(v)}"></i><b>${pictos && (x.hh % 2 === 1 || nj) ? x.hh + 'h' : ''}</b></div>`; }).join('')}</div>`;
+        // L'heure qu'il est se repère dans la frise (case cerclée de blanc), quand elle fait partie des heures de jour montrées.
+        const ici = maintenant(opts.fuseau), cleIci = ici.jour + 'T' + String(Math.floor(ici.minutes / 60)).padStart(2, '0');
+        const bande = (val, pictos) => `<div class="frise">${jour.map((x, n) => { const v = val(x), nj = n > 0 && x.t.slice(0, 10) !== jour[n - 1].t.slice(0, 10); return `<div class="${v != null && v <= 30 ? 'ok' : ''}${nj ? ' nj' : ''}${x.t.slice(0, 13) === cleIci ? ' ici' : ''}" title="${x.hh} h : ${v == null ? '–' : Math.round(v) + ' %'}">${pictos ? `<span>${v == null ? '' : picto(v)}</span>` : ''}<i style="background:${v == null ? '#39455c' : teinte(v)}"></i><b>${pictos && x.t.slice(0, 13) === cleIci ? 'maint.' : pictos && (x.hh % 2 === 1 || nj) ? x.hh + 'h' : ''}</b></div>`; }).join('')}</div>`;
         const pareils = jour.every(x => bas(x) === tot(x));
         c.querySelector('.tab').innerHTML = bande(bas, true) + (pareils ? '' : `<p class="petit2" style="margin:6px 0 0">Tous nuages confondus (les nuages hauts voilent la lumière sans boucher la vue) :</p>` + bande(tot, false)) +
-          `<div class="legende"><span>☀️ dégagé</span><span>🌤️ peu nuageux</span><span>⛅ nuageux</span><span>☁️ couvert</span><span><i style="background:none;box-shadow:0 0 0 2px #b8963e"></i>créneau dégagé</span></div>` +
-          (pareils ? '<p class="petit">Ici le modèle donne la même valeur pour les nuages bas et pour le total : une seule frise est affichée.</p>' : '');
+          '';
         app.bulle(ll, 'Ciel prévu en ce point');
       },
       // Plein écran : la frise des nuages bas, heure par heure, reste sous la carte ; on touche un autre point pour la relire.

@@ -234,6 +234,7 @@
     return x.getImageData(0, 0, 64, 64);
   }
   const qMer = {
+    plein: () => ({ bloc: '.tab' }),
     theme: 'Mer', libelle: 'Comment est la mer ?', h: 0, champ: null,
     aide: 'Hauteur, direction et période des vagues, houle et température de surface, heure par heure, d\'après le modèle de vagues d\'Open-Meteo. Sur la carte, chaque signe est un point du modèle : les trois crêtes avancent dans le sens des vagues, leur taille suit la hauteur, écrite à côté. La hauteur est la hauteur significative : la moyenne du tiers des vagues les plus hautes, certaines vagues la dépassent nettement. La maille est de plusieurs kilomètres : près de la côte, dans une calanque ou à l\'abri d\'une île, la mer réelle peut être très différente.',
     async ouvrir(app) {
@@ -296,6 +297,7 @@
 
   // ---------- 4. Ports et abris ----------
   const qPorts = {
+    plein: () => ({ bloc: '.liste' }),
     theme: 'Ports', libelle: 'Où sont les ports et les abris ?',
     aide: 'Ports, anses, calanques et mouillages, îles, caps et feux, placés d\'après la BD TOPO de l\'IGN, de Cerbère à Menton et en Corse. Ils apparaissent par ordre d\'importance : les grands ports et les grands caps de loin, les ports secondaires puis les anses en s\'approchant. Quand deux noms se gênent, le moins important s\'efface : touche son pictogramme pour le lire. En touchant la mer, la carte donne la distance en milles et le cap à suivre vers les ports et les abris les plus proches, en ligne droite : elle ne tient compte ni des îles, ni des hauts-fonds, ni des zones réglementées. Une anse nommée n\'est pas un mouillage sûr par tous les temps : un mouillage ou une place de port se vérifie auprès de la capitainerie et des Instructions nautiques.',
     async ouvrir(app) {
@@ -371,6 +373,7 @@
       <path d="M${x1.toFixed(1)} ${y1.toFixed(1)} l${(Math.sin(a + 0.5) * 5).toFixed(1)} ${(-Math.cos(a + 0.5) * 5).toFixed(1)} M${x1.toFixed(1)} ${y1.toFixed(1)} l${(Math.sin(a - 0.5) * 5).toFixed(1)} ${(-Math.cos(a - 0.5) * 5).toFixed(1)}" stroke="#b8963e" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>`;
   }
   const qRoute = {
+    plein: () => ({ bloc: ['.bords', '.profil'], boutons: ['.undo', '.raz', '.comp'] }),
     theme: 'Route', libelle: 'Quelle route, à quelle allure ?',
     aide: 'Route posée au doigt, point par point. Chaque tronçon porte son numéro sur la carte et dans la liste, avec sa distance en milles, son cap vrai (par rapport au nord, quelle que soit l\'orientation de la carte) et son allure sous le vent prévu à l\'heure de départ choisie : le vent est lu au milieu de la route, à 10 m de hauteur, et tourne avec l\'heure, ce qui change les allures. La couleur du tronçon est celle de son allure. Le petit schéma montre le bateau cap en haut, la flèche dorée du vent tel qu\'il arrive, et la voile du côté où elle se met. Un tronçon à moins de 40° du vent est « vent debout » : il faudra tirer des bords, et la distance réelle sera plus longue, d\'environ 40 % à un angle de remontée de 45°. La durée est une simple division par la vitesse choisie. Les flèches blanches, à chaque point, donnent le vent prévu à cet endroit : elles pointent là où il va. Le profil des fonds suit la route sur le modèle du Shom (maille de 100 m). La carte signale les roches, épaves et marques cardinales relevées par OpenStreetMap à moins de 0,2 mille de la route : ce relevé est incomplet, et une roche isolée n\'apparaît pas dans un modèle à 100 m.',
     async ouvrir(app) {
@@ -500,6 +503,7 @@
   // ---------- 7. En mer : la carte suit le bateau ----------
   let veille = null, verrou = null, rejeu = null;
   const qMer2 = {
+    plein: () => ({ bloc: '.jours' }),
     theme: 'En mer', libelle: 'Où est le bateau ?',
     aide: 'La carte suit la position du téléphone : vitesse sur le fond en nœuds et route suivie d\'après le GPS, vent prévu à cet endroit (pas le vent mesuré à bord), allure qui en découle et profondeur du modèle du Shom sous le bateau. Le voilier est dessiné en volume, tourné selon la route, les voiles du côté où le vent prévu les met ; de loin il est grossi pour rester visible, de près il a sa taille réelle (dix mètres). Le trait blanc est le sillage : le chemin parcouru depuis l\'ouverture du thème. La route n\'est donnée par le GPS qu\'en mouvement ; à l\'arrêt, le bateau garde son dernier cap. « Rejouer la route » fait parcourir au voilier la route tracée dans le thème Route, en accéléré, sans GPS : pour voir la sortie avant de partir. L\'écran reste allumé tant que le thème est ouvert, si le téléphone le permet. Ce n\'est pas un instrument de navigation.',
     async ouvrir(app) {
