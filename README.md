@@ -11,6 +11,10 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Sous voile (de Cerbère à Menton, et la Corse) | `voile/` | vent, vagues dessinées sur la mer, fonds marins et isobathes, ports et abris par ordre d'importance, balises, route avec allures et profil des fonds, voilier en volume |
 | Mes randos (Corse, puis toute la France) | `corse/` | où je suis passé : tracés drapés sur le relief, profil, pente le long du chemin, altitude, sol et type de chemin (Komoot), survol ; lumière ; itinéraire à préparer |
 
+Photo aérienne : la BD ORTHO courante de l'IGN (20 cm), sous la photo à très haute résolution de l'IGN là où elle existe
+(Marseille). Fond « Photo 2025 » : la même, avec l'ortho-express 2025 là où elle existe (Côtes-d'Armor, Haute-Savoie,
+La Réunion…). Relevé du 25/11/2026 ; l'Ortho THR 06 de DataSud (WMS) reste à brancher.
+
 `socle/` porte ce qui est commun : Plan IGN HD (fond d'ouverture ; son blanc du large est repeint en mer, son blanc de
 terre reste blanc), carte au 1/25 000 (SCAN 25, clé grand public de l'IGN : usage personnel), fond gris, photo, relief et carte géologique du BRGM (métropole) ; retour à la page des cartes ;
 panneau de thème ouvert ou réduit, carte libre par appui long, boussole, liste de fonds (cartes anciennes comprises) ;
