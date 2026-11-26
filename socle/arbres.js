@@ -148,6 +148,8 @@
         if (!mieux) { app.sansBulle(); return; }
         app.bulle({ lng: mieux.lon, lat: mieux.lat }, `<span class="fort">${mieux.h.toFixed(1).replace('.', ',')} m</span> de haut<small>cime à ${Math.round(mieux.sol + mieux.h)} m d'altitude, sol à ${Math.round(mieux.sol)} m</small>`);
       },
+      // Plein écran : les deux bascules du panneau ; la légende des hauteurs, en haut, masque une classe d'un toucher.
+      plein() { return { boutons: ['.teinte', '.oter'] }; },
       fermer() { if (ctl && suivi) ctl.surChange.splice(ctl.surChange.indexOf(suivi), 1); suivi = null; }   // les arbres restent sur la carte
     };
     return q;

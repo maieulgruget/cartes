@@ -147,7 +147,7 @@
      Sur un téléphone, le panneau des réglages cache la carte au moment où l'on a besoin de la voir. Ce mode range tout
      (comme la carte libre) : on touche la carte pour poser le drone, et ses commandes s'accrochent à lui. Une barre
      verticale juste à côté pour la hauteur, un anneau autour de lui pour le cap ; les actions sont en bas, sous le pouce.
-     Dans le thème Caméra, poser le drone ouvre ce mode tout seul et rapproche la carte du point ; « Terminer » rend le
+     Dans le thème Caméra, poser le drone ouvre ce mode tout seul et rapproche la carte du point ; « ☰ thème » rend le
      panneau (plan de vol, exports), où « Reprendre le réglage sur la carte » y ramène : le point posé est gardé. Les poignées sont
      à côté du point et pas dessus, assez grosses pour le pouce ; pendant qu'on les tient, la carte ne bouge pas.
      o = { point: () => { lon, lat } ou null, hauteur: { min, max, lire, ecrire }, cap: { lire, ecrire } (facultatif),
@@ -160,7 +160,7 @@
     if (!app.relief3d) app.mettre3d(true);   // à plat, on ne verrait pas le drone monter
     racine.className = 'pilote';
     racine.innerHTML = `<div class="p-geste" hidden></div>
-      <div class="p-tete"><div class="p-haut"><button class="p-fin">Terminer</button></div><p class="p-etat"></p></div>
+      <div class="p-tete"><button class="p-theme p-fin" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${o.nom || 'Drone'}</button><p class="p-etat"></p></div>
       <div class="p-ancre" hidden>
         ${o.cap ? '<svg class="p-anneau" viewBox="-80 -80 160 160" aria-hidden="true"><circle r="62"/><line class="p-axe" x1="0" y1="0" x2="0" y2="-62"/></svg><div class="p-poignee" aria-label="Cap"><span></span></div>' : ''}
         <div class="p-barre" aria-label="Hauteur"><b>Hauteur</b><i></i><span></span></div>
@@ -349,7 +349,7 @@
       let enregistree = null;
       const changer = (cle, v) => { etat[cle] = v; vu[cle] = true; synchro(c); if (d) leverMat(app, d.lon, d.lat, etat.h); placer(app); if (pil) pil.maj(); q._relancer(); };
       pil = pilote(app, {
-        point: () => d,
+        nom: q.theme, point: () => d,
         hauteur: { min: 10, max: 120, lire: () => etat.h, ecrire: v => changer('h', v) },
         cap: { lire: () => etat.cap, ecrire: v => changer('cap', v) },
         visee: {
@@ -374,7 +374,7 @@
         etat: () => apercu ? 'Glisse sur l\'écran pour regarder autour · « Vue caméra » pour revenir à la carte'
           : viser ? 'Touche le point que la caméra doit viser'
           : !d ? 'Touche la carte là où le drone décolle'
-          : enregistree && enregistree.lon === d.lon && enregistree.lat === d.lat ? `<span class="fort">Prise ${plan.length} enregistrée.</span> Touche la carte pour poser la suivante, ou « Terminer » pour exporter le plan de vol.`
+          : enregistree && enregistree.lon === d.lon && enregistree.lat === d.lat ? `<span class="fort">Prise ${plan.length} enregistrée.</span> Touche la carte pour poser la suivante ; « ☰ ${q.theme} » ouvre le plan de vol et ses exports.`
           : !vu.h ? '<span class="fort">1 · Hauteur</span> — fais glisser la barre à droite du point : le drone monte avec elle'
           : !vu.cap ? '<span class="fort">2 · Cap</span> — fais tourner la poignée dorée autour du point'
           : !vu.visee ? '<span class="fort">3 · Visée</span> — incline la nacelle, ou regarde l\'image avec « Vue caméra »'
@@ -543,7 +543,7 @@
         c.querySelector('.plein').onclick = () => {
           if (pil) return;
           pil = pilote(app, {
-            point: () => d,
+            nom: q.theme, point: () => d,
             hauteur: { min: 20, max: 120, lire: () => etat.hVol, ecrire: v => { etat.hVol = v; inp.value = v; c.querySelector('.v-hv').textContent = v + ' m'; if (d) leverMat(app, d.lon, d.lat, v); pil.maj(); relancer(); } },
             etat: () => !d ? 'Touche la carte à l\'endroit d\'où tu décolles' : `Vol à <span class="fort">${Math.round(etat.hVol)} m</span> au-dessus du décollage${d.z0 != null ? `, soit ${Math.round(d.z0 + etat.hVol)} m d'altitude` : ''}`,
             surFin: () => { pil = null; }
@@ -551,7 +551,8 @@
         };
         await calculer(app, c);
       },
-      toucher(app, ll) { d = { lon: ll.lng, lat: ll.lat }; calculer(app, q._c); },
+      // Poser le décollage ouvre le réglage sur la carte, comme dans le thème Caméra.
+      toucher(app, ll) { d = { lon: ll.lng, lat: ll.lat }; if (!pil) q._c.querySelector('.plein').click(); calculer(app, q._c); },
       fermer(app) { tour++; if (pil) pil.fermer(); app.retirer('volzone', 'volcercles', ...couchesDrone); if (app.map.getSource('drone')) app.map.removeSource('drone'); matCourant = null; }
     };
     return q;

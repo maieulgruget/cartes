@@ -77,7 +77,7 @@
             plages: () => { const ct = app.map.getCenter(); let de = null; const out = []; for (let m = 0; m <= 1440; m += 10) { const haut = m < 1440 && app.soleil(instant(opts.fuseau, etat.jour, m), ct.lat, ct.lng).hauteur > 0; if (haut && de == null) de = m; if (!haut && de != null) { out.push([de, m]); de = null; } } return out; }
           },
           date: { lire: () => etat.jour, ecrire: v => { jour.value = v; jour.onchange(); } },
-          boutons: [{ texte: 'Maintenant', action: () => c.querySelector('.now').click() }]
+          boutons: ['.now']
         });
         app.suivre(q, recharger);
         await recharger();
@@ -258,6 +258,8 @@
         brancherMaintenant(c, opts.fuseau, calculer);
         app.suivre(q, calculer); await calculer();
       },
+      // Plein écran : le jour à choisir ; la légende, en haut, se touche pour ne garder que le matin ou le soir.
+      plein() { const jour = document.querySelector('.reponse .jour'); return { date: { lire: () => etat.jour, ecrire: v => { jour.value = v; jour.onchange({ target: jour }); } }, boutons: ['.now'] }; },
       fermer(app) { tour++; app.retirer('rasante'); }
     };
     return q;
@@ -348,6 +350,17 @@
         a.querySelector('circle').setAttribute('fill', p && p.vu ? '#ffd23f' : '#8b93a3');
         a.querySelector('text').textContent = hm(etat.minutes); if (orienter) orienter();
       },
+      // Plein écran : le ruban des heures promène le petit soleil sur sa course ; on touche la carte pour changer de point.
+      plein(app) {
+        const c = q._c, jour = c.querySelector('.jour'), h = c.querySelector('.h');
+        return {
+          ruban: { min: 0, max: 1435, pas: 5, echelle: 1, texte: hm, lire: () => etat.minutes, ecrire: v => { etat.minutes = v; h.value = v; q.soleilMobile(app); },
+            graduations: Array.from({ length: 24 }, (_, i) => ({ v: i * 60, texte: i % 2 ? '' : i + ' h' })),
+            plages: () => { const leve = (q.pas || []).filter(p => p.s.hauteur > 0); return leve.length ? [[leve[0].m, leve[leve.length - 1].m]] : []; } },
+          date: { lire: () => etat.jour, ecrire: v => { jour.value = v; jour.onchange({ target: jour }); } },
+          boutons: ['.now'], consigne: 'Touche un point de vue : la carte calcule son soleil sur la journée.'
+        };
+      },
       toucher(app, ll) { q.point = ll; q.tracer(app); },
       fermer(app) { tour++; q.point = null; q.pas = null; if (marque) { marque.remove(); marque = null; } if (orienter) { app.map.off('rotate', orienter); orienter = null; } }
     };
@@ -381,8 +394,10 @@
         c.querySelector('.tab').innerHTML = bande(bas, true) + (pareils ? '' : `<p class="petit2" style="margin:6px 0 0">Tous nuages confondus (les nuages hauts voilent la lumière sans boucher la vue) :</p>` + bande(tot, false)) +
           `<div class="legende"><span>☀️ dégagé</span><span>🌤️ peu nuageux</span><span>⛅ nuageux</span><span>☁️ couvert</span><span><i style="background:none;box-shadow:0 0 0 2px #b8963e"></i>créneau dégagé</span></div>` +
           (pareils ? '<p class="petit">Ici le modèle donne la même valeur pour les nuages bas et pour le total : une seule frise est affichée.</p>' : '');
-        app.bulle(ll, 'Ciel prévu en ce point<small>voir le panneau</small>');
+        app.bulle(ll, 'Ciel prévu en ce point');
       },
+      // Plein écran : la frise des nuages bas, heure par heure, reste sous la carte ; on touche un autre point pour la relire.
+      plein() { return { bloc: '.tab .frise', consigne: 'Touche la carte : le ciel prévu en ce point, heure par heure.' }; },
       toucher(app, ll) { q.lire(app, ll); }
     };
     return q;
