@@ -151,6 +151,7 @@
 
   // ---------- 1. La mer maintenant, et dans les heures qui viennent ----------
   const q1 = {
+    plein: () => ({ bloc: '.horaire' }),
     theme: 'Marée', libelle: 'Où est la mer maintenant ?',
     aide: 'La mer couvre tout ce qui est plus bas que son niveau, sur le relevé de l\'estran de l\'IGN. Le niveau vient du modèle de marée d\'Open-Meteo ; pour un jour éloigné, il est calculé à partir d\'un an de ce modèle (écart type de 18 cm sur mon contrôle, 60 cm au pire). Ce n\'est pas l\'annuaire du Shom : compter plusieurs dizaines de centimètres et de minutes d\'écart possibles, davantage par vent fort.',
     async ouvrir(app) {
@@ -394,6 +395,7 @@
   // Cercle de rayon r (km) autour d'un point, pour montrer la zone d'un site.
   const cercle = (ll, r) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [Array.from({ length: 49 }, (_, i) => { const a = i / 48 * 2 * Math.PI; return [ll.lng + r / (111.2 * Math.cos(ll.lat * Math.PI / 180)) * Math.sin(a), ll.lat + r / 111.2 * Math.cos(a)]; })] } });
   const q6 = {
+    plein: () => ({ rangees: ['.esp'] }),
     theme: 'Oiseaux', libelle: 'Où voir des oiseaux, et quand ?',
     aide: 'Chaque point est un signalement publié en données ouvertes (base GBIF, qui rassemble eBird, iNaturalist et des suivis français), pour quatorze espèces d\'oiseaux d\'eau de l\'estran. Un point dit où se tenait l\'observateur, ou le lieu qu\'il a déclaré, pas où était l\'oiseau : les points se serrent autour des observatoires, des sentiers et de la Maison de la Baie. La carte ne répond donc pas à « où sont les oiseaux » mais à « où aller pour en voir » : un endroit où beaucoup de monde a noté beaucoup d\'espèces est un bon poste. Touche la carte : dans un cercle autour du point, elle donne la part de chaque espèce dans les signalements du mois choisi, toutes années confondues, et les mois où l\'on y signale le plus. Une part n\'est pas une chance de voir : elle compare les espèces entre elles, ce qui gomme en bonne partie le poids des observateurs, mais janvier reste gonflé par les comptages d\'hiver, et un mois sans signalement ne veut pas dire sans oiseau. Quand une espèce est choisie, trois photographies la montrent : elles viennent d\'observations iNaturalist validées, sous licence Creative Commons, choisies automatiquement, donc de qualité inégale ; leur auteur est cité. Les vignettes de la liste restent des silhouettes dessinées. Le fond bleu et sable est la marée du moment : les limicoles se nourrissent sur la vasière découverte et se replient en haut d\'estran à marée haute, d\'où le créneau d\'affût conseillé avant la pleine mer (règle d\'observateur, à adapter au site). Les contours sont la réserve naturelle nationale et les zones de protection spéciale des oiseaux (Natura 2000). Dans la réserve, rester sur les sentiers et à distance : un envol fait perdre aux oiseaux l\'énergie de leur hivernage.',
     async ouvrir(app) {

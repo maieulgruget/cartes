@@ -592,14 +592,18 @@
       repondre(titre, html) {
         reponse.hidden = false; masque = false;
         reponse.classList.toggle('replie', garde.lire(clePanneau(), '') === 'reduit'); reponse.classList.remove('aveclegende');
-        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && app.active.plein ? '<button class="grand">⤢ Plein écran</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
+        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && (app.active.plein !== false || app.active.pleinPropre) ? '<button class="grand">⤢ Plein écran</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
         reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
         if (reponse.querySelector('h2 .grand')) {
-          reponse.querySelector('h2 .grand').onclick = () => { const a = app.active; if (a && a.plein) { garde.ecrire('cartes.plein', 'oui'); app.plein(a.plein(app)); } };
-          // Sur téléphone, le thème s'ouvre en plein écran (sauf si l'on a préféré le panneau la dernière fois). On attend
-          // la fin du tour : le thème finit d'abord de brancher son panneau, que le plein écran recopie.
-          const a = app.active;
-          if (!bureau() && garde.lire('cartes.plein', 'oui') !== 'non') setTimeout(() => { if (app.active === a && a.plein && !pleinCourant) app.plein(a.plein(app)); }, 0);
+          // Un thème peut avoir son propre plein écran (q.pleinPropre : le drone, dont les commandes s'accrochent au point).
+          const a = app.active, ouvrirPlein = () => a.pleinPropre ? a.pleinPropre(app) : app.plein(typeof a.plein === 'function' ? a.plein(app) : {});
+          reponse.querySelector('h2 .grand').onclick = () => { if (app.active === a) { auPanneau = null; ouvrirPlein(); } };
+          // Sur téléphone, choisir un thème l'ouvre toujours en plein écran ; « ☰ » rend le panneau, et le thème y reste
+          // jusqu'à ce qu'on en choisisse un autre. On attend la fin du tour : le thème finit d'abord de brancher son
+          // panneau, que le plein écran recopie. Un thème qui refait son panneau en cours de route (une prévision arrivée,
+          // un autre point touché) retrouve son plein écran, refait sur le nouveau panneau.
+          const deja = !!pleinCourant;
+          if (deja || (!bureau() && auPanneau !== a)) setTimeout(() => { if (app.active === a && auPanneau !== a && (a.pleinPropre || (deja ? !!pleinCourant : !pleinCourant))) ouvrirPlein(); }, 0);
         }
         reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.setAttribute('aria-pressed', !masque); appliquerMasque(); };
         // Les explications (ce qui est calculé, comment, avec quelle fiabilité) se rangent sous un seul intitulé.
@@ -615,70 +619,114 @@
         return reponse.querySelector('.corps');
       },
       /* Plein écran d'un thème : le panneau est rangé, la carte prend tout l'écran, et le thème s'y règle du pouce.
-         En haut : le nom du thème (☰, qui rend le panneau complet, avec ses explications et les autres thèmes), la phrase
-         de réponse et la légende, toutes deux recopiées du panneau : elles suivent le calcul, et la légende se touche comme
-         l'originale. En bas : ce que le thème déclare dans q.plein = app => ({ ... }), tout étant facultatif :
-           ruban   { min, max, pas, echelle (points d'écran par unité), lire, ecrire, texte(v), graduations: [{ v, texte }], plages: () => [[de, à]] }
-                   un ruban qu'on fait défiler sous un repère fixe (une heure, un niveau) ; le geste est relatif ;
-           date    { lire, ecrire } ;
-           boutons une liste : soit le sélecteur d'un bouton du panneau ('.undo'), recopié et relayé tel quel,
-                   soit { texte, action } ;
-           bloc    le sélecteur d'un morceau du panneau à montrer au-dessus des commandes (une frise, un profil) ;
-           consigne une phrase quand le panneau n'en a pas encore.
-         Sur téléphone, un thème qui déclare q.plein s'ouvre ainsi d'office ; le dernier choix (plein écran ou panneau)
-         est retenu. */
+         Le plein écran ne refait rien : il RECOPIE le panneau, et relaie au panneau chaque toucher (chaque élément recopié
+         garde un numéro, data-pi, qui retrouve l'original). Un thème n'a donc rien à écrire pour y figurer :
+           en haut   « ☰ nom du thème » (rend le panneau complet), la phrase de réponse (.etat, ou le premier paragraphe)
+                     et la légende, qui se touche comme l'originale ;
+           en bas    le premier curseur du panneau, devenu un ruban qu'on fait défiler sous un repère fixe ; la date ;
+                     les boutons du panneau, rangée par rangée (trois au plus).
+         Ce qu'un thème peut préciser, dans q.plein = app => ({ ... }), tout étant facultatif :
+           bloc      sélecteur(s) de morceaux du panneau à montrer au-dessus des commandes (une frise, un profil, une liste) ;
+           lecture   sélecteur de ce qui dit la valeur du curseur, quand elle n'est pas sur sa ligne ;
+           curseur   sélecteur d'un autre curseur que le premier ; false pour n'en montrer aucun ;
+           boutons   liste choisie à la place des rangées : sélecteurs de boutons du panneau, ou { texte, action } ;
+           ruban, date  réglages faits main ({ min, max, pas, echelle, lire, ecrire, texte, graduations, plages } ; { lire, ecrire }) ;
+           consigne  phrase quand le panneau n'en a pas encore.
+           rangees   sélecteurs des seules rangées de boutons à reprendre (sinon : les trois premières) ;
+         q.pleinPropre(app) : le thème ouvre lui-même son plein écran (drone) ; q.plein = false : il n'en veut pas.
+         La phrase est réduite à sa première phrase : le reste se lit dans le panneau.
+         Sur téléphone, choisir un thème l'ouvre toujours ainsi. */
+      // Un thème à plein écran propre signale ainsi que l'on a demandé son panneau.
+      resterAuPanneau() { auPanneau = app.active; },
       plein(o) {
-        o = o || {};
-        if (pleinCourant) pleinCourant.fermer();
-        const etaitLibre = document.body.classList.contains('libre'), racine = el('div', { class: 'pilote plein' }), corps = reponse.querySelector('.corps');
-        const bts = o.boutons || [];
+        o = Object.assign({}, o || {});
+        if (pleinCourant) pleinCourant.fermer(true); else pleinEtaitLibre = document.body.classList.contains('libre');
+        const racine = el('div', { class: 'pilote plein' }), C = () => reponse.querySelector('.corps'), corps = C();
+        const un = sel => { const c = C(); return !c || !sel ? null : typeof sel === 'string' ? c.querySelector(sel) : sel; };
+        const horsAide = e => e && !e.closest('details');
+        // Chaque élément du panneau reçoit un numéro : sa copie le porte aussi, et un toucher sur la copie va à l'original.
+        const numeroter = () => { const c = C(); if (c) c.querySelectorAll('*:not([data-pi])').forEach(e => { e.dataset.pi = ++numeroPi; }); };
+        numeroter();
+        // Le curseur : celui que le thème désigne, sinon le premier du panneau. Il devient un ruban.
+        const range = o.ruban || o.curseur === false ? null : (un(o.curseur) || [...(corps ? corps.querySelectorAll('input[type=range]') : [])].find(horsAide) || null);
+        const dateEl = o.date ? null : [...(corps ? corps.querySelectorAll('input[type=date]') : [])].find(horsAide) || null;
+        if (dateEl) o.date = { lire: () => dateEl.value, ecrire: v => { dateEl.value = v; dateEl.dispatchEvent(new Event('change', { bubbles: true })); } };
+        let lectureDe = null;
+        if (range) {
+          const min = +range.min || 0, max = range.max === '' ? 100 : +range.max, pas = +range.step || 1, k = Math.max(0.4, Math.min(60, 900 / Math.max(1e-9, max - min)));
+          const g = pas * Math.max(1, Math.ceil(50 / (k * pas))), grads = []; for (let v = Math.ceil(min / g) * g; v <= max + 1e-9 && grads.length < 400; v += g) grads.push({ v });
+          o.ruban = { min, max, pas, echelle: k, graduations: grads, lire: () => +range.value, ecrire: v => { range.value = v; range.dispatchEvent(new Event('input', { bubbles: true })); range.dispatchEvent(new Event('change', { bubbles: true })); } };
+          // Où se lit la valeur : ce que le thème désigne, sinon la valeur en gras de la ligne du curseur ou de celle du dessus.
+          lectureDe = () => {
+            const ligne = range.closest('.ligne'), avant = (ligne || range).previousElementSibling;
+            const e = un(o.lecture) || (ligne && ligne.querySelector('.fort')) || (avant && avant.querySelector && avant.querySelector('.fort')) || un('.heure');
+            if (!e || !e.textContent.trim()) return '';
+            const lab = e.closest('label') || (ligne && !ligne.contains(e) ? null : ligne && ligne.querySelector('label'));
+            return (lab && !lab.contains(e) ? lab.textContent.trim() + ' ' : '') + (lab && lab.contains(e) ? lab.textContent : e.textContent).trim();
+          };
+        }
+        const bts = o.boutons || null, blocs = [].concat(o.bloc || []);
         racine.innerHTML = `<div class="p-tete"><button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(app.active ? app.active.theme : 'Thème')}</button><p class="p-etat"></p><div class="p-legende legende"></div></div>
-          <div class="p-bas"><div class="p-bloc"></div>${o.ruban ? '<div class="p-lecture"></div><div class="p-ruban"><div class="p-bande"></div><i></i></div>' : ''}<div class="p-rang">${o.date ? '<input type="date" class="p-date" aria-label="Jour">' : ''}${bts.map((x, i) => `<button data-b="${i}"></button>`).join('')}</div></div>`;
+          <div class="p-bas"><div class="p-bloc"></div>${o.ruban ? '<div class="p-lecture"></div><div class="p-ruban"><div class="p-bande"></div><i></i></div>' : ''}<div class="p-rangs"></div><div class="p-rang p-fixe">${o.date ? '<input type="date" class="p-date" aria-label="Jour">' : ''}${(bts || []).map((x, i) => `<button data-b="${i}"></button>`).join('')}</div></div>`;
         document.body.append(racine); document.body.classList.add('pleintheme'); libre(true);
-        const etatEl = racine.querySelector('.p-etat'), legEl = racine.querySelector('.p-legende'), blocEl = racine.querySelector('.p-bloc');
-        const source = sel => corps && sel ? corps.querySelector(sel) : null;
+        const etatEl = racine.querySelector('.p-etat'), legEl = racine.querySelector('.p-legende'), blocEl = racine.querySelector('.p-bloc'), rangsEl = racine.querySelector('.p-rangs');
+        const r = o.ruban, k = r ? (r.echelle || 1) : 1, bande = racine.querySelector('.p-bande'), lecture = racine.querySelector('.p-lecture'), ruban = racine.querySelector('.p-ruban');
+        const poser = (e, html) => { if (e.innerHTML !== html) e.innerHTML = html; e.hidden = !html.trim(); };
+        // La première phrase seulement (un point suivi d'une majuscule : « jeu. 26 » ne coupe pas).
+        const courte = e => {
+          const cl = e.cloneNode(true), w = document.createTreeWalker(cl, NodeFilter.SHOW_TEXT), trop = []; let n, coupe = false;
+          while ((n = w.nextNode())) { if (coupe) { trop.push(n); continue; } const m = /\.\s+(?=[A-ZÀ-Ý«])/.exec(n.nodeValue); if (m) { n.nodeValue = n.nodeValue.slice(0, m.index + 1); coupe = true; } }
+          trop.forEach(x => x.remove()); cl.querySelectorAll('*').forEach(x => { if (!x.textContent.trim() && !x.querySelector('img, svg, i')) x.remove(); });
+          return cl.innerHTML;
+        };
         // Tout ce qui vient du panneau est recopié d'un coup, à chaque fois que le panneau change.
         const copier = () => {
-          const e = source('.etat'), t = e && e.textContent.trim() ? e.innerHTML : (o.consigne || ''); if (etatEl.innerHTML !== t) etatEl.innerHTML = t; etatEl.hidden = !t;
-          const l = source('.legende'), lh = l ? l.innerHTML : ''; if (legEl.innerHTML !== lh) legEl.innerHTML = lh; legEl.classList.toggle('active', !!l && l.classList.contains('active')); legEl.hidden = !lh.trim();
-          const bl = source(o.bloc), bh = bl ? bl.outerHTML : ''; if (blocEl.innerHTML !== bh) blocEl.innerHTML = bh; blocEl.hidden = !bl || !bl.innerHTML.trim();
-          racine.querySelectorAll('[data-b]').forEach(b => { const d = bts[+b.dataset.b];
-            if (typeof d === 'string') { const sb = source(d); b.hidden = !sb; if (sb) { if (b.textContent !== sb.textContent) b.textContent = sb.textContent; const pr = sb.getAttribute('aria-pressed'); pr == null ? b.removeAttribute('aria-pressed') : b.setAttribute('aria-pressed', pr); b.disabled = sb.disabled; } }
+          const c = C(); if (!c) return; numeroter();
+          const e = [...c.querySelectorAll('.etat')].find(x => horsAide(x) && x.textContent.trim()) || [...c.querySelectorAll(':scope > p:not(.petit):not(.petit2)')].find(x => x.textContent.trim());
+          poser(etatEl, e ? courte(e) : (o.consigne || ''));
+          const l = [...c.querySelectorAll('.legende')].find(horsAide); poser(legEl, l ? l.innerHTML : ''); legEl.classList.toggle('active', !!l && l.classList.contains('active'));
+          const bs = blocs.map(un).filter(x => x && x.innerHTML.trim()); poser(blocEl, bs.map(x => x.outerHTML).join(''));
+          if (!bts) {
+            // Les boutons du panneau, rangée par rangée : chaque conteneur de boutons donne une rangée, vidée de ce qui n'est pas bouton.
+            const conteneurs = o.rangees ? o.rangees.map(un).filter(Boolean) : []; if (!o.rangees) c.querySelectorAll('button').forEach(b => { const par = b.parentElement; if (!horsAide(b) || par === c || conteneurs.includes(par) || !par.matches('.puces, .vignettes, .ligne') || (l && l.contains(b)) || bs.some(x => x.contains(b))) return; conteneurs.push(par); });
+            poser(rangsEl, conteneurs.slice(0, 3).map(par => { const cl = par.cloneNode(true); [...cl.children].forEach(x => { if (x.tagName !== 'BUTTON' && !x.querySelector('button')) x.remove(); }); cl.removeAttribute('style'); cl.classList.remove('ligne'); cl.classList.add('p-rang'); return cl.outerHTML; }).join(''));
+          } else racine.querySelectorAll('[data-b]').forEach(b => { const d = bts[+b.dataset.b];
+            if (typeof d === 'string') { const sb = un(d); b.hidden = !sb; if (sb) { if (b.textContent !== sb.textContent) b.textContent = sb.textContent; const pr = sb.getAttribute('aria-pressed'); pr == null ? b.removeAttribute('aria-pressed') : b.setAttribute('aria-pressed', pr); b.disabled = sb.disabled; } }
             else { const tx = typeof d.texte === 'function' ? d.texte() : d.texte; if (b.textContent !== tx) b.textContent = tx; if (d.actif) b.setAttribute('aria-pressed', String(!!d.actif())); } });
+          if (r) { const v = r.lire(), t = r.texte ? r.texte(v) : lectureDe ? lectureDe() : String(v); lecture.textContent = t; lecture.hidden = !t; bande.style.transform = `translateX(${-(v - r.min) * k}px)`; }
         };
         let prevu = false; const veille = new MutationObserver(() => { if (prevu) return; prevu = true; requestAnimationFrame(() => { prevu = false; if (pleinCourant === api) copier(); }); });
-        if (corps) veille.observe(corps, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'class', 'hidden', 'disabled'] });
-        legEl.onclick = e => { const it = e.target.closest('.p-legende > *'), l = source('.legende'); if (!it || !l) return; const cible = l.children[[...legEl.children].indexOf(it)]; if (cible) cible.click(); };
-        const r = o.ruban, k = r ? (r.echelle || 1) : 1, bande = racine.querySelector('.p-bande'), lecture = racine.querySelector('.p-lecture'), ruban = racine.querySelector('.p-ruban');
+        if (corps) veille.observe(corps, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'class', 'hidden', 'disabled', 'style'] });
+        // Un toucher sur une copie (légende, bloc, rangée de boutons) est rejoué sur l'original.
+        racine.addEventListener('click', e => { const t = e.target.closest('[data-pi]'); if (!t || !racine.contains(t)) return; const c = C(), src = c && c.querySelector(`[data-pi="${t.dataset.pi}"]`); if (src) { e.preventDefault(); src.click(); } });
         if (r) {
           bande.style.width = (r.max - r.min) * k + 'px';
           bande.innerHTML = '<div class="p-plages"></div>' + (r.graduations || []).map(g => `<span style="left:${(g.v - r.min) * k}px"${g.texte ? '' : ' class="fin"'}>${g.texte || ''}</span>`).join('');
           let dep = null; const fin = () => { dep = null; ruban.classList.remove('tenu'); };
           ruban.addEventListener('pointerdown', e => { e.preventDefault(); try { ruban.setPointerCapture(e.pointerId); } catch (x) { } dep = { x: e.clientX, v: r.lire() }; ruban.classList.add('tenu'); });
-          ruban.addEventListener('pointermove', e => { if (!dep) return; const v = Math.max(r.min, Math.min(r.max, Math.round((dep.v - (e.clientX - dep.x) / k) / r.pas) * r.pas)); if (v !== r.lire()) { r.ecrire(v); api.maj(); } });
+          ruban.addEventListener('pointermove', e => { if (!dep) return; const v = Math.max(r.min, Math.min(r.max, +(Math.round((dep.v - (e.clientX - dep.x) / k) / r.pas) * r.pas).toFixed(4))); if (v !== r.lire()) { r.ecrire(v); api.maj(); } });
           ruban.addEventListener('pointerup', fin); ruban.addEventListener('pointercancel', fin);
         }
         const date = racine.querySelector('.p-date'); if (date) date.onchange = () => { if (date.value) { o.date.ecrire(date.value); api.maj(); } };
-        racine.querySelectorAll('[data-b]').forEach(b => { b.onclick = () => { const d = bts[+b.dataset.b]; if (typeof d === 'string') { const sb = source(d); if (sb) sb.click(); } else d.action(); api.maj(); }; });
+        racine.querySelectorAll('[data-b]').forEach(b => { b.onclick = () => { const d = bts[+b.dataset.b]; if (typeof d === 'string') { const sb = un(d); if (sb) sb.click(); } else d.action(); api.maj(); }; });
         const touche = e => { if (e.key === 'Escape') { e.stopPropagation(); api.fermer(); } };
         window.addEventListener('keydown', touche, true);
         const api = {
           maj() {
-            if (r) {
-              const v = r.lire(); lecture.textContent = r.texte ? r.texte(v) : v; bande.style.transform = `translateX(${-(v - r.min) * k}px)`;
-              if (r.plages) bande.querySelector('.p-plages').innerHTML = r.plages().map(pl => `<i style="left:${(pl[0] - r.min) * k}px;width:${(pl[1] - pl[0]) * k}px"></i>`).join('');
-            }
+            if (r && r.plages) bande.querySelector('.p-plages').innerHTML = r.plages().map(pl => `<i style="left:${(pl[0] - r.min) * k}px;width:${(pl[1] - pl[0]) * k}px"></i>`).join('');
             if (date) date.value = o.date.lire();
             copier();
           },
-          fermer() {
+          // suite = true : un autre plein écran prend la place aussitôt (le thème a refait son panneau), l'interface reste rangée.
+          fermer(suite) {
             if (pleinCourant !== api) return; pleinCourant = null;
             veille.disconnect(); window.removeEventListener('keydown', touche, true); racine.remove();
-            document.body.classList.remove('pleintheme'); if (!etaitLibre) libre(false);
+            if (suite === true) return;
+            document.body.classList.remove('pleintheme'); if (!pleinEtaitLibre) libre(false);
           }
         };
-        // ☰ rend le panneau complet ; ce choix est retenu, comme celui du bouton « Plein écran » du panneau.
-        racine.querySelector('.p-theme').onclick = () => { garde.ecrire('cartes.plein', 'non'); api.fermer(); };
+        // ☰ rend le panneau complet : le thème y reste jusqu'à ce qu'on en choisisse un autre (ou « Plein écran »).
+        racine.querySelector('.p-theme').onclick = () => { auPanneau = app.active; api.fermer(); };
         pleinCourant = api; api.maj();
         return api;
       },
@@ -721,6 +769,7 @@
       },
       async choisir(q) {
         if (pleinCourant) pleinCourant.fermer();
+        auPanneau = null;
         if (app.active) { const a = app.active; a.bouton.setAttribute('aria-pressed', 'false'); app.active = null; try { a.fermer && a.fermer(app); } catch (e) { console.error(e); } }
         reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle(); if (masque) { masque = false; appliquerMasque(); }
         sous.hidden = true; sous.innerHTML = '';
@@ -745,7 +794,7 @@
     };
     // Couches du fond de carte, relevées une fois : tout ce qui s'y ajoute ensuite appartient à un thème.
     const couchesFond = new Set(map.getStyle().layers.map(l => l.id).concat(['maposition']));
-    let masque = false, bulleCarte = null, pleinCourant = null;
+    let masque = false, bulleCarte = null, pleinCourant = null, pleinEtaitLibre = false, numeroPi = 0, auPanneau = null;
     function appliquerMasque() { for (const l of map.getStyle().layers) if (!couchesFond.has(l.id)) map.setLayoutProperty(l.id, 'visibility', masque ? 'none' : 'visible'); }
     map.on('sourcedata', () => { if (masque) appliquerMasque(); });
     let avale = 0;   // un appui long ne compte pas comme un toucher de la carte

@@ -307,6 +307,7 @@
 
   // ---------- 2. Pluie et température ----------
   const q2 = {
+    plein: () => ({ bloc: 'div' }),
     theme: 'Pluie', libelle: 'A-t-il assez plu ?',
     aide: 'Pluie et température des quatorze derniers jours dans le secteur regardé, d\'après le modèle Open-Meteo, ramenées à 1 100 m. La règle retenue : environ 25 mm de pluie, puis 5 à 14 jours sans gel. C\'est un modèle météo, pas un pluviomètre : un orage local peut lui échapper.',
     async ouvrir(app) {

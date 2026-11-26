@@ -149,6 +149,7 @@
     return j && j.daily ? { d: j.daily, h: j.hourly || null, c: j.current || null, alt, nom } : null;
   }
   const qTemps = {
+    plein: () => ({ bloc: ['.jours', '.detail'] }),
     theme: 'Prévisions', libelle: 'Quel temps ici ?',
     aide: 'La bulle sur la carte donne le temps qu\'il fait maintenant au point touché ; le panneau, les jours qui viennent, et un jour touché se déplie par tranches de trois heures, avec l\'altitude du 0 °C. Prévisions du modèle Open-Meteo au point touché, ramenées à son altitude réelle : la température est corrigée de l\'écart entre l\'altitude du modèle et celle du terrain. Le vent est celui du modèle à 10 m du sol, à prendre comme un ordre de grandeur, surtout sur les crêtes. La neige annoncée est un cumul sur la journée. Au-delà de trois jours, la prévision donne une tendance, pas un horaire.',
     async montrer(app, lon, lat) {
@@ -185,6 +186,7 @@
   // ---------- 3. Limite du gel sur le relief ----------
   const memoG = {}, masquesGel = new Set();
   const qGel = {
+    plein: () => ({ lecture: '.quand' }),
     theme: 'Gel', libelle: 'Où la neige regèle-t-elle ?',
     aide: 'L\'isotherme 0 °C est l\'altitude où la température de l\'air passe sous zéro. Au-dessus, il gèle : la neige reste froide et les précipitations tombent en neige ; en dessous, il dégèle et il pleut. En hiver, presque toute la montagne est au-dessus, c\'est normal : ce sont alors les teintes qui renseignent, plus on monte, plus il fait froid (environ 6,5 °C de moins par 1 000 m). L\'altitude de l\'isotherme vient du modèle de prévision ; au sol, une nuit claire fait geler plus bas, et un versant au soleil dégèle plus haut.',
     async ouvrir(app) {
