@@ -160,7 +160,7 @@
     if (!app.relief3d) app.mettre3d(true);   // à plat, on ne verrait pas le drone monter
     racine.className = 'pilote';
     racine.innerHTML = `<div class="p-geste" hidden></div>
-      <div class="p-tete"><button class="p-theme p-fin" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${o.nom || 'Drone'}</button><p class="p-etat"></p><div class="p-legende legende"></div></div>
+      <div class="p-tete"><div class="p-entete"></div><p class="p-etat"></p><div class="p-legende legende"></div></div>
       <div class="p-ancre" hidden>
         ${o.cap ? '<svg class="p-anneau" viewBox="-80 -80 160 160" aria-hidden="true"><circle r="62"/><line class="p-axe" x1="0" y1="0" x2="0" y2="-62"/></svg><div class="p-poignee" aria-label="Cap"><span></span></div>' : ''}
         <div class="p-barre" aria-label="Hauteur"><b>Hauteur</b><i></i><span></span></div>
@@ -231,7 +231,7 @@
         if (o.surFin) o.surFin();
       }
     };
-    racine.querySelector('.p-fin').onclick = () => { if (app.resterAuPanneau) app.resterAuPanneau(); api.fermer(); };
+    app.enTete(racine.querySelector('.p-entete'), () => { app.resterAuPanneau(); api.fermer(); });
     // La légende du thème, recopiée du panneau : un toucher y masque un niveau, comme sur l'originale.
     const legEl = racine.querySelector('.p-legende');
     legEl.onclick = e => { const it = e.target.closest('.p-legende > *'), l = o.legende && o.legende(); if (!it || !l) return; const cible = l.children[[...legEl.children].indexOf(it)]; if (cible) { cible.click(); api.maj(); } };

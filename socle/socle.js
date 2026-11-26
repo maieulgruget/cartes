@@ -638,6 +638,15 @@
          Sur téléphone, choisir un thème l'ouvre toujours ainsi. */
       // Un thème à plein écran propre signale ainsi que l'on a demandé son panneau.
       resterAuPanneau() { auPanneau = app.active; },
+      /* En-tête de tout plein écran : « ☰ thème » (rend le panneau), puis les autres thèmes de la même famille (on passe
+         d'Épaisseur à Gel sans repasser par le panneau), puis « Calque », qui cache l'analyse pour voir le fond dessous. */
+      enTete(cont, surPanneau) {
+        const q = app.active, f = q && q.famille && familles.get(q.famille), voisins = f ? f.membres.filter(m => m !== q) : [], oeil = reponse.querySelector('h2 .oeil');
+        cont.innerHTML = `<button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(q ? q.theme || q.libelle : 'Thème')}</button>${voisins.map((m, i) => `<button class="p-voisin" data-v="${i}" title="${propre(m.libelle || '')}">${propre(m.theme || m.libelle)} ›</button>`).join('')}${oeil ? '<button class="p-oeil" aria-pressed="true">Calque</button>' : ''}`;
+        cont.querySelector('.p-theme').onclick = surPanneau;
+        cont.querySelectorAll('.p-voisin').forEach(b => { b.onclick = () => app.choisir(voisins[+b.dataset.v]); });
+        const bo = cont.querySelector('.p-oeil'); if (bo) { bo.setAttribute('aria-pressed', oeil.getAttribute('aria-pressed')); bo.onclick = () => { oeil.click(); bo.setAttribute('aria-pressed', oeil.getAttribute('aria-pressed')); }; }
+      },
       plein(o) {
         o = Object.assign({}, o || {});
         if (pleinCourant) pleinCourant.fermer(true); else pleinEtaitLibre = document.body.classList.contains('libre');
@@ -666,7 +675,7 @@
           };
         }
         const bts = o.boutons || null, blocs = [].concat(o.bloc || []);
-        racine.innerHTML = `<div class="p-tete"><button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(app.active ? app.active.theme : 'Thème')}</button><p class="p-etat"></p><div class="p-legende legende"></div></div>
+        racine.innerHTML = `<div class="p-tete"><div class="p-entete"></div><p class="p-etat"></p><div class="p-legende legende"></div></div>
           <div class="p-bas"><div class="p-bloc"></div>${o.ruban ? '<div class="p-lecture"></div><div class="p-ruban"><div class="p-bande"></div><i></i></div>' : ''}<div class="p-rangs"></div><div class="p-rang p-fixe">${o.date ? '<input type="date" class="p-date" aria-label="Jour">' : ''}${(bts || []).map((x, i) => `<button data-b="${i}"></button>`).join('')}</div></div>`;
         document.body.append(racine); document.body.classList.add('pleintheme'); libre(true);
         const etatEl = racine.querySelector('.p-etat'), legEl = racine.querySelector('.p-legende'), blocEl = racine.querySelector('.p-bloc'), rangsEl = racine.querySelector('.p-rangs');
@@ -726,7 +735,7 @@
           }
         };
         // ☰ rend le panneau complet : le thème y reste jusqu'à ce qu'on en choisisse un autre (ou « Plein écran »).
-        racine.querySelector('.p-theme').onclick = () => { auPanneau = app.active; api.fermer(); };
+        app.enTete(racine.querySelector('.p-entete'), () => { auPanneau = app.active; api.fermer(); });
         pleinCourant = api; api.maj();
         return api;
       },

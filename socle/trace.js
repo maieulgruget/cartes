@@ -22,11 +22,12 @@
     /* pts : les points posés. brins : le chemin entre deux points posés (brins[i] va de pts[i] à pts[i + 1]) : une ligne
        droite, ou, avec opts.sentiers, le chemin que le calcul d'itinéraire piéton de l'IGN trouve sur les sentiers et les
        routes de la BD TOPO. */
+    let gardeTrace = true;   // le tracé reste dessiné quand on change de thème (pour rejoindre un point de vol, une cueillette…)
     let pts = [], brins = [], surSentiers = opts.sentiers === true;   // opts.sentiers : true (suivi d'office), 'choix' (bouton proposé, éteint au départ)
-    try { const v = JSON.parse(localStorage.getItem(cle)); if (Array.isArray(v)) pts = v; else if (v && v.pts) { pts = v.pts; brins = v.brins || []; surSentiers = opts.sentiers ? (v.sentiers == null ? surSentiers : !!v.sentiers) : false; } } catch (e) { pts = []; }
+    try { const v = JSON.parse(localStorage.getItem(cle)); if (Array.isArray(v)) pts = v; else if (v && v.pts) { pts = v.pts; brins = v.brins || []; surSentiers = opts.sentiers ? (v.sentiers == null ? surSentiers : !!v.sentiers) : false; gardeTrace = v.garde !== false; } } catch (e) { pts = []; }
     for (let i = 0; i < pts.length - 1; i++) if (!brins[i] || brins[i].length < 2) brins[i] = [pts[i], pts[i + 1]];
     brins.length = Math.max(0, pts.length - 1);
-    const garder = () => { try { localStorage.setItem(cle, JSON.stringify({ pts, brins, sentiers: surSentiers })); } catch (e) { } };
+    const garder = () => { try { localStorage.setItem(cle, JSON.stringify({ pts, brins, sentiers: surSentiers, garde: gardeTrace })); } catch (e) { } };
     const chemin = () => { const l = []; brins.forEach((b, i) => { for (let k = i ? 1 : 0; k < b.length; k++) l.push(b[k]); }); return l; };
     async function brin(a, b) {
       if (!surSentiers) return [a, b];
@@ -143,11 +144,12 @@
       theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi.' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats.'),
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
-          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
+          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="garde" aria-pressed="${gardeTrace}" title="Le tracé reste dessiné quand on passe à un autre thème">Garder sur la carte</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
         q._c = c;
         if (opts.sentiers) c.querySelector('.sent').onclick = e => { surSentiers = !surSentiers; e.currentTarget.setAttribute('aria-pressed', surSentiers); garder(); };
         c.querySelector('.undo').onclick = () => { pts.pop(); brins.length = Math.max(0, pts.length - 1); garder(); calculer(app, c); };
         c.querySelector('.raz').onclick = () => { pts.length = 0; brins.length = 0; garder(); calculer(app, c); };
+        c.querySelector('.garde').onclick = e => { gardeTrace = !gardeTrace; e.currentTarget.setAttribute('aria-pressed', gardeTrace); garder(); };
         c.querySelector('.gpx').onclick = gpx;
         // Le tracé est proposé au bouton « Survol » des outils de la carte, tant que le thème est ouvert.
         app.survol.proposer('trace', () => { if (!d) return null; const dd = d; return { pts: dd.xy.map((p, i) => [p[0], p[1], dd.z[i]]), suivre(i) { dd.repere = dd.xy[i]; dessinerLigne(app); }, fin() { dd.repere = null; if (app.active === q) dessinerLigne(app); } }; });
@@ -160,8 +162,9 @@
         pts.push(p); garder(); dessinerLigne(app); calculer(app, q._c);
       },
       // Plein écran : on pose les points sur toute la carte ; le profil reste dessous, avec les gestes utiles en route.
-      plein() { return { bloc: '.profil', boutons: [opts.sentiers ? '.sent' : null, '.undo', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
-      fermer(app) { tour++; app.survol.arreter(); app.survol.retirer('trace'); app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); }
+      plein() { return { bloc: '.profil', boutons: [opts.sentiers ? '.sent' : null, '.undo', '.garde', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
+      // « Garder sur la carte » : le tracé reste dessiné sous les autres thèmes ; on revient ici pour le retirer ou l'effacer.
+      fermer(app) { tour++; app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) return; app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); }
     };
     q.relancer = app => { if (app.active === q) calculer(app, q._c); };
     return q;

@@ -307,16 +307,21 @@
 
   // ---------- 2. Pluie et température ----------
   const q2 = {
-    plein: () => ({ bloc: 'div' }),
+    plein: () => ({ bloc: '.pluie' }),
     theme: 'Pluie', libelle: 'A-t-il assez plu ?',
     aide: 'Pluie et température des quatorze derniers jours dans le secteur regardé, d\'après le modèle Open-Meteo, ramenées à 1 100 m. La règle retenue : environ 25 mm de pluie, puis 5 à 14 jours sans gel. C\'est un modèle météo, pas un pluviomètre : un orage local peut lui échapper.',
     async ouvrir(app) {
       app.occupe(true, 'Météo…'); const p = await meteoPassee(); app.occupe(false);
       if (!p) { app.repondre(q2.libelle, '<p>La météo des derniers jours ne répond pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
       const max = Math.max(5, ...p.d.precipitation_sum.map(v => v || 0));
-      const barres = p.d.time.map((t, i) => `<div title="${t}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:70px"><div style="width:70%;background:#4a90c2;border-radius:2px 2px 0 0;height:${Math.round(66 * (p.d.precipitation_sum[i] || 0) / max)}px"></div><small style="font-size:9px;color:#9aa8bb">${t.slice(8)}</small></div>`).join('');
+      // Une barre par jour, sur une échelle en millimètres (graduée à mi-hauteur et au maximum) ; sous chaque barre, le jour du mois.
+      const haut = Math.ceil(max / 5) * 5;
+      const barres = p.d.time.map((t, i) => `<div title="${t} : ${(p.d.precipitation_sum[i] || 0).toFixed(1)} mm" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:84px"><div style="width:70%;background:#4a90c2;border-radius:2px 2px 0 0;height:${Math.round(70 * (p.d.precipitation_sum[i] || 0) / haut)}px"></div><small style="font-size:9px;color:#9aa8bb;height:14px;line-height:14px">${+t.slice(8)}</small></div>`).join('');
+      const graphique = `<div class="pluie"><p class="petit2" style="margin:0 0 4px">Pluie par jour, en millimètres — les 14 derniers jours (jour du mois dessous)</p>
+        <div style="display:flex;gap:4px"><div style="display:flex;flex-direction:column;justify-content:space-between;height:70px;font-size:9px;color:#9aa8bb;text-align:right;min-width:30px"><span>${haut} mm</span><span>${haut / 2}</span><span>0</span></div>
+        <div style="flex:1;display:flex;gap:1px;align-items:flex-end;background:linear-gradient(#ffffff22,#ffffff22) 0 0/100% 1px no-repeat, linear-gradient(#ffffff22,#ffffff22) 0 35px/100% 1px no-repeat, linear-gradient(#ffffff44,#ffffff44) 0 70px/100% 1px no-repeat">${barres}</div></div></div>`;
       const pousse = p.pluieAv >= 25 && p.t7 > 5 && p.tmin3 > -1;
-      app.repondre(q2.libelle, `<div style="display:flex;gap:1px;align-items:flex-end">${barres}</div>
+      app.repondre(q2.libelle, `${graphique}
         <p><span class="fort">${Math.round(p.pluie14)} mm</span> en 14 jours, dont ${Math.round(p.pluie5)} mm sur les 5 derniers. À 1 100 m : <span class="fort">${p.t7.toFixed(0)} °C</span> de moyenne sur 7 jours, minimum de ${p.tmin3.toFixed(0)} °C ces 3 derniers jours.</p>
         <p>${pousse ? '<span class="fort">Conditions de pousse réunies</span> : une pluie franche il y a 5 à 14 jours, puis de la douceur.' : p.tmin3 <= -1 ? 'Le gel de ces derniers jours a sans doute arrêté la pousse au-dessus de ' + Math.round((REF.alt - (0 - p.tmin3) / 6.5 * 1000) / 100) * 100 + ' m.' : p.pluieAv < 25 ? 'Pas assez de pluie il y a une à deux semaines : la pousse, s\'il y en a une, sera dans les fonds humides et les versants nord.' : 'Trop froid pour une pousse franche.'}</p>
         <p class="petit">Règle de cueilleur : il faut environ 25 mm de pluie, puis 5 à 14 jours sans gel. Chaque barre est un jour (millimètres de pluie).</p>`);
@@ -338,7 +343,7 @@
     },
     toucher(app, ll) {
       const f = map.queryRenderedFeatures(map.project(ll), { layers: ['foret'] })[0];
-      document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(f.properties.t)}</span>. Champignons qui s'y plaisent : ${Object.values(CHAMPIGNONS).filter(c => (c.arbres[f.properties.g] || 0) >= 0.8).map(c => c.nom.toLowerCase()).join(', ') || 'aucun de la liste'}.` : 'Ce point n\'est pas en forêt.';
+      document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(Socle.foretLisible ? Socle.foretLisible(f.properties.t) : f.properties.t)}</span>. Champignons qui s'y plaisent : ${Object.values(CHAMPIGNONS).filter(c => (c.arbres[f.properties.g] || 0) >= 0.8).map(c => c.nom.toLowerCase()).join(', ') || 'aucun de la liste'}.` : 'Ce point n\'est pas en forêt.';
     },
     fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); if (q3.fondAvant && q3.fondAvant !== app.fond) app.mettreFond(q3.fondAvant); }
   };

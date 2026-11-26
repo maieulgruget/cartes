@@ -7,6 +7,14 @@
     ['Mixte', '#4f9d8e', 'feuillus et conifères'], ['Sapin, épicéa', '#2f6690', 'sapin ou épicéa'], ['Mélèze', '#e0a458', 'mélèze'],
     ['Pin sylvestre', '#c9a227', 'pin sylvestre'], ['Pins mélangés', '#d4b943', 'pins'], ['Conifères', '#3a7ca5', 'autres conifères'], ['Douglas', '#5b7fb5', 'douglas'], ['NC', '#8d7b68', 'lande, pelouse, formation ouverte']
   ];
+  /* Les libellés de la BD Forêt sont ceux d'une nomenclature (« Forêt fermée d’un autre conifère pur autre que pin ») :
+     on les ramène à une phrase, et l'apostrophe typographique, que la police n'a pas, redevient une apostrophe droite. */
+  function lisible(t) {
+    return String(t || '').replace(/[\u2019\u2018\u0092\u00b4`]/g, "'")
+      .replace(/^Forêt fermée/, 'Forêt dense').replace(/^Forêt ouverte/, 'Forêt claire')
+      .replace(/d'un autre conifère pur autre que pin/, "d'un conifère autre qu'un pin").replace(/d'un autre feuillu pur/, "d'un autre feuillu")
+      .replace(/ à mélange de /, ' mêlée de ').replace(/ purs?\b/g, '').replace(/\s+/g, ' ').trim();
+  }
   function foret(opts) {
     opts = opts || {}; let cle = null; const masques = new Set();
     const q = {
@@ -39,11 +47,11 @@
       toucher(app, ll) {
         if (!app.map.getLayer('bdforet')) return;
         const f = app.map.queryRenderedFeatures(app.map.project(ll), { layers: ['bdforet'] })[0];
-        document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(f.properties.tfv)}</span> (${app.propre(f.properties.essence)}).` : 'Ce point n\'est pas en forêt.';
+        document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(lisible(f.properties.tfv))}</span>.` : 'Ce point n\'est pas en forêt.';
       },
       fermer(app) { cle = null; app.retirer('bdforet'); if (q.fondAvant && q.fondAvant !== app.fond) app.mettreFond(q.fondAvant); }
     };
     return q;
   }
-  S.foret = foret;
+  S.foret = foret; S.foretLisible = lisible;
 })();
