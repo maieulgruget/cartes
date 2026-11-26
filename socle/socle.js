@@ -429,7 +429,7 @@
     map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
 
     // --- Interface ---
-    const bTitre = el('button', { class: 'titre', 'aria-label': 'Lieux, recherche et sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · lieux ▾</span>`);
+    const bTitre = el('button', { class: 'titre', 'aria-label': 'Menu : recherche, vues gardées, réglages, sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · menu ▾</span>`);
     const outils = el('div', { class: 'outils' });
     // Pictogrammes des outils (trait de 1,8, couleur du texte) : la colonne reste étroite et se lit sans mots.
     const picto = d => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -444,9 +444,8 @@
       retour: picto('<path d="M9 7 4.5 11.5 9 16"/><path d="M4.5 11.5H14a5.5 5.5 0 0 1 0 11h-2" transform="translate(0 -3.2)"/>')
     };
     const bFond = el('button', { class: 'rond fond', 'aria-label': 'Choisir le fond de carte', title: 'Fond de carte' }, PICTO.fond), b3d = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Relief en 3D', title: 'Relief en 3D' }, '3D'), bArbres = el('button', { class: 'rond', 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée', title: 'Couvert en volume' }, PICTO.couvert), bSurvol = el('button', { class: 'rond', 'aria-pressed': 'false', hidden: '', 'aria-label': 'Survoler le tracé affiché', title: 'Survol du tracé' }, PICTO.survol), bSem = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR', title: 'Arbres' }, PICTO.arbre), bIci = el('button', { class: 'rond ici', 'aria-label': 'Aller à ma position', title: 'Ma position' }, PICTO.ici), bRetour = el('button', { class: 'rond', 'aria-label': 'Revenir à la vue précédente', hidden: '', title: 'Vue précédente' }, PICTO.retour), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
-      bMaison = el('button', { class: 'rond', 'aria-label': 'Aller à la maison' }, PICTO.maison),
-      bLoupe = el('button', { class: 'rond loupe', 'aria-label': 'Chercher un lieu', title: 'Chercher un lieu' }, PICTO.loupe);   // visible sur la carte libre seulement : ailleurs, la recherche est dans le menu des lieux
-    outils.append(bFond, bLoupe, b3d, bArbres, bSem, bSurvol, bNord, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
+      bMaison = el('button', { class: 'rond', 'aria-label': 'Aller à la maison' }, PICTO.maison);
+    outils.append(bFond, b3d, bArbres, bSem, bSurvol, bNord, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
       sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
     bas.append(reponse, sous, rang);
@@ -661,7 +660,6 @@
       if (oui && !garde.lire('cartes.librevu', false)) { garde.ecrire('cartes.librevu', true); app.occupe(true, 'Carte libre : appui long, ou ☰, pour retrouver les boutons'); setTimeout(() => app.occupe(false), 3200); }
     }
     bRepere.onclick = () => libre(false);
-    bLoupe.onclick = () => { dessinerMenu(); menu.hidden = false; const q = menu.querySelector('.q'); q.focus(); };
     {
       const zone = map.getCanvasContainer(); let minuterie = null, depart = null;
       const annuler = () => { clearTimeout(minuterie); minuterie = null; };
@@ -703,22 +701,26 @@
     function aller(v) { retenir(); if (v.pitch > 5 && !relief3d) mettre3d(true); map.flyTo({ center: v.centre, zoom: v.zoom, pitch: v.pitch || 0, bearing: v.bearing || 0, duration: 1800 }); menu.hidden = true; }
     function dessinerMenu() {
       const persos = garde.lire(cleSignets, []);
+      /* Le menu, du plus utile au plus rare : chercher un lieu ; ses propres vues (des géosignets : un cadrage, son fond
+         de carte, un nom), que l'on garde et que l'on retrouve ; les vues proposées par la carte, repliées ; deux réglages ;
+         comprendre la carte (méthode et sources) ; les autres cartes. */
       menu.innerHTML = `<div><h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go" aria-label="Chercher">${PICTO.loupe}</button></div><ul class="res"></ul>
-        <h3>Lieux</h3><ul class="lieux"></ul>
-        <h3>Garder la vue actuelle</h3><div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue" maxlength="40"><button class="garder">Garder</button></div>
-        <h3>Carte libre</h3><p style="margin:0"><button class="libre">Ne garder que la carte</button></p><p class="sources" style="margin:4px 0 0">Range le titre, les boutons et le panneau ; le choix du fond reste. Un appui long sur la carte fait la même chose, et les fait revenir.</p>
-        <h3>Relief</h3><p style="margin:0"><button class="exag" aria-pressed="${exag > exag0}">Relief accentué (hauteurs × 1,8)</button></p><p class="sources" style="margin:4px 0 0">Par défaut, le relief est à l'échelle réelle. De loin il paraît plat : l'accentuer aide à le lire, mais fausse les pentes.</p>
-        <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, et avec quelle fiabilité</button></p>
+        <h3>Mes vues</h3><ul class="lieux miennes"></ul>
+        <div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue affichée" maxlength="40" enterkeyhint="done"><button class="garder">Garder</button></div>
+        ${cfg.signets.length ? '<details class="pli"><summary>Vues proposées par la carte</summary><ul class="lieux proposees"></ul></details>' : ''}
+        <h3>Affichage</h3><div class="puces"><button class="libre">Carte seule</button><button class="exag" aria-pressed="${exag > exag0}">Relief accentué × 1,8</button></div>
+        <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, ses limites, les sources</button></p>
         <h3>Autres cartes</h3><ul class="autres">${AUTRES.filter(a => a[0] !== cfg.id).map(a => `<li><button data-u="${cfg.racine}${a[0]}/">${a[1]}<small>${a[2]}</small></button></li>`).join('')}<li><button data-u="${cfg.racine}">Toutes les cartes<small>page d'accueil</small></button></li></ul>
-        <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p>
         <p style="text-align:right;margin:10px 0 0"><button class="fermer">Fermer</button></p></div>`;
-      const ul = menu.querySelector('.lieux');
-      [...cfg.signets.map(s => [s, false]), ...persos.map(s => [s, true])].forEach(([s, perso], i) => {
-        const li = el('li'), b = el('button', {}, propre(s.nom) + (s.note ? `<small>${propre(s.note)}</small>` : '') + (perso ? '<small>vue gardée · toucher longuement pour l\'effacer</small>' : ''));
-        b.onclick = () => aller(s);
-        if (perso) { let t; const eff = () => { garde.ecrire(cleSignets, garde.lire(cleSignets, []).filter(x => x.nom !== s.nom)); dessinerMenu(); }; b.oncontextmenu = ev => { ev.preventDefault(); eff(); }; b.ontouchstart = () => { t = setTimeout(eff, 900); }; b.ontouchend = b.ontouchmove = () => clearTimeout(t); }
-        li.append(b); ul.append(li);
+      const miennes = menu.querySelector('.miennes'), proposees = menu.querySelector('.proposees');
+      if (!persos.length) miennes.innerHTML = '<li class="sources">Aucune vue gardée. Cadre la carte comme tu veux la retrouver, donne-lui un nom, puis « Garder ».</li>';
+      persos.forEach(s => {
+        const li = el('li', { class: 'vue' }), b = el('button', {}, propre(s.nom) + (s.fond && FONDS[s.fond] ? `<small>fond ${propre(FONDS[s.fond].nom)}</small>` : '')), x = el('button', { class: 'oter', 'aria-label': 'Effacer la vue ' + s.nom }, '✕');
+        b.onclick = () => { if (s.fond && fonds.includes(s.fond) && s.fond !== fond) mettreFond(s.fond); aller(s); };
+        x.onclick = () => { garde.ecrire(cleSignets, garde.lire(cleSignets, []).filter(v => v.nom !== s.nom)); dessinerMenu(); };
+        li.append(b, x); miennes.append(li);
       });
+      if (proposees) cfg.signets.forEach(s => { const li = el('li'), b = el('button', {}, propre(s.nom) + (s.note ? `<small>${propre(s.note)}</small>` : '')); b.onclick = () => aller(s); li.append(b); proposees.append(li); });
       menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
       menu.querySelector('.libre').onclick = () => { menu.hidden = true; libre(true); };
       menu.querySelector('.exag').onclick = e => {
@@ -734,8 +736,8 @@
       };
       menu.querySelector('.garder').onclick = () => {
         const nom = menu.querySelector('.nomvue').value.trim(); if (!nom) return;
-        const c = map.getCenter(), l = garde.lire(cleSignets, []).filter(x => x.nom !== nom);
-        l.push({ nom, centre: [+c.lng.toFixed(5), +c.lat.toFixed(5)], zoom: +map.getZoom().toFixed(2), pitch: Math.round(map.getPitch()), bearing: Math.round(map.getBearing()) });
+        const c = map.getCenter(), l = garde.lire(cleSignets, []).filter(x => x.nom !== nom), fondVue = fond;
+        l.push({ nom, centre: [+c.lng.toFixed(5), +c.lat.toFixed(5)], zoom: +map.getZoom().toFixed(2), pitch: Math.round(map.getPitch()), bearing: Math.round(map.getBearing()), fond: fondVue });
         garde.ecrire(cleSignets, l); dessinerMenu();
       };
       const chercher = async () => {
@@ -762,7 +764,7 @@
     bTitre.onclick = () => { dessinerMenu(); menu.hidden = false; };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
     if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
-    /* À l'ouverture, la carte d'abord : carte libre (le fond, la loupe, la position, et ☰ pour tout retrouver), sauf si la carte demande
+    /* À l'ouverture, la carte d'abord : carte libre (le bouton des fonds, et ☰ pour tout retrouver), sauf si la carte demande
        l'inverse (cfg.ouverture = 'complete'). Les thèmes restent à un toucher. */
     if (cfg.ouverture !== 'complete') libre(true);
     // Fond d'ouverture : celui de la carte, sinon le Plan IGN HD. Le dernier fond choisi n'est pas repris.
