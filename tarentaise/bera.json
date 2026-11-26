@@ -1,17 +1,17 @@
 {
- "maj": "2026-11-25T23:46+00:00",
+ "maj": "2026-11-26T16:48+00:00",
  "massifs": {
   "5": {
    "nom": "Beaufortain",
-   "redige": "2026-11-25T17:00:00",
-   "valable": "2026-11-26T18:00:00",
+   "redige": "2026-11-26T17:00:00",
+   "valable": "2026-11-27T18:00:00",
    "risque1": 2,
-   "loc1": "",
-   "altitude": null,
-   "risque2": null,
-   "loc2": "",
-   "risquemaxi": 2,
-   "commentaire": "Indice de risque limité.",
+   "loc1": "<2000",
+   "altitude": 2000,
+   "risque2": 3,
+   "loc2": ">2000",
+   "risquemaxi": 3,
+   "commentaire": "Au-dessus de 2000m indice de risque marqué, plus bas indice limité.",
    "pentes": [
     "N",
     "NE",
@@ -46,8 +46,8 @@
   },
   "6": {
    "nom": "Haute-Tarentaise",
-   "redige": "2026-11-25T17:00:00",
-   "valable": "2026-11-26T18:00:00",
+   "redige": "2026-11-26T17:00:00",
+   "valable": "2026-11-27T18:00:00",
    "risque1": 2,
    "loc1": "<2500",
    "altitude": 2500,
