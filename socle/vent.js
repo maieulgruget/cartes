@@ -92,18 +92,21 @@
       i.value = h; c.querySelector('.hh').textContent = (h === 0 ? 'maintenant' : hhmm(ch.heures[h]));
       c.querySelector('.etat').innerHTML = w ? `Au centre de la carte, à ${hhmm(ch.heures[h])} : ${phrase(w)}.` : 'Déplace la carte : son centre est hors de la zone lue.';
     }
-    function boucle(app) {
-      if (!toile) return; anim = requestAnimationFrame(() => boucle(app));
+    function boucle(app, t) {
+      /* Trente images par seconde au plus, quel que soit l'écran (un téléphone à 120 Hz en demandait quatre fois plus, et
+         les traînées y filaient deux fois trop vite) : chaque image avance donc du double, et s'efface un peu plus. */
+      if (!toile) return; anim = requestAnimationFrame(t => boucle(app, t));
+      if (t - (boucle.t || 0) < 31) return; boucle.t = t;
       if (!ch) return;
       const map = app.map, ctx = toile.getContext('2d'), dpr = taille.dpr, bd = map.getBounds();
-      ctx.globalCompositeOperation = 'destination-in'; ctx.fillStyle = 'rgba(0,0,0,0.93)'; ctx.fillRect(0, 0, toile.width, toile.height);
+      ctx.globalCompositeOperation = 'destination-in'; ctx.fillStyle = 'rgba(0,0,0,0.87)'; ctx.fillRect(0, 0, toile.width, toile.height);
       ctx.globalCompositeOperation = 'source-over';
       const o = Math.max(bd.getWest(), ch.o), e = Math.min(bd.getEast(), ch.e), s = Math.max(bd.getSouth(), ch.s), n = Math.min(bd.getNorth(), ch.n);
       if (e <= o || n <= s) return;
-      const degPx = 360 / (512 * Math.pow(2, map.getZoom())), pas = 0.11 * degPx;   // un vent de 10 nœuds avance d'un peu plus d'un pixel par image
+      const degPx = 360 / (512 * Math.pow(2, map.getZoom())), pas = 0.22 * degPx;   // un vent de 10 nœuds avance d'un peu plus de deux pixels par image
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.3 * dpr; ctx.lineCap = 'round'; ctx.beginPath();
       for (const p of parts) {
-        if (p.age <= 0 || p.lon < o || p.lon > e || p.lat < s || p.lat > n) { p.lon = o + Math.random() * (e - o); p.lat = s + Math.random() * (n - s); p.age = 30 + Math.random() * 70; continue; }
+        if (p.age <= 0 || p.lon < o || p.lon > e || p.lat < s || p.lat > n) { p.lon = o + Math.random() * (e - o); p.lat = s + Math.random() * (n - s); p.age = 15 + Math.random() * 35; continue; }
         const w = vent(ch, h, p.lon, p.lat); if (!w) { p.age = 0; continue; }
         const lon2 = p.lon + w[0] * pas, lat2 = p.lat + w[1] * pas * Math.cos(p.lat * RAD);
         const a = map.project([p.lon, p.lat]), b = map.project([lon2, lat2]);
@@ -124,7 +127,8 @@
         q._c = c;
         toile = document.createElement('canvas'); toile.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none';
         document.body.append(toile);
-        const caler = () => { const dpr = Math.min(2, window.devicePixelRatio || 1); taille = { dpr }; toile.width = Math.round(innerWidth * dpr); toile.height = Math.round(innerHeight * dpr); };
+        // Des traînées floues par nature : inutile de les dessiner plus fin qu'une fois et demie l'écran.
+        const caler = () => { const dpr = Math.min(1.5, window.devicePixelRatio || 1); taille = { dpr }; toile.width = Math.round(innerWidth * dpr); toile.height = Math.round(innerHeight * dpr); };
         caler(); q._caler = caler; addEventListener('resize', caler);
         vider = () => { if (toile) toile.getContext('2d').clearRect(0, 0, toile.width, toile.height); };
         app.map.on('move', vider);
@@ -190,14 +194,17 @@
       const ecart = Math.abs(((provenance(ws[ws.length - 1]) - provenance(ws[0]) + 540) % 360) - 180);
       c.querySelector('.etat').innerHTML = `Au centre de la carte, à ${hhmm(ch.heures[h])} : ` + NIV.map((v, i) => `${v.nom}, <span class="fort">${Math.round(force(ws[i]))} nœuds</span> de ${rose(provenance(ws[i]))}`).join(' ; ') + `. ${ecart > 30 ? `Le vent tourne de ${Math.round(ecart)}° entre le sol et la nappe du haut.` : 'Le vent garde à peu près la même direction à toutes les hauteurs.'}`;
     }
-    function boucle(app) {
-      if (!toile) return; anim = requestAnimationFrame(() => boucle(app));
+    function boucle(app, t) {
+      /* Trente images par seconde au plus, quel que soit l'écran (un téléphone à 120 Hz en demandait quatre fois plus, et
+         les traînées y filaient deux fois trop vite) : chaque image avance donc du double, et s'efface un peu plus. */
+      if (!toile) return; anim = requestAnimationFrame(t => boucle(app, t));
+      if (t - (boucle.t || 0) < 31) return; boucle.t = t;
       if (!ch || !M) return;
       const map = app.map, ctx = toile.getContext('2d'), W = toile.width, H = toile.height, bd = map.getBounds();
-      ctx.globalCompositeOperation = 'destination-in'; ctx.fillStyle = 'rgba(0,0,0,0.93)'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+      ctx.globalCompositeOperation = 'destination-in'; ctx.fillStyle = 'rgba(0,0,0,0.87)'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
       const o = Math.max(bd.getWest(), ch.o), e = Math.min(bd.getEast(), ch.e), s = Math.max(bd.getSouth(), ch.s), n = Math.min(bd.getNorth(), ch.n);
       if (e <= o || n <= s) return;
-      const pas = 0.11 * 360 / (512 * Math.pow(2, map.getZoom())), relief = !!map.getTerrain();
+      const pas = 0.22 * 360 / (512 * Math.pow(2, map.getZoom())), relief = !!map.getTerrain();
       // Position à l'écran d'un point (longitude, latitude, altitude en mètres), par la matrice de la vue.
       const ecran = (lon, lat, alt) => {
         const x = (lon + 180) / 360, y = (1 - Math.log(Math.tan(Math.PI / 4 + lat * RAD / 2)) / Math.PI) / 2, z = alt / (40075016.686 * Math.cos(lat * RAD));
@@ -209,7 +216,7 @@
         ctx.strokeStyle = niv.coul; ctx.globalAlpha = 0.9; ctx.lineWidth = (niv.alt == null ? 1.2 : 1.6) * dpr; ctx.lineCap = 'round'; ctx.beginPath();
         for (const p of parts[L]) {
           if (p.age <= 0 || p.lon < o || p.lon > e || p.lat < s || p.lat > n) {
-            p.lon = o + Math.random() * (e - o); p.lat = s + Math.random() * (n - s); p.age = 30 + Math.random() * 70;
+            p.lon = o + Math.random() * (e - o); p.lat = s + Math.random() * (n - s); p.age = 15 + Math.random() * 35;
             const sol = relief ? (map.queryTerrainElevation([p.lon, p.lat]) || 0) : 0;
             p.z = niv.alt == null ? sol : niv.alt * EX; if (niv.alt != null && sol > p.z) p.age = 0;   // le relief dépasse la nappe : pas de vent ici
             continue;
@@ -232,7 +239,7 @@
           <div class="legende"></div><p class="petit">Touche une hauteur de la légende pour la masquer. Incline la carte (bouton 3D) pour voir les nappes l'une au-dessus de l'autre.</p>`);
         app.legende(c, NIV.map(v => ({ cle: v.cle, couleur: v.coul, texte: v.nom })), () => { if (toile) toile.getContext('2d').clearRect(0, 0, toile.width, toile.height); }, masques);
         toile = document.createElement('canvas'); toile.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none'; document.body.append(toile);
-        const caler = () => { dpr = Math.min(2, window.devicePixelRatio || 1); toile.width = Math.round(innerWidth * dpr); toile.height = Math.round(innerHeight * dpr); };
+        const caler = () => { dpr = Math.min(1.5, window.devicePixelRatio || 1); toile.width = Math.round(innerWidth * dpr); toile.height = Math.round(innerHeight * dpr); };
         caler(); q._caler = caler; addEventListener('resize', caler);
         vider = () => { if (toile) toile.getContext('2d').clearRect(0, 0, toile.width, toile.height); }; app.map.on('move', vider);
         if (!app.map.getLayer('nappes-vue')) app.map.addLayer(couche);
