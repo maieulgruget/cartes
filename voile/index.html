@@ -386,7 +386,7 @@
       c.querySelector('.raz').onclick = () => { route = []; qRoute.calculer(app); };
       c.querySelector('.bords').onclick = e => {   // toucher un tronçon de la liste le montre sur la carte
         const d = e.target.closest('div[data-k]'); if (!d) return; const k = +d.dataset.k, a = route[k - 1], b = route[k]; if (!a || !b) return;
-        map.fitBounds([[Math.min(a[0], b[0]), Math.min(a[1], b[1])], [Math.max(a[0], b[0]), Math.max(a[1], b[1])]], { padding: { top: 90, bottom: innerHeight * 0.5, left: 50, right: 70 }, maxZoom: 14.5, duration: 800, bearing: map.getBearing(), pitch: map.getPitch() });
+        map.fitBounds([[Math.min(a[0], b[0]), Math.min(a[1], b[1])], [Math.max(a[0], b[0]), Math.max(a[1], b[1])]], { padding: app.marges({ top: 90, bottom: innerHeight * 0.5, left: 50, right: 70 }), maxZoom: 14.5, duration: 800, bearing: map.getBearing(), pitch: map.getPitch() });
       };
       if (!map.hasImage('fleche')) { const f = document.createElement('canvas'); f.width = f.height = 48; const x = f.getContext('2d'); x.beginPath(); x.moveTo(24, 3); x.lineTo(38, 24); x.lineTo(29, 24); x.lineTo(29, 45); x.lineTo(19, 45); x.lineTo(19, 24); x.lineTo(10, 24); x.closePath(); x.fillStyle = '#ffffff'; x.fill(); x.lineWidth = 3; x.strokeStyle = '#1a2e4a'; x.lineJoin = 'round'; x.stroke(); map.addImage('fleche', x.getImageData(0, 0, 48, 48), { pixelRatio: 2 }); }
       await qRoute.calculer(app);

@@ -429,7 +429,7 @@
     map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
 
     // --- Interface ---
-    const bTitre = el('button', { class: 'titre', 'aria-label': 'Menu : recherche, vues gardées, réglages, sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')} · menu ▾</span>`);
+    const bTitre = el('button', { class: 'titre', 'aria-label': 'Menu : recherche, vues gardées, réglages, sources' }, `<b>${propre(cfg.titre)}</b><span>${propre(cfg.sousTitre || '')}<i class="m"> · menu ▾</i></span>`);
     const outils = el('div', { class: 'outils' });
     // Pictogrammes des outils (trait de 1,8, couleur du texte) : la colonne reste étroite et se lit sans mots.
     const picto = d => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -441,11 +441,13 @@
       arbre: picto('<path d="M12 2.8 7.6 9h2.2L6 14.6h4.6"/><path d="M12 2.8 16.4 9h-2.2L18 14.6h-4.6"/><path d="M12 12.5V21"/><path d="M9 21h6"/>'),
       couvert: picto('<path d="M6.6 14.6a4.1 4.1 0 0 1-.5-8 5 5 0 0 1 9.3-1.3 4.4 4.4 0 0 1 2.2 8.5 3.6 3.6 0 0 1-3 1H8.4a3.6 3.6 0 0 1-1.8-.2z"/><path d="M12 11v10"/><path d="m12 15.5 2.6-2.2"/>'),
       survol: picto('<path d="M4 19c2.5-6 5-2 7.5-7S16 5 20 5"/><path d="m16.8 3.6 3.6 1.3-1.3 3.6"/><circle cx="4" cy="19" r="1.3"/>'),
+      ecran: picto('<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>'),
       retour: picto('<path d="M9 7 4.5 11.5 9 16"/><path d="M4.5 11.5H14a5.5 5.5 0 0 1 0 11h-2" transform="translate(0 -3.2)"/>')
     };
     const bFond = el('button', { class: 'rond fond', 'aria-label': 'Choisir le fond de carte', title: 'Fond de carte' }, PICTO.fond), b3d = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Relief en 3D', title: 'Relief en 3D' }, '3D'), bArbres = el('button', { class: 'rond', 'aria-pressed': 'true', hidden: '', 'aria-label': 'Couvert des arbres et bâtiments en volume sur la photo aérienne, en vue 3D rapprochée', title: 'Couvert en volume' }, PICTO.couvert), bSurvol = el('button', { class: 'rond', 'aria-pressed': 'false', hidden: '', 'aria-label': 'Survoler le tracé affiché', title: 'Survol du tracé' }, PICTO.survol), bSem = el('button', { class: 'rond', 'aria-pressed': 'false', 'aria-label': 'Arbres dressés un par un autour du centre de la vue, d\'après le LiDAR', title: 'Arbres' }, PICTO.arbre), bIci = el('button', { class: 'rond ici', 'aria-label': 'Aller à ma position', title: 'Ma position' }, PICTO.ici), bRetour = el('button', { class: 'rond', 'aria-label': 'Revenir à la vue précédente', hidden: '', title: 'Vue précédente' }, PICTO.retour), bNord = el('button', { class: 'boussole', 'aria-label': 'Boussole : la pointe rouge montre le nord. Toucher pour remettre le nord en haut' }, '<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/><circle cx="16" cy="16" r="1.6" fill="#10192a"/></svg><span>N</span>'),
-      bMaison = el('button', { class: 'rond', 'aria-label': 'Aller à la maison' }, PICTO.maison);
-    outils.append(bFond, b3d, bArbres, bSem, bSurvol, bNord, bIci, bMaison, bRetour); bMaison.hidden = !cfg.maison;
+      bMaison = el('button', { class: 'rond', 'aria-label': 'Aller à la maison', title: 'Maison' }, PICTO.maison),
+      bEcran = el('button', { class: 'rond ecran', 'aria-label': 'Affichage grand écran : la carte, son titre et la réponse du thème, rien d\'autre', title: 'Grand écran (touche F)' }, PICTO.ecran);
+    outils.append(bFond, b3d, bArbres, bSem, bSurvol, bNord, bIci, bMaison, bRetour, bEcran); bNord.title = 'Nord en haut'; bMaison.hidden = !cfg.maison;
     const bas = el('div', { class: 'bas' }), reponse = el('div', { class: 'reponse', hidden: '' }), rang = el('div', { class: 'questions' }),
       sous = el('div', { class: 'sousthemes', hidden: '' }), familles = new Map();
     bas.append(reponse, sous, rang);
@@ -456,6 +458,23 @@
     // Repère de la carte libre : le seul bouton qui reste, avec celui des fonds, quand tout le reste est rangé.
     const bRepere = el('button', { class: 'repere', 'aria-label': 'Faire revenir les boutons et le panneau', hidden: '' }, '☰');
     document.body.append(bCartes, bTitre, outils, bas, attente, menu, bRepere);
+
+    /* Ordinateur (et tablette couchée) : dès que la fenêtre est assez grande, les thèmes et la réponse quittent le bas
+       de l'écran pour une colonne à gauche, de la largeur d'un téléphone : chaque panneau s'y lit comme il a été dessiné.
+       La carte reçoit une marge du même côté : son centre reste au milieu de la partie visible, et un lieu recherché
+       n'arrive pas sous la colonne. La marge tombe quand la colonne est rangée (carte seule, grand écran). */
+    const mqBureau = window.matchMedia('(min-width: 900px) and (min-height: 560px)');
+    const bureau = () => mqBureau.matches;
+    const COLONNE = 410;
+    function caler(anime) {
+      document.body.classList.toggle('bureau', bureau());
+      const cl = document.body.classList, g = bureau() && !cl.contains('libre') && !cl.contains('ecran') ? COLONNE : 0;
+      if (((map.getPadding() || {}).left || 0) !== g) map.easeTo({ padding: { left: g, top: 0, right: 0, bottom: 0 }, duration: anime ? 350 : 0 });
+    }
+    mqBureau.addEventListener('change', () => caler(true));
+    const clePanneau = () => bureau() ? 'cartes.panneau.bureau' : 'cartes.panneau';   // sur ordinateur, le panneau s'ouvre en grand tant qu'on ne l'a pas réduit
+    const params = new URLSearchParams(location.search);   // lien partagé : ?theme=…&fond=…, et ?ecran pour l'affichage grand écran
+    let themeVoulu = params.get('theme');
 
     /* Fonds de carte. Chacun allume un ou plusieurs calques en image ; « estompe » est la force de l'ombrage du relief posé
        dessus (0 : aucun). La carte géologique et les cartes anciennes ne couvrent que la métropole : une carte peut en
@@ -546,6 +565,8 @@
     const app = {
       map, cfg, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, propre, versGeo, versMerc, distKm,
       get fond() { return fond; }, mettreFond, mettre3d, surFond, altitudeMonde,
+      // Marges d'un cadrage (fitBounds) : celles du téléphone, où le panneau occupe le bas ; sur ordinateur la colonne est déjà comptée par la marge de la carte.
+      marges(telephone) { return bureau() ? { top: 80, bottom: 50, left: 50, right: 90 } : telephone; }, get bureau() { return bureau(); }, ecran,
       get relief3d() { return relief3d; }, libre, survol, mettreArbres, get arbres() { return arbres; }, forcerSolNu(oui) { solNu = !!oui; poserRelief(); majBatiments(); majArbres(); },
       occupe(oui, texte) { attente.textContent = texte || 'Calcul…'; attente.hidden = !oui; },
       // Emprise de la vue courante, élargie d'une marge (fraction), bornée pour rester raisonnable en vue inclinée.
@@ -570,7 +591,7 @@
          « Calque » retire un instant de la carte ce que le thème y a posé ; la croix ferme le thème. */
       repondre(titre, html) {
         reponse.hidden = false; masque = false;
-        reponse.classList.toggle('replie', garde.lire('cartes.panneau', '') === 'reduit'); reponse.classList.remove('aveclegende');
+        reponse.classList.toggle('replie', garde.lire(clePanneau(), '') === 'reduit'); reponse.classList.remove('aveclegende');
         reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button><button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
         reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
         reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.setAttribute('aria-pressed', !masque); appliquerMasque(); };
@@ -580,7 +601,7 @@
           const det = el('details', { class: 'aide' }, '<summary>Ce que montre la carte</summary>' + (q && q.aide ? `<p>${q.aide}</p>` : ''));
           notes.forEach(p => det.append(p)); corps.append(det);
         }
-        const plier = () => { const r = reponse.classList.toggle('replie'); garde.ecrire('cartes.panneau', r ? 'reduit' : 'ouvert'); if (!r) { reponse.classList.remove('aveclegende'); reponse.querySelector('h2 .leg').setAttribute('aria-pressed', 'false'); } };
+        const plier = () => { const r = reponse.classList.toggle('replie'); garde.ecrire(clePanneau(), r ? 'reduit' : 'ouvert'); if (!r) { reponse.classList.remove('aveclegende'); reponse.querySelector('h2 .leg').setAttribute('aria-pressed', 'false'); } };
         reponse.querySelector('h2 span').onclick = plier; reponse.querySelector('h2 .pli').onclick = plier;
         reponse.querySelector('h2 .leg').onclick = e => { e.target.setAttribute('aria-pressed', reponse.classList.toggle('aveclegende')); };
         reponse.classList.toggle('sanslegende', !corps.querySelector('.legende'));
@@ -610,6 +631,7 @@
          thème consulté de la famille, et une rangée de sous-thèmes permet de passer de l'un à l'autre. */
       question(q) {
         app.questions.push(q);
+        if (themeVoulu && (q.theme || q.libelle) === themeVoulu) { themeVoulu = null; setTimeout(() => { if (!app.active) { if (!document.body.classList.contains('ecran')) libre(false); app.choisir(q); } }, 900); }
         if (!q.famille) {
           const b = el('button', { 'aria-pressed': 'false', title: q.libelle }, propre(q.theme || q.libelle));   // la puce porte le thème, la réponse porte la question
           q.bouton = b; rang.append(b); b.onclick = () => app.choisir(app.active === q ? null : q); return;
@@ -656,8 +678,8 @@
     /* Carte libre : un appui long sur la carte range le titre, les boutons et le panneau, pour ne garder que la carte,
        le bouton des fonds et un petit repère ; un nouvel appui long, ou un toucher du repère, fait tout revenir. */
     function libre(oui) {
-      document.body.classList.toggle('libre', oui); bRepere.hidden = !oui; listeFonds.hidden = true;
-      if (oui && !garde.lire('cartes.librevu', false)) { garde.ecrire('cartes.librevu', true); app.occupe(true, 'Carte libre : appui long, ou ☰, pour retrouver les boutons'); setTimeout(() => app.occupe(false), 3200); }
+      document.body.classList.toggle('libre', oui); bRepere.hidden = !oui; listeFonds.hidden = true; caler(true);
+      if (oui && !garde.lire('cartes.librevu', false)) { garde.ecrire('cartes.librevu', true); app.occupe(true, (bureau() ? 'Carte seule : touche Échap, ou ☰, pour retrouver les boutons' : 'Carte libre : appui long, ou ☰, pour retrouver les boutons')); setTimeout(() => app.occupe(false), 3200); }
     }
     bRepere.onclick = () => libre(false);
     {
@@ -668,10 +690,79 @@
       zone.addEventListener('touchstart', e => debut(e.touches[0].clientX, e.touches[0].clientY, e.touches.length), { passive: true });
       zone.addEventListener('touchmove', e => bouge(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
       zone.addEventListener('touchend', annuler); zone.addEventListener('touchcancel', annuler);
-      zone.addEventListener('mousedown', e => { if (e.button === 0) debut(e.clientX, e.clientY, 1); });
+      zone.addEventListener('mousedown', e => { if (e.button === 0 && !bureau()) debut(e.clientX, e.clientY, 1); });   // à la souris, sur ordinateur : la touche L ou le menu
       zone.addEventListener('mousemove', e => bouge(e.clientX, e.clientY)); zone.addEventListener('mouseup', annuler);
       zone.addEventListener('contextmenu', e => e.preventDefault());
       map.on('movestart', annuler);
+    }
+
+    /* Grand écran : la carte pour elle-même, sur un écran qu'on regarde de loin (salon, réunion, second écran). Il reste
+       le titre, et pour le thème ouvert sa question, sa phrase de réponse et sa légende, en grand ; ni boutons ni réglages.
+       Bouger la souris fait paraître trois commandes (thème suivant, rotation lente, quitter). Touche F, bouton des
+       outils ou menu ; l'adresse suivie de ?ecran ouvre directement ainsi (sans le plein écran, que le navigateur
+       n'accorde qu'à un geste). */
+    const barreEcran = el('div', { class: 'barreecran', hidden: '' }, '<button class="th">Thème suivant</button><button class="rot" aria-pressed="false">Tourner</button><button class="fin">Quitter</button>');
+    document.body.append(barreEcran);
+    let tourne = false, pleinDemande = false, tBarre = null;
+    const enEcran = () => document.body.classList.contains('ecran');
+    const reveler = () => { document.body.classList.add('ecranactif'); clearTimeout(tBarre); tBarre = setTimeout(() => document.body.classList.remove('ecranactif'), 3000); };
+    // Rotation lente autour du centre : un tiers de tour en deux minutes, enchaîné ; le moindre geste sur la carte l'arrête.
+    const pas = () => { if (tourne) map.easeTo({ bearing: map.getBearing() + 120, duration: 120000, easing: t => t }, { tour: true }); };
+    function tourner(oui) { tourne = oui; barreEcran.querySelector('.rot').setAttribute('aria-pressed', oui); if (oui) pas(); else map.stop(); }
+    // À chaque fin de mouvement (un tiers de tour achevé, ou un cadrage demandé par un thème), la rotation reprend.
+    map.on('moveend', () => { if (tourne) setTimeout(() => { if (tourne && !map.isMoving()) pas(); }, 60); });
+    for (const ev of ['mousedown', 'touchstart', 'wheel']) map.getCanvasContainer().addEventListener(ev, () => { if (tourne) tourner(false); }, { passive: true });
+    const themeSuivant = () => { const l = app.questions; if (l.length) app.choisir(l[(l.indexOf(app.active) + 1) % l.length]); };
+    function ecran(oui, plein) {
+      if (oui === enEcran()) return;
+      document.body.classList.toggle('ecran', oui); barreEcran.hidden = !oui; menu.hidden = true; listeFonds.hidden = true;
+      if (oui) {
+        document.body.classList.remove('libre'); bRepere.hidden = true; reveler();
+        const racine = document.documentElement;
+        if (plein !== false && racine.requestFullscreen && !document.fullscreenElement) { pleinDemande = true; racine.requestFullscreen().catch(() => { pleinDemande = false; }); }
+      } else {
+        if (tourne) tourner(false); document.body.classList.remove('ecranactif');
+        if (document.fullscreenElement && pleinDemande) document.exitFullscreen().catch(() => { });
+        pleinDemande = false;
+      }
+      caler(true);
+    }
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && enEcran() && pleinDemande) ecran(false); });
+    document.addEventListener('mousemove', () => { if (enEcran()) reveler(); });
+    document.addEventListener('touchstart', () => { if (enEcran()) reveler(); }, { passive: true });
+    barreEcran.querySelector('.th').onclick = themeSuivant;
+    barreEcran.querySelector('.rot').onclick = () => tourner(!tourne);
+    barreEcran.querySelector('.fin').onclick = () => ecran(false);
+    bEcran.onclick = () => ecran(true);
+    /* Clavier : Échap referme ce qui est ouvert (menu, liste des fonds, grand écran, carte seule) ; F grand écran ;
+       L carte seule ; / recherche ; en grand écran, T thème suivant et R rotation. Les flèches, + et − restent à la carte. */
+    document.addEventListener('keydown', e => {
+      if (e.target.closest && e.target.closest('input, select, textarea')) { if (e.key === 'Escape') e.target.blur(); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'escape') { if (!menu.hidden) menu.hidden = true; else if (!listeFonds.hidden) listeFonds.hidden = true; else if (enEcran()) ecran(false); else if (document.body.classList.contains('libre')) libre(false); }
+      else if (k === 'f') ecran(!enEcran());
+      else if (enEcran()) { if (k === 't') themeSuivant(); else if (k === 'r') tourner(!tourne); }
+      else if (k === 'l') libre(!document.body.classList.contains('libre'));
+      else if (k === '/') { e.preventDefault(); libre(false); dessinerMenu(); menu.hidden = false; menu.querySelector('.q').focus(); }
+    });
+    /* D'un appareil à l'autre : l'adresse d'une vue porte le cadrage (centre, zoom, inclinaison, cap), le fond et le thème
+       ouvert. Sur ordinateur, un code à scanner l'envoie au téléphone ; sur téléphone, la feuille de partage l'envoie où l'on veut. */
+    const lienVue = () => { const u = new URL(location.href); u.search = ''; if (app.active) u.searchParams.set('theme', app.active.theme || app.active.libelle); u.searchParams.set('fond', fond); return u.toString(); };
+    async function partager() {
+      const url = lienVue();
+      if (!bureau() && navigator.share) { try { await navigator.share({ title: cfg.titre, url }); } catch (e) { /* partage annulé */ } return; }
+      menu.hidden = false;
+      menu.innerHTML = `<div><h3>Cette vue sur le téléphone</h3><p class="sources">Vise ce code avec l'appareil photo du téléphone : la carte s'y ouvre au même endroit, sur le même fond${app.active ? ' et le même thème' : ''}.</p>
+        <div class="qr"></div><div class="rech"><input type="text" class="lien" readonly value="${propre(url)}"><button class="copier">Copier</button></div>
+        <p style="text-align:right;margin:10px 0 0"><button class="retour">Retour</button> <button class="fermer">Fermer</button></p></div>`;
+      menu.querySelector('.retour').onclick = dessinerMenu; menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
+      menu.querySelector('.copier').onclick = async e => { try { await navigator.clipboard.writeText(url); e.target.textContent = 'Copié'; } catch (err) { menu.querySelector('.lien').select(); } };
+      try {
+        if (!window.qrcode) await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc); });
+        const q = window.qrcode(0, 'M'); q.addData(url); q.make();
+        const boite = menu.querySelector('.qr'); if (boite) boite.innerHTML = q.createSvgTag({ cellSize: 4, margin: 3, scalable: true });
+      } catch (e) { const boite = menu.querySelector('.qr'); if (boite) boite.innerHTML = '<p class="sources">Le code ne se dessine pas pour l\'instant : copie le lien.</p>'; }
     }
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
@@ -708,7 +799,9 @@
         <h3>Mes vues</h3><ul class="lieux miennes"></ul>
         <div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue affichée" maxlength="40" enterkeyhint="done"><button class="garder">Garder</button></div>
         ${cfg.signets.length ? '<details class="pli"><summary>Vues proposées par la carte</summary><ul class="lieux proposees"></ul></details>' : ''}
-        <h3>Affichage</h3><div class="puces"><button class="libre">Carte seule</button><button class="exag" aria-pressed="${exag > exag0}">Relief accentué × 1,8</button></div>
+        <h3>Affichage</h3><div class="puces"><button class="libre">Carte seule</button><button class="ecran">Grand écran</button><button class="exag" aria-pressed="${exag > exag0}">Relief accentué × 1,8</button></div>
+        ${bureau() ? '<details class="pli"><summary>À la souris et au clavier</summary><p class="sources">Glisser déplace la carte, la molette zoome. Clic droit (ou Ctrl) en glissant : incliner et tourner. Flèches, + et − : déplacer et zoomer. <b>/</b> chercher un lieu · <b>L</b> carte seule · <b>F</b> grand écran (puis <b>T</b> thème suivant, <b>R</b> rotation lente) · <b>Échap</b> referme.</p></details>' : ''}
+        <h3>Sur un autre appareil</h3><p style="margin:0"><button class="partager">${bureau() ? 'Envoyer cette vue au téléphone' : 'Partager cette vue'}</button></p>
         <h3>Comprendre la carte</h3><p style="margin:0"><button class="methode">Ce que calcule chaque thème, ses limites, les sources</button></p>
         <h3>Autres cartes</h3><ul class="autres">${AUTRES.filter(a => a[0] !== cfg.id).map(a => `<li><button data-u="${cfg.racine}${a[0]}/">${a[1]}<small>${a[2]}</small></button></li>`).join('')}<li><button data-u="${cfg.racine}">Toutes les cartes<small>page d'accueil</small></button></li></ul>
         <p style="text-align:right;margin:10px 0 0"><button class="fermer">Fermer</button></p></div>`;
@@ -723,6 +816,8 @@
       if (proposees) cfg.signets.forEach(s => { const li = el('li'), b = el('button', {}, propre(s.nom) + (s.note ? `<small>${propre(s.note)}</small>` : '')); b.onclick = () => aller(s); li.append(b); proposees.append(li); });
       menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
       menu.querySelector('.libre').onclick = () => { menu.hidden = true; libre(true); };
+      menu.querySelector('.ecran').onclick = () => ecran(true);
+      menu.querySelector('.partager').onclick = partager;
       menu.querySelector('.exag').onclick = e => {
         exag = exag > exag0 ? exag0 : exag0 * 1.8; e.target.setAttribute('aria-pressed', exag > exag0);
         if (!relief3d) mettre3d(true); else map.setTerrain({ source: sourceRelief, exaggeration: exag });
@@ -766,9 +861,11 @@
     if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
     /* À l'ouverture, la carte d'abord : carte libre (le bouton des fonds, et ☰ pour tout retrouver), sauf si la carte demande
        l'inverse (cfg.ouverture = 'complete'). Les thèmes restent à un toucher. */
-    if (cfg.ouverture !== 'complete') libre(true);
+    if (cfg.ouverture !== 'complete' && !bureau()) libre(true);   // sur ordinateur la place ne manque pas : tout est là dès l'ouverture
+    caler(false);
     // Fond d'ouverture : celui de la carte, sinon le Plan IGN HD. Le dernier fond choisi n'est pas repris.
-    mettreFond(fonds.includes(cfg.fond) ? cfg.fond : 'plan');
+    mettreFond(fonds.includes(params.get('fond')) ? params.get('fond') : fonds.includes(cfg.fond) ? cfg.fond : 'plan');
+    if (params.has('ecran')) ecran(true, false);
     window.carteApp = app;
     return app;
   }

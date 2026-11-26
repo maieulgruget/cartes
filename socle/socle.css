@@ -200,3 +200,64 @@ body.libre .barrevol { opacity: 0.9; }
 .menu details.pli summary { color: var(--muted); font-size: 13px; cursor: pointer; padding: 4px 0; }
 .menu .puces { display: flex; flex-wrap: wrap; gap: 6px; }
 .menu .miennes + .rech { margin-top: 6px; }
+
+.titre span i { font-style: normal; }
+.outils button.ecran { display: none; }
+.menu .qr { background: #fff; border-radius: 12px; padding: 6px; width: 220px; max-width: 100%; margin: 8px auto; }
+.menu .qr svg { display: block; width: 100%; height: auto; }
+.menu .qr p { color: #333; margin: 6px; }
+.menu .rech input.lien { font-size: 12px; color: var(--muted); }
+.menu .sources b { color: var(--ink); font-weight: 600; }
+.barreecran[hidden] { display: none; }
+
+/* ---------- Ordinateur ----------
+   La classe « bureau » est posée par le socle dès que la fenêtre dépasse 900 × 560 points. Les thèmes et la réponse
+   forment une colonne à gauche, sous le titre, de la largeur d'un téléphone ; la carte prend tout le reste. */
+body.bureau .titre { width: 350px; max-width: none; }
+body.bureau .bas { left: 10px; right: auto; top: calc(68px + env(safe-area-inset-top)); bottom: 10px; width: 390px; padding: 0;
+  display: flex; flex-direction: column; gap: 8px; }
+body.bureau .questions { order: 1; flex: none; flex-wrap: wrap; overflow: visible; padding: 0; gap: 6px; }
+body.bureau .sousthemes { order: 2; flex: none; flex-wrap: wrap; overflow: visible; padding: 0; }
+body.bureau .reponse { order: 3; flex: 0 1 auto; min-height: 0; margin: 0; max-height: none; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+body.bureau .questions button { font-size: 13.5px; padding: 7px 13px; }
+body.bureau .outils button.ecran { display: flex; }
+body.bureau .menu > div { width: 390px; max-height: calc(100vh - 20px); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+body.bureau .barrevol { left: 50%; transform: translateX(-50%); top: calc(10px + env(safe-area-inset-top)); max-width: none; flex-wrap: nowrap; }
+body.bureau .attente, body.bureau .maj { left: calc(50% + 200px); }
+body.bureau.libre .attente, body.bureau.libre .maj { left: 50%; }
+body.bureau .bulle .maplibregl-popup-content { font-size: 14px; }
+@media (hover: hover) {
+  button:hover { border-color: var(--gold); }
+  .menu li button:hover, .listefonds button:not([aria-pressed="true"]):hover { background: rgba(255, 255, 255, 0.11); }
+  .legende.active span:hover { border-color: var(--gold); }
+  .jours div[role="button"]:hover, .jours div[data-k]:hover { background: rgba(255, 255, 255, 0.1); }
+}
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* ---------- Grand écran ----------
+   Pour un écran regardé de loin : la carte, son titre, et pour le thème ouvert sa question, sa phrase de réponse et sa
+   légende, en grand. Les tailles suivent la largeur de l'écran. Les commandes ne paraissent qu'au mouvement de la souris. */
+body.ecran .outils, body.ecran .cartes, body.ecran .questions, body.ecran .sousthemes, body.ecran .repere, body.ecran .listefonds, body.ecran .maj { display: none; }
+body.ecran:not(.ecranactif), body.ecran:not(.ecranactif) * { cursor: none !important; }
+body.ecran .titre { left: 2vw; top: calc(2vw + env(safe-area-inset-top)); width: auto; max-width: 60vw; padding: 0.9vw 1.5vw; border-radius: 16px; pointer-events: none; }
+body.ecran .titre b { font-size: clamp(22px, 2.5vw, 54px); }
+body.ecran .titre span { font-size: clamp(13px, 1.15vw, 26px); }
+body.ecran .titre .m { display: none; }
+body.ecran .bas { display: block; left: 2vw; right: auto; top: auto; bottom: calc(2vw + env(safe-area-inset-bottom)); width: min(50vw, 1100px); min-width: min(340px, 92vw); padding: 0; }
+body.ecran .reponse { width: fit-content; max-width: 100%; margin: 0; padding: 1vw 1.5vw; max-height: none; overflow: hidden; border-radius: 16px; pointer-events: none; font-size: clamp(15px, 1.45vw, 32px); line-height: 1.35; }
+body.ecran .reponse h2 { margin: 0 0 0.2em; font-size: clamp(18px, 1.8vw, 40px); }
+body.ecran .reponse h2 button { display: none !important; }
+body.ecran .reponse .corps > * { display: none; }
+body.ecran .reponse .corps > .etat, body.ecran .reponse .corps:not(:has(> .etat)) > p:first-of-type { display: block; margin: 0; font-size: inherit; overflow: visible; }
+body.ecran .reponse .corps > .legende { display: flex; margin: 0.5em 0 0; font-size: clamp(12px, 1.05vw, 24px); gap: 0.3em 1em; }
+body.ecran .reponse .corps > .legende[hidden] { display: none; }
+body.ecran .legende i { width: 0.8em; height: 0.8em; }
+body.ecran .legende.active span { border: 0; padding: 0; color: var(--muted); }
+body.ecran .legende.active span.off { display: none; }
+body.ecran .attente { left: auto; right: 2vw; top: calc(2vw + env(safe-area-inset-top)); transform: none; }
+.barreecran { position: fixed; right: 2vw; bottom: calc(2vw + env(safe-area-inset-bottom)); z-index: 6; display: flex; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .35s; }
+.barreecran button { font-size: 14px; padding: 9px 15px; backdrop-filter: blur(6px); }
+body.ecranactif .barreecran { opacity: 1; pointer-events: auto; }
+@media print { .barreecran { display: none !important; } }
+/* La carte seule range aussi la colonne et le bouton du grand écran. */
+body.bureau.libre .bas, body.bureau.libre .outils button.ecran { display: none; }

@@ -22,6 +22,14 @@ relief LiDAR HD lu à la volée (à l'échelle réelle, accentué sur demande), 
 prend le modèle de surface adouci ; le bouton « Couvert » les retire), bouton « Arbres » sur tous les fonds (arbres dressés un par un), bâtiments en volume, thèmes regroupés en
 familles (une puce par famille, une rangée de sous-thèmes), signets, recherche, calculs (pentes, soleil, ombres portées).
 
+Sur ordinateur (fenêtre de plus de 900 × 560 points), le socle passe en disposition « bureau » : thèmes et réponse en
+colonne à gauche, de la largeur d'un téléphone, carte décalée d'autant ; tout est affiché dès l'ouverture ; clavier
+(`/` chercher, `L` carte seule, `F` grand écran, `Échap` refermer) ; le bouton « Envoyer cette vue au téléphone » du menu
+donne un code à scanner. L'adresse d'une vue porte le cadrage, et `?theme=…&fond=…` le thème et le fond. « Grand écran »
+(`F`, bouton des outils, menu, ou `?ecran` dans l'adresse) : la carte, son titre, la question du thème, sa phrase de
+réponse et sa légende, en grand, pour un écran regardé de loin ; `T` thème suivant, `R` rotation lente. Un thème qui
+cadre la carte demande ses marges à `app.marges(margesTéléphone)`.
+
 `socle/fonds.js` : fonds marins du Shom (modèle HOMONIM à 100 m, relu sur sa palette de couleurs), isobathes, profil
 le long d'une route. `relais/lieux.py` prépare `voile/lieux.json` (ports, caps, îles, anses, feux de la BD TOPO, avec un
 rang d'apparition) ; `relais/balises.py` prépare `voile/balises.json` (balises d'OpenStreetMap), à lancer à la main ou

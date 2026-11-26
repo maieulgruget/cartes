@@ -28,6 +28,20 @@
   a.carte b { display: block; font-family: "Source Serif 4", Georgia, serif; font-size: 17px; font-weight: 600; margin: 10px 0 2px; }
   a.carte span { color: #9aa8bb; font-size: 13px; line-height: 1.35; display: block; }
   @media (max-width: 340px) { .grille { grid-template-columns: 1fr; } }
+  /* Ordinateur : trois cartes par rangée, plus d'air, un survol qui répond. */
+  @media (min-width: 900px) {
+    main { max-width: 1080px; padding-top: 56px; padding-bottom: 56px; }
+    h1 { font-size: 36px; } .sous { font-size: 17px; margin-bottom: 30px; }
+    .grille { grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    a.carte { display: grid; grid-template-columns: 104px 1fr; grid-template-rows: 1fr auto auto 1fr; column-gap: 16px; padding: 14px; transition: border-color .15s, transform .15s; }
+    a.carte img { grid-row: 1 / 5; align-self: center; }
+    a.carte b { grid-row: 2; font-size: 21px; margin: 0 0 3px; } a.carte span { grid-row: 3; font-size: 14.5px; }
+    main .astuce { display: block; }
+  }
+  @media (hover: hover) { a.carte:hover { border-color: #b8963e; transform: translateY(-2px); } }
+  a.carte:focus-visible { outline: 2px solid #b8963e; outline-offset: 3px; }
+  .astuce { display: none; color: #9aa8bb; font-size: 14px; margin: 28px 0 0; }
+  .astuce b { color: #e8ecf2; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -42,6 +56,7 @@
     <a class="carte" href="voile/"><img src="voile/icone-512.png" alt=""><b>Voile</b><span>De Cerbère à Menton et la Corse : vent, mer, fonds, ports, route, bateau</span></a>
     <a class="carte" href="corse/"><img src="corse/icone-512.png" alt=""><b>Randos</b><span>Corse et France : mes tracés sur le relief, profil, pente, sol, itinéraire sur sentiers</span></a>
   </div>
+  <p class="astuce">Sur ordinateur : les thèmes sont à gauche de la carte. <b>F</b> affiche la carte en grand écran, avec peu de texte ; dans le menu de chaque carte, « Envoyer cette vue au téléphone » donne un code à scanner.</p>
 </main>
 <script>
 /* L'appli posée sur l'écran d'accueil du téléphone garde longtemps cette page en mémoire : une carte ajoutée n'y
