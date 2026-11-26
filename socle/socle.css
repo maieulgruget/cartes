@@ -261,3 +261,37 @@ body.ecranactif .barreecran { opacity: 1; pointer-events: auto; }
 @media print { .barreecran { display: none !important; } }
 /* La carte seule range aussi la colonne et le bouton du grand écran. */
 body.bureau.libre .bas, body.bureau.libre .outils button.ecran { display: none; }
+
+/* ---------- Réglage du drone en plein écran ----------
+   Tout est rangé (carte libre) ; les commandes s'accrochent au point du drone (.p-ancre, placée sur lui). */
+body.pilotage .repere, body.pilotage .outils, body.pilotage .listefonds, body.pilotage .bas { display: none !important; }
+.pilote { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+.pilote > * { pointer-events: auto; }
+.p-geste { position: absolute; inset: 0; touch-action: none; cursor: grab; }
+.p-geste[hidden], .p-ancre[hidden], .p-visee[hidden], .p-etat[hidden] { display: none; }
+.p-tete { position: absolute; left: 10px; right: 10px; top: calc(10px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none !important; }
+.p-haut { display: flex; gap: 6px; justify-content: center; pointer-events: auto; }
+.p-haut .p-fin { background: var(--gold); color: #10192a; border-color: var(--gold); font-weight: 600; font-size: 14px; padding: 9px 16px; }
+.p-etat { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; text-align: center; max-width: 100%; backdrop-filter: blur(6px); }
+.p-etat .fort { color: var(--gold); font-weight: 600; }
+/* L'ancre est un point sans taille posé sur le drone ; tout se place autour de lui. */
+.p-ancre { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none !important; }
+.p-ancre > * { pointer-events: auto; position: absolute; }
+.p-anneau { left: -80px; top: -80px; width: 160px; height: 160px; pointer-events: none !important; overflow: visible; }
+.p-anneau circle { fill: none; stroke: rgba(255,255,255,.75); stroke-width: 2; stroke-dasharray: 4 5; }
+.p-anneau .p-axe { stroke: var(--gold); stroke-width: 2.5; }
+.p-poignee { left: -21px; top: -21px; width: 42px; height: 42px; border-radius: 50%; background: var(--gold); border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.45);
+  touch-action: none; cursor: grab; display: flex; align-items: center; justify-content: center; }
+.p-poignee span { font-size: 11px; font-weight: 700; color: #10192a; pointer-events: none; }
+.p-poignee.tenu { transform-origin: center; box-shadow: 0 0 0 6px rgba(184,150,62,.35); }
+.p-barre { left: 92px; top: -85px; width: 44px; height: 170px; border-radius: 22px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(6px);
+  touch-action: none; cursor: ns-resize; user-select: none; -webkit-user-select: none; }
+.p-barre.tenu { border-color: var(--gold); }
+.p-barre i { position: absolute; left: 4px; right: 4px; height: 30px; border-radius: 15px; background: var(--gold); box-shadow: 0 2px 8px rgba(0,0,0,.4); pointer-events: none; }
+.p-barre span { position: absolute; left: 50px; white-space: nowrap; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 7px; font-size: 15px; font-weight: 600; color: var(--gold); pointer-events: none; }
+.p-actions { position: absolute; left: 10px; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.p-actions button { font-size: 14px; padding: 10px 14px; backdrop-filter: blur(6px); }
+.p-visee { position: absolute; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(280px, calc(100% - 20px)); background: #101c2e; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+.p-visee .ligne { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.p-visee label { color: var(--muted); font-size: 12px; }
+.p-visee b { color: var(--gold); min-width: 34px; text-align: right; }
