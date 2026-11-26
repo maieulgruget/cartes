@@ -271,7 +271,6 @@ body.pilotage .repere, body.pilotage .outils, body.pilotage .listefonds, body.pi
 .p-geste[hidden], .p-ancre[hidden], .p-visee[hidden], .p-etat[hidden] { display: none; }
 .p-tete { position: absolute; left: 10px; right: 10px; top: calc(10px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none !important; }
 .p-haut { display: flex; gap: 6px; justify-content: center; pointer-events: auto; }
-.p-haut .p-fin { background: var(--gold); color: #10192a; border-color: var(--gold); font-weight: 600; font-size: 14px; padding: 9px 16px; }
 .p-etat { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; text-align: center; max-width: 100%; backdrop-filter: blur(6px); }
 .p-etat .fort { color: var(--gold); font-weight: 600; }
 /* L'ancre est un point sans taille posé sur le drone ; tout se place autour de lui. */
@@ -299,15 +298,24 @@ body.pilotage .repere, body.pilotage .outils, body.pilotage .listefonds, body.pi
 .p-visee label { color: var(--muted); font-size: 12px; }
 .p-visee b { color: var(--gold); min-width: 34px; text-align: right; }
 
-/* ---------- Plein écran d'un thème : phrase en haut, réglage principal en bas ---------- */
+/* ---------- Plein écran d'un thème : nom du thème, phrase et légende en haut ; réglages en bas ---------- */
 body.pleintheme .bas, body.pleintheme .repere { display: none !important; }
-.reponse h2 button.grand { font-family: var(--body); font-size: 15px; padding: 3px 9px; font-weight: 400; color: var(--gold); border-color: var(--gold); }
+.reponse h2 button.grand { font-family: var(--body); font-size: 12.5px; padding: 4px 10px; font-weight: 600; color: #10192a; background: var(--gold); border-color: var(--gold); white-space: nowrap; }
 .reponse.replie h2 button.grand { display: inline-block; }
+/* ☰ + nom du thème : rend le panneau complet (même signe que le bouton qui ramène l'interface en carte libre). */
+.p-theme { align-self: flex-start; pointer-events: auto; background: var(--gold); color: #10192a; border-color: var(--gold); font-weight: 600; font-size: 14px; padding: 8px 14px 8px 11px; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.p-theme span { margin-right: 4px; }
+.pilote:not(.plein) .p-tete { align-items: flex-start; }
 .plein .p-tete { right: 60px; align-items: flex-start; }
-.plein .p-etat { border-radius: 12px; text-align: left; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-.plein .p-etat[hidden] { display: none; }
+.plein .p-etat { border-radius: 12px; text-align: left; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+.plein .p-etat[hidden], .p-legende[hidden], .p-bloc[hidden] { display: none; }
+.p-legende { margin: 0; pointer-events: auto; gap: 5px 6px; }
+.p-legende > span { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px 3px 7px; color: var(--ink); backdrop-filter: blur(6px); }
 .p-bas { position: absolute; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none !important; }
 .p-bas > * { pointer-events: auto; }
+.p-bloc { width: calc(100% - 20px); max-width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px 6px; backdrop-filter: blur(6px); max-height: 30vh; overflow: auto; }
+.p-bloc .frise { margin: 4px 0 0; }
+.p-bloc svg { max-width: 100%; height: auto; display: block; }
 .p-lecture { background: var(--gold); color: #10192a; font-weight: 700; font-size: 19px; border-radius: 999px; padding: 3px 14px; font-variant-numeric: tabular-nums; }
 .p-ruban { position: relative; width: 100%; height: 62px; overflow: hidden; background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); backdrop-filter: blur(6px);
   touch-action: none; cursor: ew-resize; user-select: none; -webkit-user-select: none; }
@@ -318,5 +326,7 @@ body.pleintheme .bas, body.pleintheme .repere { display: none !important; }
 .p-plages i { position: absolute; top: 0; height: 100%; background: rgba(233, 196, 106, 0.22); }
 .p-plages { position: absolute; inset: 0; }
 .p-rang { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 0 10px; }
+.p-rang:empty { display: none; }
 .p-rang button { font-size: 14px; padding: 9px 14px; backdrop-filter: blur(6px); }
+.p-rang button[hidden] { display: none; }
 .p-rang .p-date { font-size: 15px; padding: 7px 9px; }

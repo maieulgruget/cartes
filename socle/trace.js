@@ -159,6 +159,8 @@
         if (avant) { if (surSentiers) app.occupe(true, 'Recherche du sentier…'); const b = await brin(avant, p); app.occupe(false); if (app.active !== q || pts[pts.length - 1] !== avant) return; brins.push(b); }
         pts.push(p); garder(); dessinerLigne(app); calculer(app, q._c);
       },
+      // Plein écran : on pose les points sur toute la carte ; le profil reste dessous, avec les gestes utiles en route.
+      plein() { return { bloc: '.profil', boutons: [opts.sentiers ? '.sent' : null, '.undo', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
       fermer(app) { tour++; app.survol.arreter(); app.survol.retirer('trace'); app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); }
     };
     q.relancer = app => { if (app.active === q) calculer(app, q._c); };
