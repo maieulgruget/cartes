@@ -30,6 +30,7 @@
   const F = 'Indian/Reunion';
   const app = await Socle.creer({
     id: 'reunion', racine: '../', titre: 'Où est la lumière', sousTitre: 'La Réunion',
+    arbres: 'option',   // ici les arbres dressés se demandent (bouton « Arbres », thème Cimes) : ils ne viennent pas d'office
     geologie: false, fondsExclus: ['etatmajor', 'cassini'],   // la carte géologique du BRGM et les cartes anciennes ne couvrent que la métropole
     centre: [55.4700, -21.0950], zoom: 11.3, pitch: 55, bearing: 20, pitch3d: 60,
     recherche: { centre: [55.53, -21.13], rayonKm: 60 },

@@ -19,7 +19,7 @@ La Réunion…). Relevé du 25/11/2026 ; l'Ortho THR 06 de DataSud (WMS) reste �
 terre reste blanc), carte au 1/25 000 (SCAN 25, clé grand public de l'IGN : usage personnel), fond gris, photo, relief et carte géologique du BRGM (métropole) ; retour à la page des cartes ;
 panneau de thème ouvert ou réduit, carte libre par appui long, boussole, liste de fonds (cartes anciennes comprises) ;
 relief LiDAR HD lu à la volée (à l'échelle réelle, accentué sur demande), arbres en volume sur la photo aérienne (en 3D rapprochée, le relief
-prend le modèle de surface adouci ; le bouton « Couvert » les retire), bouton « Arbres » sur tous les fonds (arbres dressés un par un), bâtiments en volume, thèmes regroupés en
+prend le modèle de surface adouci ; le bouton « Couvert » les retire), arbres dressés un par un, d'office et en discret sur le Plan HD en 3D rapprochée, sauf à La Réunion où ils se demandent (bouton « Arbres » pour les retirer, ou les ajouter sur les autres fonds), bâtiments en volume, thèmes regroupés en
 familles (une puce par famille, une rangée de sous-thèmes), signets, recherche, calculs (pentes, soleil, ombres portées).
 
 `socle/fonds.js` : fonds marins du Shom (modèle HOMONIM à 100 m, relu sur sa palette de couleurs), isobathes, profil

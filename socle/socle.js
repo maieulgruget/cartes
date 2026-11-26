@@ -398,7 +398,7 @@
     if (cfg.sansNoms) style.layers = style.layers.filter(l => !(l.type === 'symbol' && cfg.sansNoms.includes(l['source-layer'])));
     const textes = style.layers.filter(l => l.type === 'symbol').map(l => l.id);
     style.layers.splice(style.layers.findIndex(l => l.id === 'analyses') + 1, 0,
-      { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15, layout: { visibility: 'none' },
+      { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15.3, layout: { visibility: 'none' },
         paint: { 'fill-extrusion-height': ['coalesce', ['get', 'hauteur'], 4], 'fill-extrusion-opacity': 0.8, 'fill-extrusion-vertical-gradient': true,
           'fill-extrusion-color': ['match', ['get', 'usage_1'], 'Résidentiel', '#e8dcc2', 'Agricole', '#c9b458', 'Commercial et services', '#7aa6c2', 'Industriel', '#9a8fb5', 'Religieux', '#c97b63', 'Sportif', '#7fb069', 'Annexe', '#cfcfcf', '#dcdcdc'] } });
 
@@ -424,7 +424,7 @@
     const poserRelief = () => { const s = arbres && !solNu && surPhoto() && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
     // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident. Avec les arbres, le relief les porte déjà.
     const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' && sourceRelief !== 'surface' ? 'visible' : 'none');
-    const mettre3d = oui => { relief3d = oui; if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
+    const mettre3d = oui => { relief3d = oui; if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); majAuto(); };
     const mettreArbres = oui => { arbres = oui; majArbres(); if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments(); };
     map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
 
@@ -489,7 +489,7 @@
       map.setLayoutProperty('estompe', 'visibility', FONDS[f].estompe ? 'visible' : 'none');
       if (FONDS[f].estompe) map.setPaintProperty('estompe', 'hillshade-exaggeration', FONDS[f].estompe);
       for (const fn of surFond) { try { fn(f); } catch (e) { console.error(e); } }
-      majArbres(); poserRelief(); majBatiments();
+      majArbres(); poserRelief(); majBatiments(); majAuto();
     }
     // Le bouton des fonds ouvre une courte liste : un toucher choisit, un toucher ailleurs referme.
     const listeFonds = el('div', { class: 'listefonds', hidden: '' });
@@ -531,12 +531,28 @@
       bSurvol.setAttribute('aria-pressed', 'true');
       volEnCours = window.Socle.survol.lancer(app, t.pts, { suivre: t.suivre, fin(alafin) { volEnCours = null; bSurvol.setAttribute('aria-pressed', 'false'); survol.maj(); if (t.fin) t.fin(alafin); } });
     };
+    /* Sur le Plan HD, les arbres sont là d'office, en discret (un peu transparents) : dès que la vue est en 3D et assez
+       proche (zoom 14,7, un peu avant les bâtiments en volume), ils se dressent sans qu'on le demande, et s'effacent
+       quand on quitte ce fond ou la 3D. Le bouton « Arbres » les retire (et s'en souvient jusqu'au prochain toucher).
+       Sur les autres fonds, et sur une carte qui le demande (cfg.arbres = 'option'), ils restent un choix : éteints au
+       départ, pleins une fois allumés à la main. */
+    let prefArbres = true, autoArbres = false, tourArbres = 0;
+    const fondArbres = () => fond === 'plan' && cfg.arbres !== 'option';
+    const coucheA = async () => { await chargerArbres(); if (!coucheArbres) coucheArbres = window.Socle.arbres.couche(app); if (!coucheArbres.surChange.includes(majArbres)) coucheArbres.surChange.push(majArbres); return coucheArbres; };
+    async function majAuto() {
+      const moi = ++tourArbres, veut = prefArbres && fondArbres() && relief3d;
+      if (veut && !semantique() && map.getZoom() >= 14.7) { try { const c = await coucheA(); if (moi !== tourArbres || c.actif) return; autoArbres = true; c.voiler(0.7); await c.activer(true, true); } catch (e) { /* sans arbres */ } }
+      else if (!veut && semantique() && autoArbres) { autoArbres = false; await coucheArbres.activer(false); }
+      majArbres();
+    }
+    map.on('zoomend', majAuto);
     bSem.onclick = async () => {
-      try { await chargerArbres(); } catch (e) { app.occupe(true, 'Les arbres ne se chargent pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; }
-      if (!coucheArbres) coucheArbres = window.Socle.arbres.couche(app);
-      if (!coucheArbres.surChange.includes(majArbres)) coucheArbres.surChange.push(majArbres);
-      const allumer = !coucheArbres.actif; await coucheArbres.activer(allumer);
-      if (allumer && coucheArbres.message) { app.occupe(true, coucheArbres.message); setTimeout(() => app.occupe(false), 3200); }
+      let c; try { c = await coucheA(); } catch (e) { app.occupe(true, 'Les arbres ne se chargent pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; }
+      const allumer = !c.actif;
+      if (fondArbres()) prefArbres = allumer;
+      autoArbres = allumer && fondArbres(); c.voiler(autoArbres ? 0.7 : 1);
+      await c.activer(allumer);
+      if (allumer && c.message) { app.occupe(true, c.message); setTimeout(() => app.occupe(false), 3200); }
       majArbres();
     };
     bNord.onclick = () => map.easeTo({ bearing: 0, duration: 600 });
