@@ -181,3 +181,10 @@ details.aide p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 /* Bouton « Nouvelle version » : discret, en haut au milieu, tant qu'une mise à jour attend. */
 .maj { position: fixed; left: 50%; transform: translateX(-50%); top: calc(64px + env(safe-area-inset-top)); z-index: 7; font-size: 13px; padding: 6px 12px;
   background: var(--gold); color: #10192a; border-color: var(--gold); font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+
+/* Barre du survol : pause, allure, halte suivante, arrêt. */
+.barrevol { position: fixed; left: 10px; top: calc(66px + env(safe-area-inset-top)); z-index: 6; display: flex; gap: 6px; align-items: center; max-width: calc(100% - 84px); flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 6px 8px; backdrop-filter: blur(8px); }
+.barrevol button { padding: 6px 11px; font-size: 13px; min-width: 38px; background: rgba(255,255,255,0.06); }
+.barrevol .ou { font-size: 12px; color: var(--muted); white-space: nowrap; padding: 0 2px; }
+body.libre .barrevol { opacity: 0.9; }

@@ -1,7 +1,7 @@
 /* Survol d'un itinéraire : la caméra suit le tracé, tournée vers la suite du chemin, et marque une halte aux endroits
    qui comptent (le départ, les points hauts, cols et sommets, l'arrivée) : elle y tourne autour du lieu, le temps de
-   le nommer. Les haltes sont tirées du profil (un point haut compte s'il domine nettement ce qui le précède et ce qui
-   le suit) ; leur nom vient des lieux-dits de l'IGN, s'il y en a un à moins de 250 m. Toucher la carte arrête le survol. */
+   le nommer. Le bouton « Survol » des outils de la carte le lance dès qu'il y a un tracé à suivre. Les haltes sont tirées du profil (un point haut compte s'il domine nettement ce qui le précède et ce qui
+   le suit) ; leur nom vient des lieux-dits de l'IGN, s'il y en a un à moins de 250 m. */
 (function () {
   'use strict';
   const S = window.Socle, RAD = Math.PI / 180;
@@ -42,64 +42,84 @@
     } catch (e) { /* sans nom */ }
   }
 
+  /* Le vol. La caméra suit de près, comme un drone derrière le marcheur (zoom 15,7, vue très inclinée), à 45 m par
+     seconde sur le terrain : un long parcours dure donc longtemps, et une barre permet de l'accélérer (× 3, × 8), de le
+     mettre en pause ou de sauter à la halte suivante. À l'approche d'une halte, la caméra ralentit et se rapproche ; sur
+     place, elle tourne autour du lieu en reculant pour montrer le versant, puis revient et repart. Toucher la carte met
+     en pause (on peut alors regarder autour de soi) ; ▶ reprend. */
+  const ALLURES = [1, 3, 8], PRES = 15.7, APPROCHE = 0.35, PAUSE = 7.5;
   function lancer(app, pts, opts) {
     opts = opts || {};
     const m = app.map, n = pts.length, d = [0];
     for (let i = 1; i < n; i++) d.push(d[i - 1] + app.distKm(pts[i - 1], pts[i]));
     const total = d[n - 1], etapes = haltes(pts, d, opts.haltes);
-    const lieu = s => { let a = 0, b = n - 1; while (b - a > 1) { const k = (a + b) >> 1; d[k] < s ? a = k : b = k; } const u = d[b] > d[a] ? Math.min(1, Math.max(0, (s - d[a]) / (d[b] - d[a]))) : 0; return { i: u < 0.5 ? a : b, p: [pts[a][0] + (pts[b][0] - pts[a][0]) * u, pts[a][1] + (pts[b][1] - pts[a][1]) * u] }; };
-    const duree = Math.min(110, Math.max(22, total * 4.5)), vitesse = total / duree;   // km par seconde
-    const regard = Math.min(1.2, Math.max(0.25, total / 25)), zoomRoute = total > 25 ? 13.4 : total > 8 ? 13.9 : 14.5, PAUSE = 4.6;
+    const lieu = s => { s = Math.min(total, Math.max(0, s)); let a = 0, b = n - 1; while (b - a > 1) { const k = (a + b) >> 1; d[k] < s ? a = k : b = k; } const u = d[b] > d[a] ? Math.min(1, Math.max(0, (s - d[a]) / (d[b] - d[a]))) : 0; return { i: u < 0.5 ? a : b, p: [pts[a][0] + (pts[b][0] - pts[a][0]) * u, pts[a][1] + (pts[b][1] - pts[a][1]) * u] }; };
     const fige = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let vivant = true, raf = 0, s = 0, suivante = 0, halte = null, t1 = null, angle = m.getBearing(), zoom = m.getZoom(), pitch = m.getPitch();
+    let vivant = true, raf = 0, s = 0, suivante = 0, halte = null, t1 = null, pause = false, allure = 0, angle = m.getBearing(), zoom = m.getZoom(), pitch = m.getPitch();
     const panneau = document.querySelector('.reponse'), etaitReplie = panneau && panneau.classList.contains('replie');
+    // Barre de commande
+    const barre = document.createElement('div'); barre.className = 'barrevol';
+    barre.innerHTML = '<button class="p" aria-label="Pause ou reprise">⏸</button><button class="v" aria-label="Allure du survol">× 1</button><button class="n" aria-label="Aller à la halte suivante">Halte ›</button><span class="ou"></span><button class="x" aria-label="Arrêter le survol">✕</button>';
+    const bP = barre.querySelector('.p'), bV = barre.querySelector('.v'), ou = barre.querySelector('.ou');
+    const mettrePause = oui => { pause = oui; bP.textContent = oui ? '▶' : '⏸'; t1 = null; };
+    bP.onclick = () => mettrePause(!pause);
+    bV.onclick = () => { allure = (allure + 1) % ALLURES.length; bV.textContent = '× ' + ALLURES[allure]; };
+    barre.querySelector('.n').onclick = () => {   // on saute juste avant la halte suivante, pour garder son approche
+      const h = etapes[suivante]; if (!h) return; if (halte) { app.sansBulle(); halte = null; }
+      s = Math.max(s, d[h.i] - APPROCHE * 0.6); angle = cap(lieu(s - 0.05).p, lieu(s + 0.2).p); mettrePause(false);
+    };
+    barre.querySelector('.x').onclick = () => fin(false);
     const fin = (alafin) => {
-      if (!vivant) return; vivant = false; cancelAnimationFrame(raf); app.sansBulle();
-      m.off('dragstart', stop); m.getCanvas().removeEventListener('wheel', stop); m.getCanvas().removeEventListener('touchstart', stop); m.getCanvas().removeEventListener('mousedown', stop);
+      if (!vivant) return; vivant = false; cancelAnimationFrame(raf); app.sansBulle(); barre.remove();
+      m.off('dragstart', toucher); m.getCanvas().removeEventListener('wheel', toucher); m.getCanvas().removeEventListener('touchstart', toucher); m.getCanvas().removeEventListener('mousedown', toucher);
       if (panneau && !etaitReplie) panneau.classList.remove('replie');
       if (opts.fin) opts.fin(!!alafin);
     };
-    const stop = () => fin(false);
+    const toucher = () => { if (!pause) mettrePause(true); };
     const annoncer = h => {
       const p = pts[h.i], titre = h.nom || (h.type === 'depart' ? 'Départ' : h.type === 'arrivee' ? 'Arrivée' : 'Point haut');
       app.bulle({ lng: p[0], lat: p[1] }, `<span class="fort">${app.propre(titre)}</span><small>${Math.round(p[2]).toLocaleString('fr-FR')} m · km ${d[h.i].toFixed(1).replace('.', ',')}${h.nom && h.type !== 'haut' ? (h.type === 'depart' ? ' · départ' : ' · arrivée') : ''}</small>`);
     };
     function image(t) {
       if (!vivant) return;
-      const dt = t1 === null ? 0 : Math.min(0.1, (t - t1) / 1000); t1 = t;
-      let cible = zoomRoute, inclinaison = 64;
-      if (halte) {   // halte : la caméra tourne autour du lieu, un peu plus près
-        halte.t += dt; const u = Math.min(1, halte.t / PAUSE);
-        angle = halte.angle + 110 * doux(u); cible = zoomRoute + 0.25 * Math.sin(Math.PI * u); inclinaison = 56;   // un peu plus haut : sur un sommet, une vue rasante ne montre que le premier plan
+      raf = requestAnimationFrame(image);
+      if (pause) { t1 = null; return; }
+      const dt = t1 === null ? 0 : Math.min(0.3, (t - t1) / 1000); t1 = t;   // plafonné : un appareil lent avance par à-coups plutôt que de prendre du retard sans fin
+      let cible = PRES, inclinaison = 69;
+      if (halte) {   // halte : tour du lieu, en reculant pour montrer le versant, puis retour
+        halte.t += dt * (ALLURES[allure] > 1 ? 1.6 : 1); const u = Math.min(1, halte.t / PAUSE), recul = Math.sin(Math.PI * Math.min(1, u * 1.15));
+        angle = halte.angle + 150 * doux(u); cible = PRES + 0.8 - 2.3 * recul; inclinaison = 69 - 13 * recul;
         if (u >= 1) { app.sansBulle(); const derniere = halte.h.type === 'arrivee'; halte = null; if (derniere) { fin(true); return; } }
       } else {
-        s = Math.min(total, s + vitesse * dt);
-        const h = etapes[suivante];
+        const h = etapes[suivante], reste = h ? d[h.i] - s : Infinity, pres = reste < APPROCHE ? 1 - reste / APPROCHE : 0;   // 0 loin de la halte, 1 dessus
+        s = Math.min(total, s + 0.045 * ALLURES[allure] * (1 - 0.55 * pres) * dt);
+        cible = PRES + 0.8 * doux(pres);
         if (h && s >= d[h.i]) { s = d[h.i]; suivante++; halte = { h, t: 0, angle }; annoncer(h); }
-        else { const a = lieu(s).p, b = lieu(Math.min(total, s + regard)).p; if (s + 0.02 < total) angle += ecart(cap(a, b), angle) * Math.min(1, dt * 1.8); }
+        else if (s + 0.02 < total) angle += ecart(cap(lieu(s - 0.04).p, lieu(s + 0.22).p), angle) * Math.min(1, dt * 1.4);
       }
-      zoom += (cible - zoom) * Math.min(1, dt * 2.2); pitch += (inclinaison - pitch) * Math.min(1, dt * 1.5);
+      zoom += (cible - zoom) * Math.min(1, dt * 1.8); pitch += (inclinaison - pitch) * Math.min(1, dt * 1.5);
       const ici = lieu(s); m.jumpTo({ center: ici.p, bearing: angle, pitch, zoom });
+      ou.textContent = `km ${s.toFixed(1).replace('.', ',')} / ${total.toFixed(1).replace('.', ',')}`;
       if (opts.suivre) opts.suivre(ici.i);
-      raf = requestAnimationFrame(image);
     }
     (async () => {
       if (!app.relief3d) app.mettre3d(true);
       if (panneau) panneau.classList.add('replie');   // le panneau se réduit le temps du survol : la carte d'abord
+      document.body.append(barre);
       await Promise.race([Promise.all(etapes.map(h => nommer(h, pts[h.i]))), new Promise(r => setTimeout(r, 2500))]);
       if (!vivant) return;
-      m.on('dragstart', stop); m.getCanvas().addEventListener('wheel', stop, { passive: true }); m.getCanvas().addEventListener('touchstart', stop, { passive: true }); m.getCanvas().addEventListener('mousedown', stop);
       if (fige) {   // mouvement réduit demandé : on passe d'une halte à l'autre, sans voyage
-        for (const h of etapes) { if (!vivant) return; m.jumpTo({ center: [pts[h.i][0], pts[h.i][1]], zoom: zoomRoute + 0.5, pitch: 60 }); annoncer(h); if (opts.suivre) opts.suivre(h.i); await new Promise(r => setTimeout(r, 3500)); }
+        for (const h of etapes) { if (!vivant) return; m.jumpTo({ center: [pts[h.i][0], pts[h.i][1]], zoom: PRES - 0.8, pitch: 60 }); annoncer(h); if (opts.suivre) opts.suivre(h.i); await new Promise(r => setTimeout(r, 3500)); }
         fin(true); return;
       }
-      angle = cap(pts[0], lieu(Math.min(total, regard)).p);
-      m.easeTo({ center: [pts[0][0], pts[0][1]], zoom: zoomRoute, pitch: 64, bearing: angle, duration: 1800 });
-      await new Promise(r => setTimeout(r, 1900)); if (!vivant) return;
+      angle = cap(pts[0], lieu(0.2).p);
+      m.easeTo({ center: [pts[0][0], pts[0][1]], zoom: PRES - 1.2, pitch: 62, bearing: angle, duration: 2200 });
+      await new Promise(r => setTimeout(r, 2300)); if (!vivant) return;
+      m.on('dragstart', toucher); m.getCanvas().addEventListener('wheel', toucher, { passive: true }); m.getCanvas().addEventListener('touchstart', toucher, { passive: true }); m.getCanvas().addEventListener('mousedown', toucher);
       zoom = m.getZoom(); pitch = m.getPitch(); angle = m.getBearing();
       raf = requestAnimationFrame(image);
     })();
-    return { arreter: stop, etapes, get enCours() { return vivant; } };
+    return { arreter: () => fin(false), etapes, get enCours() { return vivant; } };
   }
   S.survol = { lancer, haltes };
 })();
