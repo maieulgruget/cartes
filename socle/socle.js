@@ -889,7 +889,7 @@
       else if (k === 'f') ecran(!enEcran());
       else if (enEcran()) { if (k === 't') themeSuivant(); else if (k === 'r') tourner(!tourne); }
       else if (k === 'l') libre(!document.body.classList.contains('libre'));
-      else if (k === '/') { e.preventDefault(); libre(false); dessinerMenu(); menu.hidden = false; menu.querySelector('.q').focus(); }
+      else if (k === '/') { e.preventDefault(); libre(false); if (bureau()) { menu.hidden = true; barreRech.querySelector('.q').focus(); } else { dessinerMenu(); menu.hidden = false; menu.querySelector('.q').focus(); } }
     });
     /* D'un appareil à l'autre : l'adresse d'une vue porte le cadrage (centre, zoom, inclinaison, cap), le fond et le thème
        ouvert. Sur ordinateur, un code à scanner l'envoie au téléphone ; sur téléphone, la feuille de partage l'envoie où l'on veut. */
@@ -935,12 +935,49 @@
       bMaison.onclick = () => aller({ centre: cfg.maison.centre, zoom: cfg.maison.zoom || 14.5, pitch: relief3d ? (cfg.pitch3d || 60) : 0, bearing: map.getBearing() });
     }
     function aller(v) { retenir(); if (v.pitch > 5 && !relief3d) mettre3d(true); map.flyTo({ center: v.centre, zoom: v.zoom, pitch: v.pitch || 0, bearing: v.bearing || 0, duration: 1800 }); menu.hidden = true; }
+    /* Recherche de lieux, pour le menu et pour la barre d'ordinateur : les lieux nommés de l'IGN (sommets, cols, hameaux,
+       forêts) d'abord, puis les adresses de la Base adresse nationale. Les deux lectures sont séparées : si l'une échoue,
+       l'autre répond quand même. Seuls les résultats proches de la carte sont gardés. */
+    let tourRecherche = 0;
+    async function chercherLieux(texte, res, apres) {
+      const q = (texte || '').trim(), tour = ++tourRecherche; if (q.length < 2) { res.innerHTML = ''; return; }
+      if (!res.children.length) res.innerHTML = '<li class="sources">Recherche…</li>';
+      const c = cfg.recherche || { centre: cfg.centre, rayonKm: 60 };
+      const lire = async (index, n) => { try { const r = await fetch(`${GEOPF}/geocodage/search?index=${index}&limit=${n}&q=${encodeURIComponent(q)}&lon=${c.centre[0]}&lat=${c.centre[1]}`); return (await r.json()).features || []; } catch (e) { return null; } };
+      const [lieux, adresses] = await Promise.all([lire('poi', 15), lire('address', 6)]);
+      if (tour !== tourRecherche) return;   // une frappe plus récente a pris la suite
+      res.innerHTML = '';
+      if (!lieux && !adresses) { res.innerHTML = '<li class="sources">Recherche indisponible.</li>'; return; }
+      const vus = new Set(), un = v => Array.isArray(v) ? v[0] : v;
+      const poser = (f, adresse) => {
+        const p = f.properties, xy = f.geometry.coordinates, km = distKm(xy, c.centre), nom = adresse ? p.label || p.name : p.toponym || p.name;
+        const cle = nom + '|' + xy.map(v => v.toFixed(3)); if (!nom || km > c.rayonKm || vus.has(cle)) return; vus.add(cle);
+        const li = el('li'), b = el('button', {}, `${propre(nom)}<small>${propre(adresse ? 'adresse' : un(p.category) || '')}${adresse ? '' : ' · ' + propre(un(p.city) || '')} · ${km.toFixed(0)} km</small>`);
+        b.onclick = () => { aller({ centre: xy, zoom: adresse ? 16 : 14, pitch: relief3d ? 60 : 0, bearing: map.getBearing() }); if (apres) apres(); };
+        li.append(b); res.append(li);
+      };
+      (lieux || []).forEach(f => poser(f, false)); (adresses || []).slice(0, 4).forEach(f => poser(f, true));
+      if (!res.children.length) res.innerHTML = `<li class="sources">Rien trouvé à moins de ${c.rayonKm} km.</li>`;
+    }
+    /* Sur ordinateur, la recherche reste sous la main : une barre en haut de la carte, qui propose au fil de la frappe.
+       Sur téléphone elle reste dans le menu, pour laisser l'écran à la carte. */
+    const barreRech = el('div', { class: 'rechbureau' }, `<div class="rech"><input type="text" class="q" placeholder="Chercher un sommet, un col, un hameau, une adresse" enterkeyhint="search" aria-label="Chercher un lieu">${PICTO.loupe}</div><ul class="res" hidden></ul>`);
+    document.body.append(barreRech);
+    {
+      const champ = barreRech.querySelector('.q'), res = barreRech.querySelector('.res'); let t = null;
+      const fermer = () => { res.hidden = true; res.innerHTML = ''; };
+      const lancer = () => { res.hidden = false; chercherLieux(champ.value, res, () => { fermer(); champ.blur(); }); };
+      champ.oninput = () => { clearTimeout(t); if (champ.value.trim().length < 2) { fermer(); return; } t = setTimeout(lancer, 300); };
+      champ.onkeydown = e => { if (e.key === 'Enter') { clearTimeout(t); const b = res.querySelector('button'); if (b && !res.hidden) b.click(); else lancer(); } else if (e.key === 'Escape') fermer(); };
+      champ.onfocus = () => { if (champ.value.trim().length >= 2 && res.hidden) lancer(); };
+      document.addEventListener('pointerdown', e => { if (!barreRech.contains(e.target)) fermer(); });
+    }
     function dessinerMenu() {
       const persos = garde.lire(cleSignets, []);
       /* Le menu, du plus utile au plus rare : chercher un lieu ; ses propres vues (des géosignets : un cadrage, son fond
          de carte, un nom), que l'on garde et que l'on retrouve ; les vues proposées par la carte, repliées ; deux réglages ;
          comprendre la carte (méthode et sources) ; les autres cartes. */
-      menu.innerHTML = `<div><h3>Chercher un sommet, un col, un hameau</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go" aria-label="Chercher">${PICTO.loupe}</button></div><ul class="res"></ul>
+      menu.innerHTML = `<div><h3>Chercher un sommet, un col, un hameau, une adresse</h3><div class="rech"><input type="text" class="q" placeholder="Nom du lieu" enterkeyhint="search"><button class="go" aria-label="Chercher">${PICTO.loupe}</button></div><ul class="res"></ul>
         <h3>Mes vues</h3><ul class="lieux miennes"></ul>
         <div class="rech"><input type="text" class="nomvue" placeholder="Nom de la vue affichée" maxlength="40" enterkeyhint="done"><button class="garder">Garder</button></div>
         ${cfg.signets.length ? '<details class="pli"><summary>Vues proposées par la carte</summary><ul class="lieux proposees"></ul></details>' : ''}
@@ -980,24 +1017,7 @@
         l.push({ nom, centre: [+c.lng.toFixed(5), +c.lat.toFixed(5)], zoom: +map.getZoom().toFixed(2), pitch: Math.round(map.getPitch()), bearing: Math.round(map.getBearing()), fond: fondVue });
         garde.ecrire(cleSignets, l); dessinerMenu();
       };
-      const chercher = async () => {
-        const q = menu.querySelector('.q').value.trim(), res = menu.querySelector('.res'); if (q.length < 2) return;
-        res.innerHTML = '<li class="sources">Recherche…</li>';
-        try {
-          const c = cfg.recherche || { centre: cfg.centre, rayonKm: 60 };
-          const r = await fetch(`${GEOPF}/geocodage/search?index=poi&limit=15&q=${encodeURIComponent(q)}&lon=${c.centre[0]}&lat=${c.centre[1]}`);
-          const j = await r.json(); res.innerHTML = '';
-          const vus = new Set();
-          for (const f of j.features || []) {
-            const p = f.properties, xy = f.geometry.coordinates, km = distKm(xy, c.centre);
-            const cle = (p.toponym || p.name) + '|' + xy.map(v => v.toFixed(3)); if (km > c.rayonKm || vus.has(cle)) continue; vus.add(cle);
-            const li = el('li'), b = el('button', {}, `${propre(p.toponym || p.name)}<small>${propre((p.category || [])[0] || '')} · ${propre((p.city || [])[0] || '')} · ${km.toFixed(0)} km</small>`);
-            b.onclick = () => aller({ centre: xy, zoom: 14, pitch: relief3d ? 60 : 0, bearing: map.getBearing() });
-            li.append(b); res.append(li);
-          }
-          if (!res.children.length) res.innerHTML = `<li class="sources">Rien trouvé à moins de ${c.rayonKm} km.</li>`;
-        } catch (e) { res.innerHTML = '<li class="sources">Recherche indisponible.</li>'; }
-      };
+      const chercher = () => chercherLieux(menu.querySelector('.q').value, menu.querySelector('.res'));
       menu.querySelector('.go').onclick = chercher;
       menu.querySelector('.q').onkeydown = e => { if (e.key === 'Enter') chercher(); };
     }
