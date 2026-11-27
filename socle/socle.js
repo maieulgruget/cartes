@@ -597,7 +597,9 @@
       etatmajor: { nom: 'État-major', note: 'carte de l\'état-major, 1820-1866', calques: ['etatmajor'], estompe: 0.12, ancien: true },
       cassini: { nom: 'Cassini', note: 'carte de Cassini, XVIIIe siècle', calques: ['cassini'], estompe: 0, ancien: true }
     };
-    const exclus = (cfg.fondsExclus || []).concat(cfg.geologie === false ? ['geologie'] : []);
+    /* Une seule photo dans le choix des fonds : la meilleure (« Photo »). L'ortho-express (« Photo 2025 ») reste dans le code,
+       qu'une carte peut rallumer (cfg.photoRecente = true) là où elle apporterait vraiment quelque chose. */
+    const exclus = (cfg.fondsExclus || []).concat(cfg.geologie === false ? ['geologie'] : [], cfg.photoRecente ? [] : ['recent']);
     const fonds = Object.keys(FONDS).filter(f => !exclus.includes(f)), IMAGES = [...new Set(Object.values(FONDS).flatMap(f => f.calques))];
     let fond = 'gris', nomsEteints = false;
     const surFond = [];   // fonctions prévenues à chaque changement de fond
