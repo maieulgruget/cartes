@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icone-180.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icone-180.png">
-<title>Où chercher les champignons — autour de Gréolières</title>
+<title>Où chercher les champignons — Gréolières, Bar-sur-Loup et Sophia Antipolis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
@@ -25,11 +25,13 @@
 <script>
 (async function () {
   const app = await Socle.creer({
-    id: 'greolieres', racine: '../', titre: 'Où chercher', sousTitre: 'Champignons, autour de Gréolières',
+    id: 'greolieres', racine: '../', titre: 'Où chercher', sousTitre: 'Champignons : Gréolières, Bar-sur-Loup, Sophia',
     centre: [6.9450, 43.8050], zoom: 11.9, pitch: 50, bearing: 0, pitch3d: 58,
     recherche: { centre: [6.945, 43.805], rayonKm: 50 },
     maison: { nom: 'Gréolières', centre: [6.9386, 43.7976], zoom: 13.8 },
     signets: [
+      { nom: 'Bar-sur-Loup et bois de Gourdon', note: 'entre le Loup et le plateau', centre: [6.9750, 43.7050], zoom: 13, pitch: 55, bearing: 0 },
+      { nom: 'Sophia Antipolis, autour des Oréades', note: 'Valmasque et Brague', centre: [7.0550, 43.6220], zoom: 12.8, pitch: 45, bearing: 0 },
       { nom: 'Tout le Cheiron', centre: [6.9500, 43.8050], zoom: 11.4, pitch: 0, bearing: 0 },
       { nom: 'Gréolières-les-Neiges', note: 'l\'ubac du Cheiron, 1 400 m', centre: [6.9643, 43.8330], zoom: 13.4, pitch: 58, bearing: 180 },
       { nom: 'Cime du Cheiron', note: 'le sommet, 1 778 m', centre: [6.9697, 43.8148], zoom: 13.2, pitch: 60, bearing: 0 },
@@ -39,26 +41,26 @@
       { nom: 'Thorenc et col de Bleine', centre: [6.8088, 43.8053], zoom: 12.6, pitch: 55, bearing: 0 },
       { nom: 'Montagne de l\'Audibergue', centre: [6.7709, 43.7492], zoom: 12.6, pitch: 55, bearing: 0 }
     ],
-    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges), fournie avec la page de l\'Audibergue à la vallée du Var (une vingtaine de kilomètres autour du Cheiron), et lue à la volée plus loin. Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
+    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges), fournie avec la page de l\'Audibergue à la vallée du Var et du Cheiron à Sophia Antipolis, et lue à la volée plus loin. Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
   });
   const { map } = app;
 
   /* Règles par champignon. arbres : poids de chaque type de peuplement (0 à 1). alt : plage d'altitude habituelle.
      temp : plage de température moyenne de l'air favorable. mois : saison. pluie : cumul utile sur 14 jours (mm). frais : préfère les versants frais. */
   const CHAMPIGNONS = {
-    cepe: { gbif: 5954958, nom: 'Cèpe de Bordeaux', mois: [7, 8, 9, 10], alt: [600, 1700], temp: [10, 19], pluie: 30, frais: 0.3,
+    cepe: { gbif: 5954958, nom: 'Cèpe de Bordeaux', mois: [7, 8, 9, 10], alt: [250, 1700], temp: [10, 19], pluie: 30, frais: 0.3,
       arbres: { sapin: 1, mixte_c: 1, mixte_f: 0.9, hetre: 0.9, chene: 0.8, feuillus: 0.7, coniferes: 0.7, pin: 0.6 }, mot: 'Hêtres, chênes, pins et sapins, lisières et bords de chemin ; pousse une dizaine de jours après une bonne pluie, tant que le sol reste doux.' },
-    girolle: { gbif: 5249504, nom: 'Girolle', mois: [6, 7, 8, 9, 10], alt: [500, 1600], temp: [11, 20], pluie: 30, frais: 0.5,
+    girolle: { gbif: 5249504, nom: 'Girolle', mois: [6, 7, 8, 9, 10, 11], alt: [150, 1600], temp: [11, 20], pluie: 30, frais: 0.5,
       arbres: { hetre: 1, mixte_f: 1, mixte_c: 0.9, sapin: 0.8, chene: 0.8, feuillus: 0.8, coniferes: 0.6, pin: 0.6 }, mot: 'Sols moussus et frais, sous feuillus comme sous pins ; revient aux mêmes endroits d\'une année à l\'autre.' },
-    trompette: { gbif: 2554662, nom: 'Trompette de la mort', mois: [8, 9, 10, 11], alt: [400, 1400], temp: [6, 15], pluie: 40, frais: 0.7,
+    trompette: { gbif: 2554662, nom: 'Trompette de la mort', mois: [8, 9, 10, 11], alt: [250, 1400], temp: [6, 15], pluie: 40, frais: 0.7,
       arbres: { hetre: 1, chene: 0.9, feuillus: 0.9, mixte_f: 0.8, mixte_c: 0.3 }, mot: 'Hêtraies et chênaies humides, en troupes dans les feuilles mortes, souvent dans les creux et les bas de pente.' },
-    mouton: { gbif: 2554716, nom: 'Pied-de-mouton', mois: [8, 9, 10, 11, 12], alt: [500, 1600], temp: [4, 14], pluie: 25, frais: 0.7,
+    mouton: { gbif: 2554716, nom: 'Pied-de-mouton', mois: [8, 9, 10, 11, 12], alt: [200, 1600], temp: [4, 14], pluie: 25, frais: 0.7,
       arbres: { hetre: 1, mixte_f: 0.8, mixte_c: 0.7, sapin: 0.6, pin: 0.5, chene: 0.5, feuillus: 0.4, coniferes: 0.4 }, mot: 'Feuillus et conifères mêlés ; tardif, il tient jusqu\'aux premières gelées.' },
     tube: { gbif: 2554536, nom: 'Chanterelle en tube', mois: [9, 10, 11, 12], alt: [700, 1700], temp: [2, 11], pluie: 30, frais: 0.8,
       arbres: { sapin: 1, mixte_c: 1, pin: 0.8, coniferes: 0.8, mixte_f: 0.5 }, mot: 'Sous pins et sapins, dans la mousse et le bois pourri ; le champignon de fin de saison.' },
-    lactaire: { gbif: 5248629, nom: 'Lactaire délicieux', mois: [9, 10, 11, 12], alt: [400, 1700], temp: [5, 15], pluie: 30, frais: 0.2,
+    lactaire: { gbif: 5248629, nom: 'Lactaire délicieux', mois: [9, 10, 11, 12], alt: [100, 1700], temp: [5, 15], pluie: 30, frais: 0.2,
       arbres: { pin: 1, coniferes: 0.8, mixte_c: 0.6, mixte_f: 0.3 }, mot: 'Lié aux pins, dans l\'herbe et les aiguilles des pinèdes claires ; lait orange carotte.' },
-    sanguin: { gbif: 5248648, nom: 'Sanguin', mois: [9, 10, 11, 12], alt: [300, 1500], temp: [6, 16], pluie: 30, frais: 0.1,
+    sanguin: { gbif: 5248648, nom: 'Sanguin', mois: [9, 10, 11, 12], alt: [100, 1500], temp: [6, 16], pluie: 30, frais: 0.1,
       arbres: { pin: 1, coniferes: 0.8, mixte_c: 0.6, mixte_f: 0.3 }, mot: 'Lactaire sanguin, le champignon de l\'arrière-pays : sous les pins, sur sol calcaire, souvent en adret ; lait rouge vineux.' },
     morille: { gbif: 2594601, nom: 'Morille', mois: [3, 4, 5], alt: [500, 1700], temp: [5, 13], pluie: 20, frais: 0.2,
       arbres: { feuillus: 0.8, mixte_f: 0.8, mixte_c: 0.7, sapin: 0.7, ouvert: 0.4, coniferes: 0.5 }, mot: 'Lisières, frênes, bords de ruisseau, coupes récentes ; en montagne, sous épicéas après la fonte. Remonte en altitude avec le printemps.' }
@@ -79,10 +81,10 @@
   const TEINTE = { feuillus: '#7fb069', hetre: '#a7c957', chene: '#c2603f', mixte_f: '#5fa8a0', mixte_c: '#3d8b8b', sapin: '#2f6690', coniferes: '#3a7ca5', pin: '#c9a227', ouvert: '#8d7b68' };
   const CODES = Object.keys(LIB);
 
-  /* Forêts : une vingtaine de kilomètres autour du Cheiron sont fournis avec la page (affichage immédiat) ; plus loin,
+  /* Forêts : du Cheiron à Sophia Antipolis, elles sont fournies avec la page (affichage immédiat) ; plus loin,
      les peuplements de la vue sont lus auprès de l'IGN. */
   const foretLocale = await (await fetch('foret.geojson')).json(); let foret = foretLocale;
-  const SEMNOZ = [6.66, 43.66, 7.20, 43.98]; let cleForet = 'semnoz';
+  const SEMNOZ = [6.66, 43.56, 7.20, 43.98]; let cleForet = 'semnoz';
   const groupe = pr => { const e = pr.essence || '', t = pr.tfv || ''; return /feuillus prépondérants/.test(t) ? 'mixte_f' : /conifères prépondérants/.test(t) ? 'mixte_c' : e === 'Hêtre' ? 'hetre' : /^Chênes décidus/.test(e) ? 'chene' : e === 'Sapin, épicéa' ? 'sapin' : /^Pin/.test(e) ? 'pin' : e === 'Mixte' ? 'mixte_f' : /Conifères|Mélèze|Douglas/.test(e) ? 'coniferes' : /NC|NR/.test(e) || !e ? 'ouvert' : 'feuillus'; };
   async function foretDeLaVue() {
     const b = app.emprise(0.05), ct = map.getCenter(), M = 0.04;
@@ -343,7 +345,7 @@
       map.setLayoutProperty('foret', 'visibility', 'visible');
       app.suivre(q3, foretDeLaVue); foretDeLaVue();
       const c3 = app.repondre(q3.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement, ou un type de la légende pour le masquer.</p><div class="legende"></div>
-        <p class="petit">La BD Forêt décrit des peuplements, pas des arbres : autour du Cheiron, les pins sont surtout des pins sylvestres, les chênes des chênes pubescents, et les « conifères » clairs des pinèdes qui regagnent les anciens pâturages.</p>`);
+        <p class="petit">La BD Forêt décrit des peuplements, pas des arbres : autour du Cheiron, les pins sont surtout des pins sylvestres et les chênes des chênes pubescents ; vers Bar-sur-Loup et Sophia, ce sont des pins d'Alep, et les chênes verts sont rangés avec les « feuillus ».</p>`);
       const filtrer = m => map.setFilter('foret', m.size ? ['!', ['in', ['get', 'g'], ['literal', [...m]]]] : null);
       app.legende(c3, CODES.map(c => ({ cle: c, couleur: TEINTE[c], texte: LIB[c] })), filtrer, masquesForet); filtrer(masquesForet);
     },
@@ -354,7 +356,7 @@
     fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); if (q3.fondAvant && q3.fondAvant !== app.fond) app.mettreFond(q3.fondAvant); }
   };
   [q1, q2, q3].forEach(q => app.question(q));
-  app.question(Socle.trace({ cle: 'greolieres-rando', nom: 'Sortie autour de Gréolières', theme: 'Préparer', libelle: 'Par où passer ?', sentiers: true, seuilPente: false,
+  app.question(Socle.trace({ cle: 'greolieres-rando', nom: 'Sortie champignons', theme: 'Préparer', libelle: 'Par où passer ?', sentiers: true, seuilPente: false,
     intro: 'Touche la carte pour poser le départ, puis chaque étape : le tracé suit les sentiers. Le fond « Carte 25 » les montre le mieux.', pied: 'Tracé calculé sur les sentiers de la BD TOPO.' }));
 })();
 </script>
