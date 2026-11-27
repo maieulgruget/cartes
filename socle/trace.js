@@ -140,11 +140,34 @@
       setTimeout(() => window.print(), 150);
     }
 
+    /* Hors du thème, un tracé gardé sur la carte porte une pastille « Tracé » : un toucher propose de le masquer, de
+       l'effacer ou de le reprendre, sans avoir à revenir au thème pour s'en défaire. */
+    let pastille = null, appli = null;
+    const oter = app => { app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); };
+    const majPastille = () => {
+      const voir = !!appli && appli.active !== q && gardeTrace && pts.length > 1 && !!appli.map.getSource('trace');
+      if (!voir) { if (pastille) pastille.hidden = true; return; }
+      if (!pastille) {
+        pastille = document.createElement('div'); pastille.className = 'pastilletrace';
+        pastille.innerHTML = `<button class="p" aria-expanded="false" title="Tracé gardé sur la carte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 19c2.5-6 5-2 7.5-7S16 6 19 5"/><circle cx="5" cy="19" r="1.6" fill="currentColor"/><circle cx="19" cy="5" r="1.6" fill="currentColor"/></svg> Tracé</button>
+          <div class="choix" hidden><button class="m">Masquer le tracé</button><button class="e">Effacer le tracé</button><button class="r">Le modifier</button></div>`;
+        document.body.append(pastille);
+        const b = pastille.querySelector('.p'), choix = pastille.querySelector('.choix'), plier = () => { choix.hidden = true; b.setAttribute('aria-expanded', 'false'); };
+        b.onclick = () => { choix.hidden = !choix.hidden; b.setAttribute('aria-expanded', String(!choix.hidden)); };
+        pastille.querySelector('.m').onclick = () => { plier(); gardeTrace = false; garder(); oter(appli); majPastille(); };
+        pastille.querySelector('.e').onclick = () => { plier(); pts.length = 0; brins.length = 0; garder(); oter(appli); majPastille(); };
+        pastille.querySelector('.r').onclick = () => { plier(); appli.choisir(q); };
+        document.addEventListener('pointerdown', e => { if (!pastille.contains(e.target)) plier(); });
+      }
+      pastille.hidden = false;
+    };
+
     const q = {
       theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi.' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats.'),
       async ouvrir(app) {
+        appli = app; majPastille();
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
-          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer</button><button class="garde" aria-pressed="${gardeTrace}" title="Le tracé reste dessiné quand on passe à un autre thème">Garder sur la carte</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
+          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer le tracé</button><button class="garde" aria-pressed="${gardeTrace}" title="Le tracé reste dessiné quand on passe à un autre thème">Garder sur la carte</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
         q._c = c;
         if (opts.sentiers) c.querySelector('.sent').onclick = e => { surSentiers = !surSentiers; e.currentTarget.setAttribute('aria-pressed', surSentiers); garder(); };
         c.querySelector('.undo').onclick = () => { pts.pop(); brins.length = Math.max(0, pts.length - 1); garder(); calculer(app, c); };
@@ -162,9 +185,9 @@
         pts.push(p); garder(); dessinerLigne(app); calculer(app, q._c);
       },
       // Plein écran : on pose les points sur toute la carte ; le profil reste dessous, avec les gestes utiles en route.
-      plein() { return { bloc: '.profil', boutons: [opts.sentiers ? '.sent' : null, '.undo', '.garde', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
+      plein() { return { bloc: '.profil', boutons: [opts.sentiers ? '.sent' : null, '.undo', '.raz', '.garde', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
       // « Garder sur la carte » : le tracé reste dessiné sous les autres thèmes ; on revient ici pour le retirer ou l'effacer.
-      fermer(app) { tour++; app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) return; app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); }
+      fermer(app) { tour++; app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) { setTimeout(majPastille, 0); return; } oter(app); majPastille(); }
     };
     q.relancer = app => { if (app.active === q) calculer(app, q._c); };
     return q;
