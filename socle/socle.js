@@ -299,11 +299,107 @@
     ctx.putImageData(im, 0, 0);
     return (await new Promise(res => c.toBlob(res, 'image/png'))).arrayBuffer();
   }
+  /* ---------- Remparts : la photo redessinée là où le drapé l'étire ----------
+     La photo aérienne est prise à la verticale. Drapée sur le relief, un de ses points couvre une bande de paroi
+     d'autant plus haute que la pente est forte : l'étirement vaut 1 / cos(pente), 2 à 60°, 4 à 76°, 6 à 80°. Sur un
+     rempart, un seul point de la photo s'étale ainsi sur des dizaines de mètres et dessine des traînées verticales.
+     Là où l'étirement passe 1,7 (54°), la photo est fondue, progressivement jusqu'à 3 (70°), dans une paroi dessinée : la teinte
+     moyenne de la photo alentour (la végétation des remparts reste verte), éclairée d'après le relief, rayée de bancs
+     horizontaux qui suivent l'altitude, comme les coulées empilées d'un rempart. Ce dessin est plausible, pas mesuré :
+     la vraie paroi n'a pas été photographiée. Il ne sert qu'en vue 3D, où l'étirement existe ; vue de dessus, la photo
+     reste telle quelle. Le bruit est calé sur les coordonnées du terrain : les tuiles voisines se raccordent. */
+  const REMP0 = 1.7, REMP1 = 3, ZREMP = 12;
+  const cacheAltiPhoto = new Map();
+  // Altitudes décodées d'une tuile de relief (celle que la carte a déjà demandée pour le maillage 3D, si elle l'a fait).
+  function altiRelief(z, x, y) {
+    const cle = 'ignalti://' + z + '/' + x + '/' + y;
+    if (!cacheAltiPhoto.has(cle)) {
+      if (!cacheTuiles.has(cle)) { cacheTuiles.set(cle, tuileRelief(z, x, y, false)); if (cacheTuiles.size > 400) cacheTuiles.delete(cacheTuiles.keys().next().value); }
+      cacheAltiPhoto.set(cle, cacheTuiles.get(cle).then(async buf => {
+        const c = document.createElement('canvas'); c.width = c.height = 256; const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(await createImageBitmap(new Blob([buf], { type: 'image/png' })), 0, 0);
+        const d = ctx.getImageData(0, 0, 256, 256).data, a = new Float32Array(65536);
+        for (let k = 0; k < 65536; k++) a[k] = d[4 * k] * 256 + d[4 * k + 1] + d[4 * k + 2] / 256 - 32768;
+        return a;
+      }).catch(() => null));
+      if (cacheAltiPhoto.size > 48) cacheAltiPhoto.delete(cacheAltiPhoto.keys().next().value);
+    }
+    return cacheAltiPhoto.get(cle);
+  }
+  // Bruit de valeur en trois dimensions, lisse, déterministe (le même partout pour un même point du terrain).
+  const hache = (i, j, k) => { let h = (i * 374761393 + j * 668265263 + k * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  function bruit3(x, y, z) {
+    const i = Math.floor(x), j = Math.floor(y), k = Math.floor(z), u = x - i, v = y - j, w = z - k;
+    const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v), sw = w * w * (3 - 2 * w), L = (a, b, t) => a + (b - a) * t;
+    return L(L(L(hache(i, j, k), hache(i + 1, j, k), su), L(hache(i, j + 1, k), hache(i + 1, j + 1, k), su), sv),
+             L(L(hache(i, j, k + 1), hache(i + 1, j, k + 1), su), L(hache(i, j + 1, k + 1), hache(i + 1, j + 1, k + 1), su), sv), sw);
+  }
+  async function remparts(brut, z, x, y) {
+    if (z < ZREMP || !brut) return brut;
+    // Relief : la tuile du zoom au-dessous (celle du maillage 3D, en tuiles de 512), au zoom 14 au plus, recadrée et interpolée.
+    const zd = Math.min(z - 1, 14), f = 1 << (z - zd), alt = await altiRelief(zd, Math.floor(x / f), Math.floor(y / f));
+    if (!alt) return brut;
+    const ox = (x % f) * 256 / f, oy = (y % f) * 256 / f, h = new Float32Array(65536);
+    for (let j = 0; j < 256; j++) {
+      const fy = Math.min(255, Math.max(0, oy + (j + 0.5) / f - 0.5)), ja = Math.floor(fy), jb = Math.min(255, ja + 1), v = fy - ja;
+      for (let i = 0; i < 256; i++) {
+        const fx = Math.min(255, Math.max(0, ox + (i + 0.5) / f - 0.5)), ia = Math.floor(fx), ib = Math.min(255, ia + 1), u = fx - ia;
+        h[j * 256 + i] = (alt[ja * 256 + ia] * (1 - u) + alt[ja * 256 + ib] * u) * (1 - v) + (alt[jb * 256 + ia] * (1 - u) + alt[jb * 256 + ib] * u) * v;
+      }
+    }
+    // Pente : taille au sol d'un point de la tuile (le Mercator s'étire en 1 / cos(latitude)).
+    const t = 2 * R / (1 << z), x0 = -R + x * t, y1 = R - y * t, lat = versGeo(0, y1 - t / 2)[1], pas = t / 256 * Math.cos(lat * RAD);
+    const etir = new Float32Array(65536), nx = new Float32Array(65536), ny = new Float32Array(65536); let max = 0;
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const k = j * 256 + i, gx = (h[j * 256 + Math.min(255, i + 1)] - h[j * 256 + Math.max(0, i - 1)]) / ((Math.min(255, i + 1) - Math.max(0, i - 1)) * pas),
+        gy = (h[Math.max(0, j - 1) * 256 + i] - h[Math.min(255, j + 1) * 256 + i]) / ((Math.min(255, j + 1) - Math.max(0, j - 1)) * pas);
+      const e = Math.sqrt(1 + gx * gx + gy * gy); etir[k] = e; nx[k] = -gx / e; ny[k] = -gy / e; if (e > max) max = e;
+    }
+    if (max < REMP0) return brut;   // pas de paroi dans la tuile : la photo passe telle quelle
+    const c = document.createElement('canvas'); c.width = c.height = 256; const ctx = c.getContext('2d', { willReadFrequently: true });
+    try { ctx.drawImage(await createImageBitmap(new Blob([brut])), 0, 0, 256, 256); } catch (e) { return brut; }
+    const im = ctx.getImageData(0, 0, 256, 256), d = im.data;
+    // Teinte moyenne alentour (rayon de 10 points), par images intégrales : elle ne porte plus les traînées.
+    const I = [0, 1, 2].map(() => new Float64Array(257 * 257));
+    for (let j = 0; j < 256; j++) { const l = [0, 0, 0]; for (let i = 0; i < 256; i++) for (let q = 0; q < 3; q++) { l[q] += d[4 * (j * 256 + i) + q]; I[q][(j + 1) * 257 + i + 1] = I[q][j * 257 + i + 1] + l[q]; } }
+    const rb = 10, sx = 0.45, sy = 0.45, sz = 0.77;   // soleil au nord-ouest, à 50° de hauteur, comme l'estompe
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const k = j * 256 + i, e = etir[k]; if (e <= REMP0) continue;
+      const a = Math.min(1, (e - REMP0) / (REMP1 - REMP0)), m = a * a * (3 - 2 * a);
+      const i0 = Math.max(0, i - rb), i1 = Math.min(255, i + rb), j0 = Math.max(0, j - rb), j1 = Math.min(255, j + rb), n = (i1 - i0 + 1) * (j1 - j0 + 1);
+      const moy = q => (I[q][(j1 + 1) * 257 + i1 + 1] - I[q][j0 * 257 + i1 + 1] - I[q][(j1 + 1) * 257 + i0] + I[q][j0 * 257 + i0]) / n;
+      let r = moy(0), g = moy(1), b = moy(2); const gris = (r + g + b) / 3; r = gris + (r - gris) * 0.7; g = gris + (g - gris) * 0.7; b = gris + (b - gris) * 0.7;
+      // Éclairage d'après la normale du relief, puis bancs horizontaux (bruit étiré selon l'altitude) et grain fin.
+      const nz = 1 / e, lum = 0.62 + 0.55 * Math.max(-0.4, -nx[k] * sx + ny[k] * sy + nz * sz);
+      const xm = (x0 + (i + 0.5) / 256 * t) * Math.cos(lat * RAD), ym = (y1 - (j + 0.5) / 256 * t) * Math.cos(lat * RAD), hh = h[k];
+      const banc = bruit3(xm / 60, ym / 60, hh / 7) * 0.6 + bruit3(xm / 18, ym / 18, hh / 2.2) * 0.4, grain = bruit3(xm / 3, ym / 3, hh / 1.5);
+      const v = lum * (0.72 + 0.42 * banc + 0.14 * (grain - 0.5));
+      d[4 * k] = d[4 * k] * (1 - m) + Math.min(255, r * v) * m; d[4 * k + 1] = d[4 * k + 1] * (1 - m) + Math.min(255, g * v) * m; d[4 * k + 2] = d[4 * k + 2] * (1 - m) + Math.min(255, b * v) * m;
+    }
+    ctx.putImageData(im, 0, 0);
+    // Rendue telle quelle à la carte, sans repasser par un PNG : l'encodage, sur le fil principal, coûtait plus que tout le calcul.
+    return createImageBitmap(c);
+  }
+  async function tuilePhoto(couche, z, x, y) {
+    let brut = null;
+    try { const r = await fetch(wmts(couche, 'image/jpeg').replace('{z}', z).replace('{x}', x).replace('{y}', y)); if (r.ok) brut = await r.arrayBuffer(); } catch (e) { brut = null; }
+    if (!brut) return (await vide()).slice(0);
+    return remparts(brut, z, x, y);
+  }
   function brancherRelief() {
     if (brancherRelief.fait) return; brancherRelief.fait = true;
     maplibregl.addProtocol('ignsur', async (params) => {
       const [couche, z, x, y] = params.url.replace('ignsur://', '').split('/');
       return { data: await tuileSur(couche, +z, +x, +y) };
+    });
+    // Les mêmes photos, avec les remparts redessinés (vue 3D) : « ignphoto » pour la photo courante, « ignsur3d » pour les autres.
+    maplibregl.addProtocol('ignphoto', async (params) => {
+      const [couche, z, x, y] = params.url.replace('ignphoto://', '').split('/');
+      return { data: await tuilePhoto(couche, +z, +x, +y) };
+    });
+    maplibregl.addProtocol('ignsur3d', async (params) => {
+      const [couche, z, x, y] = params.url.replace('ignsur3d://', '').split('/');
+      return { data: await remparts(await tuileSur(couche, +z, +x, +y), +z, +x, +y) };
     });
     maplibregl.addProtocol('ignplan', async (params) => {
       const [z, x, y] = params.url.replace('ignplan://', '').split('/').map(Number);
@@ -424,7 +520,14 @@
     const poserRelief = () => { const s = arbres && !solNu && surPhoto() && map.getZoom() >= ZARBRES ? 'surface' : 'relief'; if (relief3d && (s !== sourceRelief || !map.getTerrain())) map.setTerrain({ source: s, exaggeration: exag }); sourceRelief = s; };
     // Les bâtiments en volume ne s'affichent que sur le fond gris, en vue 3D : ailleurs ils cachent plus qu'ils n'aident. Avec les arbres, le relief les porte déjà.
     const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' && sourceRelief !== 'surface' ? 'visible' : 'none');
-    const mettre3d = oui => { relief3d = oui; if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
+    /* Photos aux remparts redessinés : seulement en vue 3D (voir « remparts »). ?remparts=0 dans l'adresse les retire, pour comparer. */
+    const avecRemparts = cfg.remparts !== false && new URLSearchParams(location.search).get('remparts') !== '0';
+    const TUILES_PHOTO = { ortho: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg'), 'ignphoto://ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}'],
+      orthorecent: ['ignsur://ORTHOIMAGERY.ORTHOPHOTOS.ORTHO-EXPRESS.2025/{z}/{x}/{y}', 'ignsur3d://ORTHOIMAGERY.ORTHOPHOTOS.ORTHO-EXPRESS.2025/{z}/{x}/{y}'],
+      orthothr: ['ignsur://THR.ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}', 'ignsur3d://THR.ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}'] };
+    let photo3d = false;
+    const majPhotos = () => { const oui = avecRemparts && relief3d; if (oui === photo3d) return; photo3d = oui; for (const s in TUILES_PHOTO) map.getSource(s).setTiles([TUILES_PHOTO[s][oui ? 1 : 0]]); };
+    const mettre3d = oui => { relief3d = oui; majPhotos(); if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
     const mettreArbres = oui => { arbres = oui; majArbres(); if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments(); };
     map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
 
@@ -1023,7 +1126,7 @@
     }
     bTitre.onclick = () => { dessinerMenu(); menu.hidden = false; };
     menu.onclick = e => { if (e.target === menu) menu.hidden = true; };
-    if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
+    if (cfg.pitch > 5) { relief3d = true; map.setTerrain({ source: 'relief', exaggeration: exag }); majPhotos(); majBatiments(); b3d.setAttribute('aria-pressed', 'true'); }
     /* À l'ouverture, la carte d'abord : carte libre (le bouton des fonds, et ☰ pour tout retrouver), sauf si la carte demande
        l'inverse (cfg.ouverture = 'complete'). Les thèmes restent à un toucher. */
     if (cfg.ouverture !== 'complete' && !bureau()) libre(true);   // sur ordinateur la place ne manque pas : tout est là dès l'ouverture
@@ -1068,5 +1171,5 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) verifier(); });
   })();
 
-  window.Socle = { RGEALTI, altitudeMonde, planMer, creer, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, versMerc, versGeo, distKm, wmts, GEOPF };
+  window.Socle = { RGEALTI, altitudeMonde, planMer, creer, grille, indice, pentes, soleil, eclaire, ombres, peindre, meteo, versMerc, versGeo, distKm, wmts, GEOPF, remparts };
 })();
