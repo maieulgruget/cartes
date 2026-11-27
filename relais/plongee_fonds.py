@@ -14,7 +14,7 @@ cartes en Méditerranée).
 Produits (dans plongee/) :
   relief/{z}/{x}/{y}.png   relief terre-mer, tuiles « terrarium » de 512 points, zooms 10 à 14, au huitième de mètre ;
   fond/{z}/{x}/{y}.webp    le fond « vidé » : teinte du sédiment et ombrage, transparent à terre ;
-  fonds.json               isobathes, secs, tombants, emprise du lidar, eau claire, épaves, obstructions et natures de
+  fonds.json               isobathes, secs, tombants, emprise du lidar, épaves, obstructions et natures de
                            fond du Shom, masque terre-mer à 60 m, aire du fond par mètre de profondeur ;
   habitats.json            points d'habitat tous les 70 m (profondeur, milieu, pente), pour placer les poissons.
 Un fichier plongee/herbiers.json (polygones d'herbiers, GeoJSON), s'il existe, est signalé dans fonds.json et la page
@@ -481,18 +481,6 @@ def vecteurs(z, source):
         feats.append({'type': 'Feature', 'properties': {'k': 'nature', 'm': mil, 't': LIBELLES.get(t, t)}, 'geometry': {'type': gj['type'], 'coordinates': coords}})
         nb_n += 1
     print('  natures de fond :', nb_n)
-    # --- Eau claire (moins de 10 m) : là où la lumière danse sur le fond. ---
-    clair = gaussian_filter(zr, 1.5)
-    m = (clair < -0.3) & (clair > -10)
-    m = binary_opening(m, iterations=1)
-    for c in find_contours(np.pad(m, 1).astype(float), 0.5):
-        if len(c) < 10:
-            continue
-        pg = Polygon((c - 1)[:, ::-1]).simplify(2.5)
-        if pg.is_empty or pg.area * (PAS_SOL * f) ** 2 < 2000:
-            continue
-        l = versgeo([[(y, x) for x, y in pg.exterior.coords]], f)[0]
-        feats.append({'type': 'Feature', 'properties': {'k': 'clair'}, 'geometry': {'type': 'Polygon', 'coordinates': [l]}})
     # --- Masque terre / mer à 60 m (un bit par maille), pour le calcul de l'abri à la houle dans la page. ---
     import base64
     fm = int(round(60 / PAS_SOL))
