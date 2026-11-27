@@ -8,7 +8,7 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Où est la mer (de Bréhat au cap Fréhel) | `marees/` | mer maintenant, durée d'émersion de l'estran, heures de passage en un point, niveau libre |
 | Où est la lumière (La Réunion) | `reunion/` | ombres à l'heure choisie, heures de soleil d'un versant, carte d'ensoleillement, lever et coucher |
 | Où chercher (Semnoz, champignons) | `semnoz/` | note par champignon, pluie des 14 jours, peuplements |
-| Où chercher (Gréolières, champignons) | `greolieres/` | même carte autour du Cheiron (06), avec le sanguin et les chênaies |
+| Où chercher (Gréolières, Bar-sur-Loup et Sophia Antipolis, champignons) | `greolieres/` | même carte dans le 06, du Cheiron à Sophia, avec le sanguin et les chênaies |
 | Sous voile (de Cerbère à Menton, et la Corse) | `voile/` | vent, vagues dessinées sur la mer, fonds marins et isobathes, ports et abris par ordre d'importance, balises, route avec allures et profil des fonds, voilier en volume |
 | Mes randos (Corse, puis toute la France) | `corse/` | où je suis passé : tracés drapés sur le relief, profil, pente le long du chemin, altitude, sol et type de chemin (Komoot), survol ; lumière ; itinéraire à préparer |
 
