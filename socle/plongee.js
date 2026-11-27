@@ -3,7 +3,7 @@
    est posé dessus, et l'eau est une teinte calculée par la carte graphique selon l'épaisseur d'eau : baisser la mer ne
    recharge rien, on change seulement la règle de couleur.
    Le module est transposable : il ne connaît que le dossier de données qu'on lui donne (relief/, fond/, fonds.json,
-   habitats.json, herbiers.json facultatif), produit pour n'importe quelle emprise par le même script.
+   habitats.json, herbiers.json s'il existe), produit pour n'importe quelle emprise par le même script.
 
    Socle.plongee.installer(app, { donnees: '../plongee/', fuseau, centreMeteo: [lon, lat] }) → { themes… } */
 (function () {
@@ -102,8 +102,16 @@
   const dansLidar = (lon, lat) => D.lidar.some(pg => dansPoly(pg, lon, lat));
   function dansAnneau(r, x, y) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const a = r[i], b = r[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
   function dansPoly(g, x, y) { const ps = g.type === 'Polygon' ? [g.coordinates] : g.coordinates; return ps.some(p => dansAnneau(p[0], x, y) && !p.slice(1).some(t => dansAnneau(t, x, y))); }
-  const NOMS_MILIEU = { roche: 'Roche', sable: 'Sable', vase: 'Vase' };
+  const NOMS_MILIEU = { roche: 'Roche', sable: 'Sable', vase: 'Vase', herbier: 'Herbier', matte: 'Matte morte' };
+  const HERBIER = { herbier: { m: 'herbier', t: 'Herbier de posidonie' }, matte: { m: 'matte', t: 'Matte morte de posidonie' } };
+  // Herbier vivant ou matte morte au point, s'il y en a (polygones triés par boîte englobante : la recherche reste brève).
+  function herbierEn(lon, lat) {
+    for (const h of D.herb || []) if (lon >= h.b[0] && lon <= h.b[2] && lat >= h.b[1] && lat <= h.b[3] && dansAnneau(h.p[0], lon, lat) && !h.p.slice(1).some(t => dansAnneau(t, lon, lat))) return HERBIER[h.k];
+    return null;
+  }
+  // Ce qu'il y a au fond : l'herbier (cartographié finement) l'emporte sur le sédiment (carte au 1/50 000).
   function natureEn(lon, lat) {
+    const h = herbierEn(lon, lat); if (h) return h;
     let res = null;
     for (const f of D.natures) if (dansPoly(f.geometry, lon, lat)) { if (!res || f.properties.m === 'roche') res = f.properties; }
     return res;
@@ -155,14 +163,17 @@
 
   // ---------- Motif animé : herbiers qui ondulent (quand la donnée existe) ----------
   const NIMG = 6;
+  /* Le vert de l'herbier est déjà dans l'image du fond. Ce motif n'ajoute, de près seulement, que des brins qui penchent
+     d'un côté puis de l'autre, comme dans la houle : peu contrastés, sur fond transparent. */
   function motifHerbier(k) {
-    const T = 128, c = document.createElement('canvas'); c.width = c.height = T; const x = c.getContext('2d');
-    x.fillStyle = 'rgba(40,74,44,0.82)'; x.fillRect(0, 0, T, T);
-    const ph = k / NIMG * 2 * Math.PI;
-    for (let i = 0; i < 46; i++) {
-      const bx = (i * 37) % T, by = (i * 61) % T, h = 14 + (i * 13) % 12, w = Math.sin(ph + i * 0.7) * 4;
-      x.strokeStyle = i % 3 ? 'rgba(92,140,70,0.9)' : 'rgba(150,170,80,0.8)'; x.lineWidth = 2.2;
-      for (const dx of [0, -T, T]) for (const dy of [0, -T, T]) { x.beginPath(); x.moveTo(bx + dx, by + dy); x.quadraticCurveTo(bx + dx + w * 0.4, by + dy - h * 0.5, bx + dx + w, by + dy - h); x.stroke(); }
+    const T = 160, c = document.createElement('canvas'); c.width = c.height = T; const x = c.getContext('2d');
+    const ph = k / NIMG * 2 * Math.PI; x.lineCap = 'round';
+    for (let i = 0; i < 64; i++) {
+      const bx = (i * 67 + 13) % T, by = (i * 41 + (i % 5) * 9) % T, h = 9 + (i * 13) % 8, w = Math.sin(ph + bx / T * 2 * Math.PI) * 4.5;
+      for (let j = -1; j <= 1; j++) {
+        x.strokeStyle = (i + j) % 3 ? 'rgba(34,70,42,0.42)' : 'rgba(56,96,52,0.36)'; x.lineWidth = 1.9;
+        for (const dx of [0, -T, T]) for (const dy of [0, -T, T]) { const X = bx + dx + j * 2.2, Y = by + dy; x.beginPath(); x.moveTo(X, Y); x.quadraticCurveTo(X + w * 0.35 + j, Y - h * 0.55, X + w + j * 2.5, Y - h + Math.abs(j)); x.stroke(); }
+      }
     }
     return x.getImageData(0, 0, T, T);
   }
@@ -184,6 +195,7 @@
     { id: 'girelle', nom: 'Girelle', latin: 'Coris julis', mil: [1, 'h'], p: [0, 40], banc: [1, 3], cm: 18, nage: 'vif', forme: 'long', c: ['#4f8a63', '#e3d7a8'], raie: '#e07a2e', f: 'Fine et vive, elle vient voir le plongeur. Le mâle porte une bande orange en zigzag sur le flanc.' },
     { id: 'sar', nom: 'Sar commun', latin: 'Diplodus sargus', mil: [1], p: [1, 40], banc: [3, 7], cm: 30, nage: 'banc', forme: 'haut', c: ['#b9c2c9', '#e6ebee'], bandes: '#4a5560', tache: true, f: 'Argenté, rayé de bandes sombres, avec une tache noire avant la queue. En petits groupes le long des tombants.' },
     { id: 'saupe', nom: 'Saupe', latin: 'Sarpa salpa', mil: [1, 'h'], p: [0, 20], banc: [8, 14], cm: 30, nage: 'banc', forme: 'fuseau', c: ['#a7b0b4', '#dfe4e2'], lignes: '#e2b93b', f: 'Bancs tranquilles sur les roches claires et les herbiers, rayés de lignes dorées. Elle broute les algues.' },
+    { id: 'crenilabre', nom: 'Crénilabre paon', latin: 'Symphodus tinca', mil: ['h', 1], p: [1, 30], banc: [1, 3], cm: 25, nage: 'vif', forme: 'fuseau', c: ['#7c9a58', '#d9cf8e'], lignes: '#b5563c', f: 'Le poisson des herbiers : verdâtre, rayé de lignes de points rouges, il picore entre les feuilles de posidonie.' },
     { id: 'merou', nom: 'Mérou brun', latin: 'Epinephelus marginatus', mil: [1], p: [8, 50], banc: [1, 1], cm: 90, nage: 'lent', forme: 'gros', c: ['#6b4f3a', '#a58a68'], taches: '#d9c7a1', f: 'Le seigneur des failles : massif, brun marbré de clair, il observe depuis son trou. Protégé par un moratoire en Méditerranée française.', statut: 'protégé' },
     { id: 'corb', nom: 'Corb', latin: 'Sciaena umbra', mil: [1], p: [3, 30], banc: [2, 5], cm: 40, nage: 'lent', forme: 'haut', c: ['#5b4630', '#8c6d47'], bord: '#f2efe6', f: 'Brun doré, nageoires bordées de blanc, en petits groupes à l\'entrée des failles. Protégé par un moratoire.', statut: 'protégé' },
     { id: 'rascasse', nom: 'Rascasse', latin: 'Scorpaena porcus', mil: [1], p: [1, 40], banc: [1, 1], cm: 20, nage: 'pose', forme: 'gros', c: ['#8a4b3a', '#c28466'], taches: '#5a2e22', f: 'Immobile et camouflée sur la roche. Ses épines dorsales sont venimeuses : on regarde, on ne touche pas.' },
@@ -258,7 +270,7 @@
     const map = app.map; let filtre = null, actif = false, etages = null, etagesDe = undefined;
     const src = () => map.getSource('pl-poissons');
     const hacher = (i, sel) => { let h = Math.imul(i + 1, 2654435761) ^ Math.imul(sel + 7, 40503); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
-    const candidats = h => ESPECES.filter(e => (!filtre || filtre === e.id) && e.mil.includes(h[3] || 2) && h[2] >= e.p[0] && h[2] <= e.p[1] && (e.forme !== 'gros' || h[3] === 1 || h[4] > 12));
+    const candidats = h => ESPECES.filter(e => (!filtre || filtre === e.id) && e.mil.includes(h[3] === 4 ? 'h' : (h[3] || 2)) && h[2] >= e.p[0] && h[2] <= e.p[1] && (e.forme !== 'gros' || h[3] === 1 || h[4] > 12));
     // Étage de chaque point : le plus grand n pour lequel il est le point retenu de son carré de 70 m × 2ⁿ.
     function trier() {
       if (etagesDe === filtre && etages) return; etagesDe = filtre;
@@ -501,9 +513,16 @@
     map.addSource('pl-fond', { type: 'raster', tiles: [racine + 'fond/{z}/{x}/{y}.webp'], tileSize: 512, minzoom: 10, maxzoom: 14, bounds: e, attribution: 'Fonds : Litto3D® Shom-IGN, HOMONIM Shom, natures de fond Shom' });
     map.addLayer({ id: 'pl-fond', type: 'raster', source: 'pl-fond', paint: { 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, 'analyses');
     map.addSource('pl-vect', { type: 'geojson', data: fonds });
-    if (herbiers) map.addSource('pl-herbiers', { type: 'geojson', data: herbiers });
-    if (herbiers) for (let k = 0; k < NIMG; k++) map.addImage('pl-herb' + k, motifHerbier(k));
-    if (herbiers) map.addLayer({ id: 'pl-herbiers', type: 'fill', source: 'pl-herbiers', minzoom: 12, paint: { 'fill-pattern': 'pl-herb0', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.55, 15, 0.9] } }, 'analyses');
+    if (herbiers) {
+      map.addSource('pl-herbiers', { type: 'geojson', data: herbiers });
+      D.herb = [];
+      for (const f of herbiers.features) for (const p of f.geometry.coordinates) { const b = [180, 90, -180, -90]; for (const q of p[0]) { if (q[0] < b[0]) b[0] = q[0]; if (q[0] > b[2]) b[2] = q[0]; if (q[1] < b[1]) b[1] = q[1]; if (q[1] > b[3]) b[3] = q[1]; } D.herb.push({ k: f.properties.k, b, p }); }
+    }
+    if (herbiers) for (let k = 0; k < NIMG; k++) map.addImage('pl-herb' + k, motifHerbier(k), { pixelRatio: 2 });
+    if (herbiers) {
+      map.addLayer({ id: 'pl-herbiers', type: 'fill', source: 'pl-herbiers', filter: ['==', ['get', 'k'], 'herbier'], minzoom: 15.6, paint: { 'fill-pattern': 'pl-herb0', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15.6, 0, 16.4, 0.8] } }, 'analyses');
+      map.addLayer({ id: 'pl-herbiers-aplat', type: 'fill', source: 'pl-herbiers', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'k'], 'herbier', '#3f8a4c', '#a39672'], 'fill-opacity': 0.62 } }, 'analyses');
+    }
     map.addLayer({ id: 'pl-nature', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'nature'], layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'm'], 'roche', '#7d6650', 'sable', '#f0d78e', 'vase', '#8f9a6a', '#cccccc'], 'fill-opacity': 0.5, 'fill-outline-color': 'rgba(255,255,255,0.35)' } }, 'analyses');
     // L'eau lit le relief dans sa propre source (les mêmes tuiles, déjà en mémoire du navigateur) : la carte dessine mieux
     // une teinte et un relief 3D qui ne partagent pas la même source.
@@ -534,7 +553,7 @@
     // Animation des herbiers (quand la donnée existe) : une image sur trois de l'horloge, de près seulement.
     let niveau = 0, image = 0;
     const animer = n => {
-      if (!herbiers || map.getZoom() < 13.5) return false;
+      if (!herbiers || map.getZoom() < 15.6) return false;
       if (n % 3 === 0) { image = (image + 1) % NIMG; map.setPaintProperty('pl-herbiers', 'fill-pattern', 'pl-herb' + image); }
       return true;
     };
@@ -592,10 +611,10 @@
     // ---------- Thèmes ----------
     const themes = {};
     const aide = {
-      profondeurs: 'Profondeurs en mètres sous le niveau moyen de la mer (Litto3D, IGN 69 ; à quelques décimètres du zéro des cartes marines en Méditerranée). Le fond est le relevé Litto3D du Shom et de l\'IGN (2015) : un lidar aéroporté qui traverse l\'eau claire et relève le fond au mètre, jusqu\'à une quarantaine de mètres ici (pointillé doré). Plus loin et plus profond, c\'est le modèle HOMONIM du Shom, à 100 m : formes générales seulement. Faire baisser le niveau ne déplace rien : la carte retire la teinte de l\'eau au-dessus du niveau choisi, et le fond apparaît à sec, avec les couleurs de la carte des natures de fond du Shom (sable, roche, vase) et l\'ombrage du relief. Les teintes gardent leur profondeur vraie. Les isobathes sont retracées sur le relief lissé à une dizaine de mètres ; une roche isolée, une ancre, une épave récente peuvent manquer. Le menu propose un relief accentué, utile sous l\'eau où les pentes sont douces. Ni carte marine ni instrument de navigation.',
+      profondeurs: 'Profondeurs en mètres sous le niveau moyen de la mer (Litto3D, IGN 69 ; à quelques décimètres du zéro des cartes marines en Méditerranée). Le fond est le relevé Litto3D du Shom et de l\'IGN (2015) : un lidar aéroporté qui traverse l\'eau claire et relève le fond au mètre, jusqu\'à une quarantaine de mètres ici (pointillé doré). Plus loin et plus profond, c\'est le modèle HOMONIM du Shom, à 100 m : formes générales seulement. Faire baisser le niveau ne déplace rien : la carte retire la teinte de l\'eau au-dessus du niveau choisi, et le fond apparaît à sec, avec les couleurs de la carte des natures de fond du Shom (sable, roche, vase), le vert des herbiers de posidonie (inventaire de l\'OFB) et l\'ombrage du relief. Les teintes gardent leur profondeur vraie. Les isobathes sont retracées sur le relief lissé à une dizaine de mètres ; une roche isolée, une ancre, une épave récente peuvent manquer. Le menu propose un relief accentué, utile sous l\'eau où les pentes sont douces. Ni carte marine ni instrument de navigation.',
       lumiere: 'L\'eau absorbe les couleurs dans l\'ordre : le rouge dès les premiers mètres, puis l\'orange et le jaune ; le vert et le bleu vont loin. Calcul pour une eau très claire (coefficients d\'absorption de l\'eau pure, Pope et Fry 1997), sur le trajet de la lumière de la surface au fond ; une eau chargée ou un ciel couvert assombrissent bien davantage. La part de lumière tient compte de la hauteur du soleil, calculée pour le jour et l\'heure.',
-      poissons: 'Les espèces sont placées là où leur milieu existe (nature du fond, profondeur, pente), sur des points tous les 70 m de la zone du lidar. Personne ne cartographie les poissons : la carte montre ce qu\'on peut croiser, pas ce qui est là. Les dessins sont des pictogrammes ; tailles et vitesses sont pensées pour l\'écran. Les herbiers de posidonie, refuges de nombreuses espèces, ne sont pas encore sur la carte.',
-      natures: 'Natures de fond au 1/50 000 du Shom (Licence Ouverte) : sédiment et roche relevés par prélèvements et levés anciens, généralisés. À cette échelle, une limite peut être décalée de plusieurs dizaines de mètres, et une tête de roche dans le sable n\'y figure pas : le relief du lidar la montre souvent mieux. Les herbiers de posidonie ne font pas partie de ce produit.',
+      poissons: 'Les espèces sont placées là où leur milieu existe (nature du fond, profondeur, pente), sur des points tous les 70 m de la zone du lidar. Personne ne cartographie les poissons : la carte montre ce qu\'on peut croiser, pas ce qui est là. Les dessins sont des pictogrammes ; tailles et vitesses sont pensées pour l\'écran. L\'herbier de posidonie, refuge de nombreuses espèces, est un milieu à part : il vient de l\'inventaire de l\'Office français de la biodiversité.',
+      natures: 'Natures de fond au 1/50 000 du Shom (Licence Ouverte) : sédiment et roche relevés par prélèvements et levés anciens, généralisés. À cette échelle, une limite peut être décalée de plusieurs dizaines de mètres, et une tête de roche dans le sable n\'y figure pas : le relief du lidar la montre souvent mieux. Herbiers de posidonie : inventaire de l\'Office français de la biodiversité (programme Life Marha, Licence Ouverte), qui rassemble des cartographies de plusieurs producteurs, ici surtout Andromède Océanologie (levés de 2004 à 2010) et Semantic TS (2019). L\'herbier vivant est une prairie de plantes à fleurs, protégée ; la matte morte est le tapis de racines qui reste là où l\'herbier a disparu. Un herbier bouge peu, mais ces levés ont quinze ans pour la plupart : la limite a pu reculer par endroits.',
       sites: 'Épaves et obstructions : base du Shom (CC BY-SA 4.0), avec la précision de position annoncée. Secs : sommets sous-marins repérés par la carte dans le relief du lidar, qui dominent leurs alentours d\'au moins 4 m. Les sites que tu ajoutes restent dans ce téléphone ; « Partager » les envoie par un lien. Aucun site n\'est une autorisation : zones protégées, chenaux et mouillages réglementés restent à vérifier.',
       parcours: 'Le profil lit le relief au pas de 3,5 m (lidar) le long du tracé. La durée suppose un groupe de plongeurs qui palme tranquillement, autour de 10 m par minute, sans les paliers : elle donne un ordre de grandeur pour choisir un parcours, pas un temps de plongée. Ni la carte ni ce calcul ne remplacent le directeur de plongée, les tables ou l\'ordinateur.',
       niveaux: 'Repères de profondeur maximale de la Fédération française d\'études et de sports sous-marins : baptême 6 m ; niveau 1 jusqu\'à 20 m encadré ; niveau 2 jusqu\'à 40 m encadré (20 m en autonomie) ; niveau 3 jusqu\'à 60 m en autonomie. Les conditions du jour, l\'expérience et le directeur de plongée décident : ces lignes servent à lire le relief autour d\'un site.',
@@ -699,7 +718,7 @@
         const c = q._c; if (!c) return;
         if (f) { const e = espece(f.properties.e); c.querySelector('.pl-detail').innerHTML = fiche(e); app.bulle(ll, `<span class="fort">${e.nom}</span><small>${e.latin}</small>`); return; }
         const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, z >= 0 ? 'À terre' : 'Hors du secteur'); return; }
-        const n = natureEn(ll.lng, ll.lat), mil = n ? { roche: 1, sable: 2, vase: 3 }[n.m] : 2, l = liste(-z, mil);
+        const n = natureEn(ll.lng, ll.lat), mil = n ? { roche: 1, sable: 2, vase: 3, herbier: 'h', matte: 2 }[n.m] : 2, l = liste(-z, mil);
         app.bulle(ll, `<span class="fort">${m(-z)}</span>, ${n ? n.t.toLowerCase() : 'fond mal connu'}<small>${l.length} espèces qu'on peut y croiser</small>`);
         c.querySelector('.pl-detail').innerHTML = `<p class="petit2" style="margin-top:8px">Ici, sur ${n ? n.t.toLowerCase() : 'ce fond'} à ${m(-z)} :</p>` + l.map(fiche).join('');
       };
@@ -712,15 +731,20 @@
     themes.natures = {
       theme: 'Fonds', libelle: 'Sur quel fond ?', aide: aide.natures,
       async ouvrir(app) {
-        montrer(['pl-nature'], true);
-        const masques = new Set(), c = app.repondre(this.libelle, `<p class="etat">Touche le fond pour sa nature. ${D.herbiers ? '' : 'Les herbiers de posidonie arriveront avec la donnée de l\'OFB.'}</p><div class="legende"></div>`);
-        app.legende(c, [{ cle: 'roche', couleur: '#7d6650', texte: 'roche, cailloutis' }, { cle: 'sable', couleur: '#f0d78e', texte: 'sable, graviers' }, { cle: 'vase', couleur: '#8f9a6a', texte: 'vase' }], ms => map.setFilter('pl-nature', ['all', ['==', ['get', 'k'], 'nature'], ['!', ['in', ['get', 'm'], ['literal', [...ms]]]]]), masques);
+        montrer(['pl-nature', 'pl-herbiers-aplat'], true);
+        const masques = new Set(), c = app.repondre(this.libelle, `<p class="etat">Touche le fond pour sa nature.${D.herbiers ? ' En vert, les herbiers de posidonie.' : ''}</p><div class="legende"></div>`);
+        const postes = [{ cle: 'roche', couleur: '#7d6650', texte: 'roche, cailloutis' }, { cle: 'sable', couleur: '#f0d78e', texte: 'sable, graviers' }, { cle: 'vase', couleur: '#8f9a6a', texte: 'vase' }];
+        if (D.herbiers) postes.unshift({ cle: 'herbier', couleur: '#3f8a4c', texte: 'herbier de posidonie' }, { cle: 'matte', couleur: '#a39672', texte: 'matte morte' });
+        app.legende(c, postes, ms => {
+          map.setFilter('pl-nature', ['all', ['==', ['get', 'k'], 'nature'], ['!', ['in', ['get', 'm'], ['literal', [...ms]]]]]);
+          if (D.herbiers) map.setFilter('pl-herbiers-aplat', ['!', ['in', ['get', 'k'], ['literal', [...ms]]]]);
+        }, masques);
       },
       async toucher(app, ll) {
         const n = natureEn(ll.lng, ll.lat), z = await altitude(ll.lng, ll.lat);
-        app.bulle(ll, n ? `<span class="fort">${n.t}</span><small>${z === z && z < 0 ? m(-z) + ' de fond · ' : ''}${NOMS_MILIEU[n.m].toLowerCase()} pour la carte</small>` : (z >= 0 ? 'À terre' : 'Nature du fond inconnue ici'));
+        app.bulle(ll, n ? `<span class="fort">${n.t}</span><small>${z === z && z < 0 ? m(-z) + ' de fond' : ''}${HERBIER[n.m] ? '' : (z === z && z < 0 ? ' · ' : '') + NOMS_MILIEU[n.m].toLowerCase() + ' pour la carte'}</small>` : (z >= 0 ? 'À terre' : 'Nature du fond inconnue ici'));
       },
-      fermer() { montrer(['pl-nature'], false); map.setFilter('pl-nature', ['==', ['get', 'k'], 'nature']); }
+      fermer() { montrer(['pl-nature', 'pl-herbiers-aplat'], false); map.setFilter('pl-nature', ['==', ['get', 'k'], 'nature']); if (D.herbiers) map.setFilter('pl-herbiers-aplat', null); }
     };
 
     // --- Sites : où plonger ? ---

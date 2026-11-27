@@ -17,13 +17,13 @@ Produits (dans plongee/) :
   fonds.json               isobathes, secs, tombants, emprise du lidar, épaves, obstructions et natures de
                            fond du Shom, masque terre-mer à 60 m, aire du fond par mètre de profondeur ;
   habitats.json            points d'habitat tous les 70 m (profondeur, milieu, pente), pour placer les poissons.
-Un fichier plongee/herbiers.json (polygones d'herbiers, GeoJSON), s'il existe, est signalé dans fonds.json et la page
-l'affiche en motif animé : la donnée de l'OFB reste à y verser.
+  herbiers.json            herbiers de posidonie et matte morte (inventaire de l'OFB, Licence Ouverte), réunis par
+                           classe ; ils teintent aussi le fond « vidé » et donnent leur milieu aux points d'habitat.
 
 Les épaves, obstructions et natures de fond se lisent une fois auprès du Shom (WFS) : epaves.json, obstructions.json et
 ndf.json dans le dossier des données (voir sediments()).
 
-Usage : python3 relais/plongee_fonds.py [dossier_des_donnees] [--refaire] [--tuiles] [--vecteurs] [--texture]
+Usage : python3 relais/plongee_fonds.py [dossier_des_donnees] [--refaire] [--tuiles] [--herbiers] [--vecteurs] [--texture]
         (dossier par défaut : ../donnees à côté du dépôt ; sans option d'étape, tout est produit)
 Dépendances : numpy, scipy, scikit-image, shapely, pyproj, py7zr, Pillow, matplotlib.
 """
@@ -96,6 +96,85 @@ def sediments():
         f = os.path.join(DONNEES, nom)
         if not os.path.exists(f):
             open(f, 'wb').write(lire_url(f'{SHOM_WFS}&SRSNAME=EPSG:4326&TYPENAMES={couche}&BBOX={bx0},{by0},{bx1},{by1},EPSG:3857'))
+
+
+URL_HERBIERS = ('https://wxs.ofb.fr/geoserver/habitat/ows?service=WFS&version=2.0.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326'
+                '&typeNames=habitat:eco_med_herbier_posidonia_oceanica_2022_pol_3857')
+
+
+def herbiers():
+    """Herbiers de posidonie : inventaire de l'OFB (Life Marha, Licence Ouverte), qui rassemble des cartographies de
+    plusieurs producteurs (ici surtout Andromède Océanologie, 2004-2010, et Semantic TS, 2019). Deux classes : l'herbier
+    vivant et la matte morte (l'ancien herbier, dont il reste le tapis de racines). Les polygones sont réunis par
+    classe, simplifiés à 5 m près et écrits dans plongee/herbiers.json."""
+    from shapely.geometry import shape, mapping, box
+    from shapely.ops import unary_union
+    brut = os.path.join(DONNEES, 'herbiers_ofb.json')
+    if not os.path.exists(brut):
+        bx0, by0 = merc(OUEST, SUD)
+        bx1, by1 = merc(EST, NORD)
+        try:
+            open(brut, 'wb').write(lire_url(f'{URL_HERBIERS}&bbox={bx0},{by0},{bx1},{by1},EPSG:3857'))
+        except Exception as e:
+            print('  herbiers : service de l\'OFB injoignable', e)
+            return None
+    feats = json.load(open(brut))['features']
+    cadre = box(OUEST, SUD, EST, NORD)
+    classes = {'herbier': [], 'matte': []}
+    for f in feats:
+        g = shape(f['geometry']).buffer(0)
+        if not g.is_empty:
+            classes['matte' if 'matte' in (f['properties'].get('legende') or '').lower() else 'herbier'].append(g)
+    vivant = unary_union(classes['herbier']).intersection(cadre)
+    morte = unary_union(classes['matte']).intersection(cadre).difference(vivant)       # l'herbier vivant l'emporte où les deux se recouvrent
+    out = []
+    for k, g in [('herbier', vivant), ('matte', morte)]:
+        g = g.simplify(0.00005).buffer(0)
+        if g.is_empty:
+            continue
+        polys = [g] if g.geom_type == 'Polygon' else list(g.geoms)
+        polys = [q for q in polys if q.geom_type == 'Polygon' and q.area > 1e-8]           # moins de 100 m² : du bruit à cette échelle
+        coords = [[[[round(x, 5), round(y, 5)] for x, y in r.coords] for r in [q.exterior] + [t for t in q.interiors if Polygon_aire(t) > 2e-9]] for q in polys]
+        out.append({'type': 'Feature', 'properties': {'k': k}, 'geometry': {'type': 'MultiPolygon', 'coordinates': coords}})
+        print(f'  herbiers, {k} : {len(polys)} polygones, {sum(q.area for q in polys) * 111.2 * 80.6:.1f} km²')
+    json.dump({'type': 'FeatureCollection', 'features': out}, open(os.path.join(SORTIE, 'herbiers.json'), 'w'), separators=(',', ':'))
+    print('  herbiers.json :', os.path.getsize(os.path.join(SORTIE, 'herbiers.json')) // 1024, 'ko')
+    return out
+
+
+def Polygon_aire(anneau):
+    from shapely.geometry import Polygon
+    return Polygon(anneau).area
+
+
+def herbiers_grille():
+    """Herbiers rastérisés sur la grille : 0 rien, 1 herbier vivant, 2 matte morte. None si la donnée manque."""
+    f = os.path.join(SORTIE, 'herbiers.json')
+    if not os.path.exists(f):
+        return None
+    from PIL import ImageDraw
+    im = Image.new('L', (W, H), 0)
+    dr = ImageDraw.Draw(im)
+    px = lambda lon, lat: ((merc(lon, lat)[0] - GX0) / TAILLE, (GY1 - merc(lon, lat)[1]) / TAILLE)
+    feats = json.load(open(f))['features']
+    for e in sorted(feats, key=lambda e: e['properties']['k'] == 'herbier'):          # la matte d'abord, l'herbier par-dessus
+        code = 1 if e['properties']['k'] == 'herbier' else 2
+        for pl in e['geometry']['coordinates']:
+            # Un trou dans un polygone est rendu à ce qu'il y avait dessous (rien, ou la matte déjà dessinée).
+            masque = Image.new('L', (W, H), 0)
+            b = [px(*c) for c in pl[0]]
+            x0, y0 = int(min(q[0] for q in b)) - 2, int(min(q[1] for q in b)) - 2
+            x1, y1 = int(max(q[0] for q in b)) + 3, int(max(q[1] for q in b)) + 3
+            x0, y0, x1, y1 = max(0, x0), max(0, y0), min(W, x1), min(H, y1)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            petit = Image.new('L', (x1 - x0, y1 - y0), 0)
+            d2 = ImageDraw.Draw(petit)
+            d2.polygon([(q[0] - x0, q[1] - y0) for q in b], fill=255)
+            for trou in pl[1:]:
+                d2.polygon([(px(*c)[0] - x0, px(*c)[1] - y0) for c in trou], fill=0)
+            im.paste(code, (x0, y0), petit)
+    return np.asarray(im)
 
 
 def litto3d():
@@ -506,7 +585,7 @@ def vecteurs(z, source):
     jj, ii, zz = jj[ok], ii[ok], zz[ok]
     lon = np.array([geo(GX0 + (i + 0.5) * TAILLE, 0)[0] for i in ii])
     lat = np.array([geo(0, GY1 - (j + 0.5) * TAILLE)[1] for j in jj])
-    mil = np.zeros(len(lon), np.uint8)     # 0 inconnu, 1 roche, 2 sable, 3 vase
+    mil = np.zeros(len(lon), np.uint8)     # 0 inconnu, 1 roche, 2 sable, 3 vase, 4 herbier de posidonie
     for e in feats:
         if e['properties']['k'] != 'nature':
             continue
@@ -518,6 +597,9 @@ def vecteurs(z, source):
                 dedans &= ~Chemin(trou).contains_points(np.c_[lon, lat])
             mil[dedans] = code
     pte = np.degrees(np.arctan(np.hypot(*np.gradient(gaussian_filter(z, 2), TAILLE * 0.7253))))[jj, ii]
+    hg = herbiers_grille()
+    if hg is not None:
+        mil[hg[jj, ii] == 1] = 4          # herbier vivant : un milieu à part, celui de beaucoup d'espèces
     pts = [[round(float(a), 5), round(float(b), 5), round(-float(c), 1), int(m), int(min(89, t))] for a, b, c, m, t in zip(lon, lat, zz, mil, pte)]
     json.dump(pts, open(os.path.join(SORTIE, 'habitats.json'), 'w'), separators=(',', ':'))
     print('  habitats.json :', len(pts), 'points,', os.path.getsize(os.path.join(SORTIE, 'habitats.json')) // 1024, 'ko')
@@ -562,6 +644,13 @@ def texture(z, source):
     inconnu = np.array([208, 194, 162], np.float32)
     # Les limites de la carte des sédiments (1/50 000) sont floues sur le terrain : on fond les milieux sur 25 m environ.
     poids_mil = [gaussian_filter((mil == k).astype(np.float32), 7) for k in range(4)]
+    # Herbiers : un vert de prairie pour l'herbier vivant, un brun-vert terne pour la matte morte ; bords à peine adoucis
+    # (la cartographie des herbiers est bien plus fine que celle des sédiments), et un grain serré, comme des touffes.
+    hg = herbiers_grille()
+    if hg is not None:
+        poids_h = [gaussian_filter((hg == k).astype(np.float32), 1.2) for k in (1, 2)]
+        touffes = gaussian_filter(rng.standard_normal(z.shape).astype(np.float32), 1.1) * 2.2 + 0.5 * agrandir(rng.standard_normal((z.shape[0] // 6 + 2, z.shape[1] // 6 + 2)).astype(np.float32), 6, order=1)[: z.shape[0], : z.shape[1]]
+    vert, terne = np.array([112, 150, 92], np.float32), np.array([150, 140, 108], np.float32)
 
     def ombre(zz, fz):
         gy, gx = np.gradient(zz * fz, PAS)
@@ -589,6 +678,10 @@ def texture(z, source):
         raide = np.clip((np.degrees(pente) - 16) / 14, 0, 1) * 0.8
         base = base * (1 - raide[..., None]) + roche * raide[..., None]
         base *= (1 + 0.07 * bruit[a0:a1])[..., None]
+        if hg is not None:
+            wh, wm = poids_h[0][a0:a1, :, None], poids_h[1][a0:a1, :, None] * 0.85
+            tf = touffes[a0:a1, :, None]
+            base = base * (1 - wh - wm * (1 - wh)) + vert * (1 + 0.11 * tf) * wh + terne * (1 + 0.05 * tf) * wm * (1 - wh)
         prof = np.clip(-zb, 0, None)
         lointain = 1 - 0.42 * np.clip(np.log1p(prof) / np.log1p(400), 0, 1)
         lum = (0.66 + 0.75 * (fin - 0.55) + 0.3 * (large - 0.55) * (1 - hors_tout[a0:a1])) * (1 + 0.25 * occl)
@@ -636,9 +729,11 @@ if __name__ == '__main__':
         np.save(fz, z)
         np.save(fs, source)
         print('Assemblage :', float(np.nanmin(z)), float(np.nanmax(z)))
-    tout = not any(a in sys.argv for a in ['--tuiles', '--vecteurs', '--texture'])
+    tout = not any(a in sys.argv for a in ['--tuiles', '--vecteurs', '--texture', '--herbiers'])
     if tout or '--tuiles' in sys.argv:
         tuiles(z)
+    if tout or '--herbiers' in sys.argv or not os.path.exists(os.path.join(SORTIE, 'herbiers.json')):
+        herbiers()
     if tout or '--vecteurs' in sys.argv:
         vecteurs(z, source)
     if tout or '--texture' in sys.argv:

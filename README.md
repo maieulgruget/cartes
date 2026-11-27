@@ -50,8 +50,9 @@ fond, tournées selon la fiche du Shom ; bancs de poissons attachés à des poin
 jamais à terre) ; abri à la houle par la longueur d'eau libre ; animation à douze images par seconde, arrêtée après une
 minute sans geste. `relais/plongee_fonds.py` prépare
 `plongee/relief/`, `plongee/fond/`, `fonds.json` et `habitats.json` à partir du Litto3D (Shom-IGN), du MNT HOMONIM, du
-RGE ALTI et des natures de fond du Shom ; il se relance pour une autre emprise. Les herbiers de posidonie (OFB) restent à
-verser dans `plongee/herbiers.json`.
+RGE ALTI et des natures de fond du Shom ; il se relance pour une autre emprise. Les herbiers de posidonie (inventaire de
+l'OFB, Licence Ouverte) sont lus par le même script : ils teintent l'image du fond, donnent leur milieu aux points
+d'habitat et sont écrits dans `plongee/herbiers.json`.
 
 `socle/arbres.js` : autour du centre de la vue, il repère chaque cime dans la hauteur du couvert (surface moins sol du
 LiDAR HD) et dresse un arbre à sa hauteur ; le relevé suit la carte. Sur toutes les cartes et tous les fonds par le bouton
