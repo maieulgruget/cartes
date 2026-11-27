@@ -590,7 +590,7 @@
          On passe de l'une à l'autre en touchant le titre ou le chevron ; la taille choisie est gardée d'un thème à l'autre.
          « Calque » retire un instant de la carte ce que le thème y a posé ; la croix ferme le thème. */
       repondre(titre, html) {
-        reponse.hidden = false; masque = false;
+        reponse.hidden = false; if (masque) { masque = false; appliquerMasque(); }
         reponse.classList.toggle('replie', garde.lire(clePanneau(), '') === 'reduit'); reponse.classList.remove('aveclegende');
         reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && (app.active.plein !== false || app.active.pleinPropre) ? '<button class="grand">⤢ Plein écran</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
         reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
@@ -779,8 +779,9 @@
       async choisir(q) {
         if (pleinCourant) pleinCourant.fermer();
         auPanneau = null;
+        if (masque) { masque = false; appliquerMasque(); }   // avant la fermeture : le thème éteint ensuite lui-même ses calques
         if (app.active) { const a = app.active; a.bouton.setAttribute('aria-pressed', 'false'); app.active = null; try { a.fermer && a.fermer(app); } catch (e) { console.error(e); } }
-        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle(); if (masque) { masque = false; appliquerMasque(); }
+        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle();
         sous.hidden = true; sous.innerHTML = '';
         if (!q) return;
         app.active = q; q.bouton.setAttribute('aria-pressed', 'true'); q.bouton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
@@ -804,7 +805,17 @@
     // Couches du fond de carte, relevées une fois : tout ce qui s'y ajoute ensuite appartient à un thème.
     const couchesFond = new Set(map.getStyle().layers.map(l => l.id).concat(['maposition']));
     let masque = false, bulleCarte = null, pleinCourant = null, pleinEtaitLibre = false, numeroPi = 0, auPanneau = null;
-    function appliquerMasque() { for (const l of map.getStyle().layers) if (!couchesFond.has(l.id)) map.setLayoutProperty(l.id, 'visibility', masque ? 'none' : 'visible'); }
+    /* « Calque » éteint ce que le thème a posé, puis ne rallume que ce qui était allumé : un calque gardé éteint par la
+       carte (les forêts hors du thème Forêt, par exemple) ne doit pas apparaître au retour. */
+    const eteints = new Set();
+    function appliquerMasque() {
+      for (const l of map.getStyle().layers) {
+        if (couchesFond.has(l.id)) continue;
+        if (masque) { if (map.getLayoutProperty(l.id, 'visibility') !== 'none') { eteints.add(l.id); map.setLayoutProperty(l.id, 'visibility', 'none'); } }
+        else if (eteints.has(l.id)) map.setLayoutProperty(l.id, 'visibility', 'visible');
+      }
+      if (!masque) eteints.clear();
+    }
     map.on('sourcedata', () => { if (masque) appliquerMasque(); });
     let avale = 0;   // un appui long ne compte pas comme un toucher de la carte
     map.on('click', e => { if (Date.now() < avale) return; if (app.active && app.active.toucher) app.active.toucher(app, e.lngLat); });
