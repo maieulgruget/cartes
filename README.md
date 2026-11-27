@@ -10,6 +10,7 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Où chercher (Semnoz, champignons) | `semnoz/` | note par champignon, pluie des 14 jours, peuplements |
 | Où chercher (Gréolières, Bar-sur-Loup et Sophia Antipolis, champignons) | `greolieres/` | même carte dans le 06, du Cheiron à Sophia, avec le sanguin et les chênaies |
 | Sous voile (de Cerbère à Menton, et la Corse) | `voile/` | vent, vagues dessinées sur la mer, fonds marins et isobathes, ports et abris par ordre d'importance, balises, route avec allures et profil des fonds, voilier en volume |
+| Sous la surface (îles de Lérins, golfe Juan, cap d'Antibes) | `plongee/` | la mer que l'on vide pour voir le fond comme un relief, profondeurs, couleurs qui s'éteignent avec la profondeur, poissons selon le milieu, natures de fond, sites (épaves, secs, sites à soi), parcours avec profil du fond, limites des niveaux, conditions et abri à la houle |
 | Mes randos (Corse, puis toute la France) | `corse/` | où je suis passé : tracés drapés sur le relief, profil, pente le long du chemin, altitude, sol et type de chemin (Komoot), survol ; lumière ; itinéraire à préparer |
 
 Photo aérienne : la BD ORTHO courante de l'IGN (20 cm), sous la photo à très haute résolution de l'IGN là où elle existe
@@ -40,6 +41,16 @@ par une tâche planifiée : tant que ce fichier manque, la carte interroge le se
 partent de France (hors de Corse, rognés de 400 m à chaque bout, le dépôt étant public) (secrets `KOMOOT_EMAIL` et `KOMOOT_PASSWORD`), avec le type de chemin et la nature du sol le long du
 tracé. Les réponses de Komoot sont gardées dans `corse/komoot/` ; un numéro ajouté à `corse/komoot/ecartes.txt` écarte un
 tour. La tâche « Randos » le relance chaque lundi, à chaque GPX déposé, ou à la demande.
+
+`socle/plongee.js` (carte Plongée, transposable à un autre secteur) : le relief terre-mer du secteur remplace celui du
+socle (protocole « plongee » : tuiles du dossier, relief mondial autour) ; le fond « vidé » est une image préparée
+(sédiment, ombrage) ; l'eau est une règle de couleur sur le relief, calculée par la carte graphique, si bien que baisser
+la mer, limiter à un niveau ou passer en teintes de profondeur ne recharge rien. Épaves en silhouettes couchées sur le
+fond, tournées selon la fiche du Shom ; poissons simulés sur des points d'habitat ; abri à la houle par la longueur d'eau
+libre ; animations à cinq images par seconde, arrêtées après une minute sans geste. `relais/plongee_fonds.py` prépare
+`plongee/relief/`, `plongee/fond/`, `fonds.json` et `habitats.json` à partir du Litto3D (Shom-IGN), du MNT HOMONIM, du
+RGE ALTI et des natures de fond du Shom ; il se relance pour une autre emprise. Les herbiers de posidonie (OFB) restent à
+verser dans `plongee/herbiers.json`.
 
 `socle/arbres.js` : autour du centre de la vue, il repère chaque cime dans la hauteur du couvert (surface moins sol du
 LiDAR HD) et dresse un arbre à sa hauteur ; le relevé suit la carte. Sur toutes les cartes et tous les fonds par le bouton

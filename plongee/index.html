@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Plongée">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-180.png">
+<title>Plongée — des îles de Lérins au cap d'Antibes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+<script src="../socle/plongee.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const F = 'Europe/Paris';
+  // La carte s'ouvre à plat, le temps que le relief du secteur (terre et fonds) remplace celui du socle ; elle bascule ensuite en 3D.
+  const app = await Socle.creer({
+    id: 'plongee', racine: '../', titre: 'Sous la surface', sousTitre: 'Lérins, golfe Juan, cap d\'Antibes',
+    centre: [7.0540, 43.5250], zoom: 12.6, pitch: 0, bearing: -12, pitch3d: 58,
+    limites: [[6.80, 43.37], [7.28, 43.67]],
+    recherche: { centre: [7.05, 43.53], rayonKm: 14 },
+    signets: [
+      { nom: 'Tout le secteur', note: 'de la Croisette au cap d\'Antibes', centre: [7.0450, 43.5250], zoom: 11.6, pitch: 0, bearing: 0 },
+      { nom: 'Îles de Lérins', note: 'le plateau, vu du sud', centre: [7.0480, 43.5080], zoom: 13.4, pitch: 60, bearing: -10 },
+      { nom: 'Écomusée sous-marin', note: 'les statues de Sainte-Marguerite', centre: [7.0503, 43.5152], zoom: 16.4, pitch: 58, bearing: 20 },
+      { nom: 'Saint-Honorat, côté large', centre: [7.0470, 43.5020], zoom: 14.6, pitch: 62, bearing: 0 },
+      { nom: 'Pointe de la Croisette', centre: [7.0370, 43.5330], zoom: 14.6, pitch: 58, bearing: -30 },
+      { nom: 'La Fourmigue', note: 'le haut-fond du golfe Juan', centre: [7.0830, 43.5400], zoom: 15.2, pitch: 62, bearing: 0 },
+      { nom: 'Golfe Juan', centre: [7.0850, 43.5520], zoom: 13.4, pitch: 55, bearing: 0 },
+      { nom: 'Cap d\'Antibes', note: 'la pointe de l\'Îlette', centre: [7.1230, 43.5440], zoom: 14.4, pitch: 60, bearing: 20 },
+      { nom: 'Le tombant du large', note: 'où le plateau plonge', centre: [7.0600, 43.4920], zoom: 13.2, pitch: 65, bearing: -20 }
+    ],
+    sources: 'Fonds marins : Litto3D® PACA 2015 (Shom, IGN ; Licence Ouverte), lidar bathymétrique au mètre jusqu\'à une quarantaine de mètres de fond ; au-delà, MNT de façade HOMONIM du Shom à 100 m, relu sur sa palette. À terre : Litto3D puis RGE ALTI de l\'IGN. Natures de fond au 1/50 000 : Shom, 2025 (Licence Ouverte). Épaves et obstructions : Shom (CC BY-SA 4.0). Vagues, houle, vent, température de l\'eau : Open-Meteo. Les poissons sont une illustration de ce qu\'on peut croiser selon le milieu, pas une observation. Carte de préparation et de découverte : elle ne remplace ni la carte marine, ni les tables ou l\'ordinateur de plongée, ni le directeur de plongée.'
+  });
+  app.map.setMinZoom(10.2);
+  const P = await Socle.plongee.installer(app, { donnees: './', fuseau: F, centreMeteo: [7.06, 43.50] });
+  const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
+  // Trois familles : la mer (la vider, ses profondeurs, sa lumière), la vie (poissons, fonds), plonger (sites, parcours, niveaux, conditions).
+  famille('Mer', P.themes.vider);
+  famille('Mer', P.themes.profondeurs);
+  famille('Mer', P.themes.lumiere);
+  famille('Vie', P.themes.poissons);
+  famille('Vie', P.themes.natures);
+  famille('Plonger', P.themes.sites);
+  famille('Plonger', P.themes.parcours);
+  famille('Plonger', P.themes.niveaux);
+  famille('Plonger', P.themes.conditions);
+  // Bascule en 3D ; une vue reçue par un lien garde son inclinaison.
+  const incl = app.map.getPitch();
+  setTimeout(() => { app.mettre3d(true); if (incl > 5) setTimeout(() => app.map.easeTo({ pitch: incl, duration: 300 }), 750); }, 400);
+})();
+</script>
+</body>
+</html>
