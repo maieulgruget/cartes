@@ -23,6 +23,7 @@
 <script src="../socle/drone.js"></script>
 <script src="../socle/arbres.js"></script>
 <script src="../socle/trace.js"></script>
+<script src="baleines.js"></script>
 </head>
 <body>
 <script>
@@ -45,7 +46,7 @@
       { nom: 'Piton de la Fournaise', note: 'depuis le Pas de Bellecombe', centre: [55.7050, -21.2360], zoom: 12.8, pitch: 62, bearing: 110 },
       { nom: 'Cap Méchant', note: 'la côte sauvage du sud', centre: [55.7109, -21.3760], zoom: 14, pitch: 55, bearing: 160 }
     ],
-    sources: 'Relief : LiDAR HD de l\'IGN, lu à la volée ; en vue rapprochée, le calcul prend le modèle de surface, donc les arbres et les bâtiments portent ombre. Photo aérienne : IGN, prise de vue de 2022 (la plus récente est voilée sur les sommets) ; plan : IGN. La position du soleil est calculée (précision de l\'ordre du demi-degré), les heures sont celles de La Réunion. Les nuages, qui montent dans les cirques en fin de matinée, ne sont pas pris en compte.'
+    sources: 'Relief : LiDAR HD de l\'IGN, lu à la volée ; en vue rapprochée, le calcul prend le modèle de surface, donc les arbres et les bâtiments portent ombre. Photo aérienne : IGN, prise de vue de 2022 (la plus récente est voilée sur les sommets) ; plan : IGN. La position du soleil est calculée (précision de l\'ordre du demi-degré), les heures sont celles de La Réunion. Les nuages, qui montent dans les cirques en fin de matinée, ne sont pas pris en compte. Baleines et dauphins : observations de Globice (2008-2018) et grille de prospection (2008-2022), publiées sur Sextant (Ifremer).'
   });
   // Trois familles : la lumière (ombres à une heure, lumière rasante, course du soleil), le ciel, le drone.
   // Les heures de soleil d'un point se lisent dans « Soleil » (premier et dernier rayon) ou en touchant la carte dans « Ombres ».
@@ -57,6 +58,7 @@
   famille('Drone', Socle.drone.camera({ cle: 'reunion', nom: 'Plan de vol — La Réunion', theme: 'Caméra' }));
   famille('Drone', Socle.drone.vol({ fuseau: F }));
   famille('Drone', Socle.arbres.cimes());
+  app.question(Socle.baleines.theme({ url: 'baleines.json' }));
   app.question(Socle.trace({ cle: 'reunion-rando', nom: 'Randonnée à La Réunion', theme: 'Préparer', libelle: 'Par où passer ?', sentiers: true, seuilPente: false,
     intro: 'Touche la carte pour poser le départ, puis chaque étape : le tracé suit les sentiers. Le fond « Carte 25 » les montre le mieux.', pied: 'Tracé calculé sur les sentiers de la BD TOPO.' }));
 })();
