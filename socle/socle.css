@@ -223,6 +223,22 @@ body.bureau .sousthemes { order: 2; flex: none; flex-wrap: wrap; overflow: visib
 body.bureau .reponse { order: 3; flex: 0 1 auto; min-height: 0; margin: 0; max-height: none; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 body.bureau .questions button { font-size: 13.5px; padding: 7px 13px; }
 body.bureau .outils button.ecran { display: flex; }
+/* Barre de recherche d'ordinateur : en haut, à gauche de la colonne d'outils ; rangée avec le reste en carte seule et en grand écran. */
+.rechbureau { display: none; }
+body.bureau .rechbureau { display: block; position: fixed; right: 66px; top: calc(10px + env(safe-area-inset-top)); z-index: 5; width: 330px; }
+body.bureau.libre .rechbureau, body.bureau.ecran .rechbureau, body.bureau.pleintheme .rechbureau { display: none; }
+.rechbureau .rech { position: relative; }
+.rechbureau .rech input { width: 100%; height: 44px; padding: 7px 40px 7px 14px; border-radius: 999px; background: var(--panel); backdrop-filter: blur(6px); font-size: 14.5px; }
+.rechbureau .rech input:focus { outline: none; border-color: var(--gold); }
+.rechbureau .rech svg { position: absolute; right: 13px; top: 12px; color: var(--muted); pointer-events: none; }
+.rechbureau .res { list-style: none; margin: 6px 0 0; padding: 6px; background: #101c2e; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.4); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.rechbureau .res[hidden] { display: none; }
+.rechbureau .res li:nth-child(n+9) { display: none; }   /* huit propositions : la liste tient sans défiler */
+.rechbureau .res button { display: block; width: 100%; text-align: left; border-radius: 9px; border: 0; background: rgba(255,255,255,0.05); margin: 3px 0; padding: 8px 11px; font-size: 14px; }
+.rechbureau .res button:hover { background: rgba(184,150,62,0.25); }
+.rechbureau .res button small { display: block; color: var(--muted); font-size: 11.5px; }
+.rechbureau .res .sources { padding: 6px 8px; color: var(--muted); font-size: 13px; }
+@media print { .rechbureau { display: none !important; } }
 body.bureau .menu > div { width: 390px; max-height: calc(100vh - 20px); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 body.bureau .barrevol { left: 50%; transform: translateX(-50%); top: calc(10px + env(safe-area-inset-top)); max-width: none; flex-wrap: nowrap; }
 body.bureau .attente, body.bureau .maj { left: calc(50% + 200px); }
