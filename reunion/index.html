@@ -30,6 +30,7 @@
   const F = 'Indian/Reunion';
   const app = await Socle.creer({
     id: 'reunion', racine: '../', titre: 'Où est la lumière', sousTitre: 'La Réunion',
+    photo: 'ORTHOIMAGERY.ORTHOPHOTOS2022',   // la dernière BD ORTHO est voilée sur les sommets (Piton des Neiges, Salazes) ; 2022 y est nette
     geologie: false, fondsExclus: ['etatmajor', 'cassini'],   // la carte géologique du BRGM et les cartes anciennes ne couvrent que la métropole
     centre: [55.4700, -21.0950], zoom: 11.3, pitch: 55, bearing: 20, pitch3d: 60,
     recherche: { centre: [55.53, -21.13], rayonKm: 60 },
@@ -44,7 +45,7 @@
       { nom: 'Piton de la Fournaise', note: 'depuis le Pas de Bellecombe', centre: [55.7050, -21.2360], zoom: 12.8, pitch: 62, bearing: 110 },
       { nom: 'Cap Méchant', note: 'la côte sauvage du sud', centre: [55.7109, -21.3760], zoom: 14, pitch: 55, bearing: 160 }
     ],
-    sources: 'Relief : LiDAR HD de l\'IGN, lu à la volée ; en vue rapprochée, le calcul prend le modèle de surface, donc les arbres et les bâtiments portent ombre. Photo aérienne et plan : IGN. La position du soleil est calculée (précision de l\'ordre du demi-degré), les heures sont celles de La Réunion. Les nuages, qui montent dans les cirques en fin de matinée, ne sont pas pris en compte.'
+    sources: 'Relief : LiDAR HD de l\'IGN, lu à la volée ; en vue rapprochée, le calcul prend le modèle de surface, donc les arbres et les bâtiments portent ombre. Photo aérienne : IGN, prise de vue de 2022 (la plus récente est voilée sur les sommets) ; plan : IGN. La position du soleil est calculée (précision de l\'ordre du demi-degré), les heures sont celles de La Réunion. Les nuages, qui montent dans les cirques en fin de matinée, ne sont pas pris en compte.'
   });
   // Trois familles : la lumière (ombres à une heure, lumière rasante, course du soleil), le ciel, le drone.
   // Les heures de soleil d'un point se lisent dans « Soleil » (premier et dernier rayon) ou en touchant la carte dans « Ombres ».

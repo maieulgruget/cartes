@@ -442,8 +442,11 @@
     // Les étiquettes passent toutes au-dessus : les analyses se glissent entre les surfaces et les noms.
     style.layers = [...style.layers.filter(l => l.type !== 'symbol'), ...style.layers.filter(l => l.type === 'symbol')];
     const premierTexte = style.layers.findIndex(l => l.type === 'symbol');
+    /* Photo de base : la dernière BD ORTHO par défaut. Une carte peut en choisir un millésime (cfg.photo) quand la dernière
+       prise de vue est moins bonne sur ses lieux : à La Réunion, celle de 2022 est nette sur les sommets, la plus récente voilée. */
+    const PHOTO = cfg.photo || 'ORTHOIMAGERY.ORTHOPHOTOS';
     Object.assign(style.sources, {
-      ortho: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
+      ortho: { type: 'raster', tiles: [wmts(PHOTO, 'image/jpeg')], tileSize: 256, maxzoom: 19, attribution: '© IGN' },
       /* Par-dessus la photo courante (la dernière BD ORTHO de chaque département, à 20 cm) : la photo à très haute
          résolution (5 à 10 cm), là où elle existe. Le fond « Photo 2025 » y glisse en plus l'ortho-express de l'année, là
          où elle existe : plus récente, mais produite vite (teintes et ombres moins soignées, parfois prise en hiver), d'où
@@ -522,7 +525,7 @@
     const majBatiments = () => map.setLayoutProperty('batiments3d', 'visibility', relief3d && fond === 'gris' && sourceRelief !== 'surface' ? 'visible' : 'none');
     /* Photos aux remparts redessinés : seulement en vue 3D (voir « remparts »). ?remparts=0 dans l'adresse les retire, pour comparer. */
     const avecRemparts = cfg.remparts !== false && new URLSearchParams(location.search).get('remparts') !== '0';
-    const TUILES_PHOTO = { ortho: [wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg'), 'ignphoto://ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}'],
+    const TUILES_PHOTO = { ortho: [wmts(PHOTO, 'image/jpeg'), 'ignphoto://' + PHOTO + '/{z}/{x}/{y}'],
       orthorecent: ['ignsur://ORTHOIMAGERY.ORTHOPHOTOS.ORTHO-EXPRESS.2025/{z}/{x}/{y}', 'ignsur3d://ORTHOIMAGERY.ORTHOPHOTOS.ORTHO-EXPRESS.2025/{z}/{x}/{y}'],
       orthothr: ['ignsur://THR.ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}', 'ignsur3d://THR.ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}'] };
     let photo3d = false;
