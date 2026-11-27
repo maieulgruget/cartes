@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gréolières">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-180.png">
+<title>Où chercher les champignons — autour de Gréolières</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+<script src="../socle/trace.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const app = await Socle.creer({
+    id: 'greolieres', racine: '../', titre: 'Où chercher', sousTitre: 'Champignons, autour de Gréolières',
+    centre: [6.9450, 43.8050], zoom: 11.9, pitch: 50, bearing: 0, pitch3d: 58,
+    recherche: { centre: [6.945, 43.805], rayonKm: 50 },
+    maison: { nom: 'Gréolières', centre: [6.9386, 43.7976], zoom: 13.8 },
+    signets: [
+      { nom: 'Tout le Cheiron', centre: [6.9500, 43.8050], zoom: 11.4, pitch: 0, bearing: 0 },
+      { nom: 'Gréolières-les-Neiges', note: 'l\'ubac du Cheiron, 1 400 m', centre: [6.9643, 43.8330], zoom: 13.4, pitch: 58, bearing: 180 },
+      { nom: 'Cime du Cheiron', note: 'le sommet, 1 778 m', centre: [6.9697, 43.8148], zoom: 13.2, pitch: 60, bearing: 0 },
+      { nom: 'Plan du Peyron', note: 'vers Thorenc', centre: [6.8835, 43.8123], zoom: 13.4, pitch: 55, bearing: 0 },
+      { nom: 'Vallée du Loup (Gréolières, Cipières)', centre: [6.9480, 43.7890], zoom: 13.2, pitch: 55, bearing: 0 },
+      { nom: 'Coursegoules', note: 'le bout est du Cheiron', centre: [7.0484, 43.7898], zoom: 13, pitch: 55, bearing: -30 },
+      { nom: 'Thorenc et col de Bleine', centre: [6.8088, 43.8053], zoom: 12.6, pitch: 55, bearing: 0 },
+      { nom: 'Montagne de l\'Audibergue', centre: [6.7709, 43.7492], zoom: 12.6, pitch: 55, bearing: 0 }
+    ],
+    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges), fournie avec la page autour du Cheiron et lue à la volée plus loin. Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
+  });
+  const { map } = app;
+
+  /* Règles par champignon. arbres : poids de chaque type de peuplement (0 à 1). alt : plage d'altitude habituelle.
+     temp : plage de température moyenne de l'air favorable. mois : saison. pluie : cumul utile sur 14 jours (mm). frais : préfère les versants frais. */
+  const CHAMPIGNONS = {
+    cepe: { gbif: 5954958, nom: 'Cèpe de Bordeaux', mois: [7, 8, 9, 10], alt: [600, 1700], temp: [10, 19], pluie: 30, frais: 0.3,
+      arbres: { sapin: 1, mixte_c: 1, mixte_f: 0.9, hetre: 0.9, chene: 0.8, feuillus: 0.7, coniferes: 0.7, pin: 0.6 }, mot: 'Hêtres, chênes, pins et sapins, lisières et bords de chemin ; pousse une dizaine de jours après une bonne pluie, tant que le sol reste doux.' },
+    girolle: { gbif: 5249504, nom: 'Girolle', mois: [6, 7, 8, 9, 10], alt: [500, 1600], temp: [11, 20], pluie: 30, frais: 0.5,
+      arbres: { hetre: 1, mixte_f: 1, mixte_c: 0.9, sapin: 0.8, chene: 0.8, feuillus: 0.8, coniferes: 0.6, pin: 0.6 }, mot: 'Sols moussus et frais, sous feuillus comme sous pins ; revient aux mêmes endroits d\'une année à l\'autre.' },
+    trompette: { gbif: 2554662, nom: 'Trompette de la mort', mois: [8, 9, 10, 11], alt: [400, 1400], temp: [6, 15], pluie: 40, frais: 0.7,
+      arbres: { hetre: 1, chene: 0.9, feuillus: 0.9, mixte_f: 0.8, mixte_c: 0.3 }, mot: 'Hêtraies et chênaies humides, en troupes dans les feuilles mortes, souvent dans les creux et les bas de pente.' },
+    mouton: { gbif: 2554716, nom: 'Pied-de-mouton', mois: [8, 9, 10, 11, 12], alt: [500, 1600], temp: [4, 14], pluie: 25, frais: 0.7,
+      arbres: { hetre: 1, mixte_f: 0.8, mixte_c: 0.7, sapin: 0.6, pin: 0.5, chene: 0.5, feuillus: 0.4, coniferes: 0.4 }, mot: 'Feuillus et conifères mêlés ; tardif, il tient jusqu\'aux premières gelées.' },
+    tube: { gbif: 2554536, nom: 'Chanterelle en tube', mois: [9, 10, 11, 12], alt: [700, 1700], temp: [2, 11], pluie: 30, frais: 0.8,
+      arbres: { sapin: 1, mixte_c: 1, pin: 0.8, coniferes: 0.8, mixte_f: 0.5 }, mot: 'Sous pins et sapins, dans la mousse et le bois pourri ; le champignon de fin de saison.' },
+    lactaire: { gbif: 5248629, nom: 'Lactaire délicieux', mois: [9, 10, 11, 12], alt: [400, 1700], temp: [5, 15], pluie: 30, frais: 0.2,
+      arbres: { pin: 1, coniferes: 0.8, mixte_c: 0.6, mixte_f: 0.3 }, mot: 'Lié aux pins, dans l\'herbe et les aiguilles des pinèdes claires ; lait orange carotte.' },
+    sanguin: { gbif: 5248648, nom: 'Sanguin', mois: [9, 10, 11, 12], alt: [300, 1500], temp: [6, 16], pluie: 30, frais: 0.1,
+      arbres: { pin: 1, coniferes: 0.8, mixte_c: 0.6, mixte_f: 0.3 }, mot: 'Lactaire sanguin, le champignon de l\'arrière-pays : sous les pins, sur sol calcaire, souvent en adret ; lait rouge vineux.' },
+    morille: { gbif: 2594601, nom: 'Morille', mois: [3, 4, 5], alt: [500, 1700], temp: [5, 13], pluie: 20, frais: 0.2,
+      arbres: { feuillus: 0.8, mixte_f: 0.8, mixte_c: 0.7, sapin: 0.7, ouvert: 0.4, coniferes: 0.5 }, mot: 'Lisières, frênes, bords de ruisseau, coupes récentes ; en montagne, sous épicéas après la fonte. Remonte en altitude avec le printemps.' }
+  };
+  // Vignettes : un dessin simple par espèce, qui en rappelle la silhouette et la couleur (ce n'est pas un guide d'identification).
+  const V = (corps) => `<svg viewBox="0 0 40 40" aria-hidden="true">${corps}</svg>`;
+  const DESSINS = {
+    cepe: V('<rect x="15" y="19" width="10" height="16" rx="5" fill="#f1e6cf"/><path d="M5 21a15 13 0 0 1 30 0z" fill="#8a5a2b"/>'),
+    girolle: V('<path d="M17 36l3-16 3 16z" fill="#f2b632"/><path d="M6 14c6-5 22-5 28 0-3 8-9 11-14 11S9 22 6 14z" fill="#f6c443"/><path d="M12 16l6 8M20 15v10M28 16l-6 8" stroke="#d99a1e" stroke-width="1.2"/>'),
+    trompette: V('<path d="M17 36c0-10-8-16-11-24 6-4 22-4 28 0-3 8-11 14-11 24z" fill="#3b3a3f"/><ellipse cx="20" cy="12" rx="14" ry="4" fill="#57555c"/>'),
+    mouton: V('<rect x="16" y="20" width="8" height="15" rx="4" fill="#f4ead8"/><path d="M5 20a15 11 0 0 1 30 0z" fill="#ecd9b0"/><path d="M9 20v4M13 20v5M17 20v4M23 20v4M27 20v5M31 20v4" stroke="#cdb685" stroke-width="1.6" stroke-linecap="round"/>'),
+    tube: V('<path d="M19 36c0-7-1-12 1-17 2 5 1 10 1 17z" fill="#e0a92c"/><path d="M8 15c5-5 19-5 24 0-3 6-8 8-12 8s-9-2-12-8z" fill="#7a5a34"/><ellipse cx="20" cy="15" rx="4" ry="1.6" fill="#5e4326"/>'),
+    lactaire: V('<rect x="16" y="20" width="8" height="15" rx="4" fill="#f0b07a"/><path d="M5 20a15 9 0 0 1 30 0z" fill="#e8823a"/><path d="M9 19a11 6 0 0 1 22 0M13 18a7 4 0 0 1 14 0" fill="none" stroke="#c9632a" stroke-width="1.3"/>'),
+    sanguin: V('<rect x="16" y="20" width="8" height="15" rx="4" fill="#e2a37c"/><path d="M5 20a15 9 0 0 1 30 0z" fill="#c9653f"/><path d="M9 19a11 6 0 0 1 22 0M13 18a7 4 0 0 1 14 0" fill="none" stroke="#8e2f2a" stroke-width="1.3"/><circle cx="26" cy="27" r="1.6" fill="#8e1f2a"/>'),
+    morille: V('<rect x="16" y="24" width="8" height="12" rx="4" fill="#f1e6cf"/><path d="M20 4c7 0 10 9 9 16-1 5-17 5-18 0C10 13 13 4 20 4z" fill="#9a7a4a"/><path d="M16 9l3 3-3 3 3 3M22 8l3 3-3 3 3 3-2 3M19 12l3 3-3 3" fill="none" stroke="#5f4826" stroke-width="1.3"/>')
+  };
+  const LIB = { feuillus: 'feuillus', hetre: 'hêtre', chene: 'chêne', mixte_f: 'feuillus et conifères', mixte_c: 'conifères et feuillus', sapin: 'sapin ou épicéa', coniferes: 'conifères', pin: 'pin', ouvert: 'lande ou pelouse' };
+  const TEINTE = { feuillus: '#7fb069', hetre: '#a7c957', chene: '#c2603f', mixte_f: '#5fa8a0', mixte_c: '#3d8b8b', sapin: '#2f6690', coniferes: '#3a7ca5', pin: '#c9a227', ouvert: '#8d7b68' };
+  const CODES = Object.keys(LIB);
+
+  /* Forêts : le tour du Cheiron est fourni avec la page (affichage immédiat) ; plus loin, les peuplements de la vue
+     sont lus auprès de l'IGN. */
+  let foret = await (await fetch('foret.geojson')).json();
+  const SEMNOZ = [6.84, 43.74, 7.05, 43.86]; let cleForet = 'semnoz';
+  const groupe = pr => { const e = pr.essence || '', t = pr.tfv || ''; return /feuillus prépondérants/.test(t) ? 'mixte_f' : /conifères prépondérants/.test(t) ? 'mixte_c' : e === 'Hêtre' ? 'hetre' : /^Chênes décidus/.test(e) ? 'chene' : e === 'Sapin, épicéa' ? 'sapin' : /^Pin/.test(e) ? 'pin' : e === 'Mixte' ? 'mixte_f' : /Conifères|Mélèze|Douglas/.test(e) ? 'coniferes' : /NC|NR/.test(e) || !e ? 'ouvert' : 'feuillus'; };
+  async function foretDeLaVue() {
+    const b = app.emprise(0.05);
+    if (b[0] >= SEMNOZ[0] && b[1] >= SEMNOZ[1] && b[2] <= SEMNOZ[2] && b[3] <= SEMNOZ[3] && cleForet === 'semnoz') return;
+    const cle = b.map(v => v.toFixed(2)).join(); if (cle === cleForet) return;
+    if (map.getZoom() < 11) return;   // trop large : on garde ce qui est chargé
+    app.occupe(true, 'Lecture des forêts…');
+    try {
+      const r = await fetch(`${Socle.GEOPF}/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=LANDCOVER.FORESTINVENTORY.V2:formation_vegetale&OUTPUTFORMAT=application/json&SRSNAME=CRS:84&BBOX=${b.join(',')},CRS:84&COUNT=4000&PROPERTYNAME=essence,tfv,geom`);
+      const j = await r.json(); j.features.forEach(f => { f.properties = { g: groupe(f.properties), t: f.properties.tfv }; });
+      foret = j; cleForet = cle; map.getSource('foret').setData(foret); memo.cle = null;
+    } catch (e) { /* on garde les forêts déjà chargées */ }
+    app.occupe(false);
+  }
+  map.addSource('foret', { type: 'geojson', data: foret });
+  map.addLayer({ id: 'foret', type: 'fill', source: 'foret', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'g'], ...CODES.flatMap(c => [c, TEINTE[c]]), '#888'], 'fill-opacity': 0.55 } }, 'analyses');
+
+  // ---------- Météo des 14 derniers jours, ramenée à l'altitude ----------
+  const REF = { lat: 43.8, lon: 6.9, alt: 1100 };
+  let passe = null, clePasse = null;
+  async function meteoPassee() {
+    // météo du secteur regardé (au dixième de degré), ramenée à 1 100 m
+    const ct = map.getCenter(), cle = ct.lat.toFixed(1) + ',' + ct.lng.toFixed(1);
+    if (passe && cle === clePasse) return passe;
+    REF.lat = +ct.lat.toFixed(1); REF.lon = +ct.lng.toFixed(1); clePasse = cle; passe = null;
+    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${REF.lat}&longitude=${REF.lon}&elevation=${REF.alt}&timezone=Europe%2FParis&past_days=14&forecast_days=1&daily=precipitation_sum,temperature_2m_mean,temperature_2m_min`);
+    if (!j || !j.daily) return null;
+    const d = j.daily, n = d.time.length, som = (a, i0, i1) => a.slice(i0, i1).reduce((s, v) => s + (v || 0), 0);
+    passe = { d, pluie14: som(d.precipitation_sum, 0, n), pluie5: som(d.precipitation_sum, n - 5, n), pluieAv: som(d.precipitation_sum, Math.max(0, n - 14), n - 4),
+      t7: som(d.temperature_2m_mean, n - 7, n) / 7, tmin3: Math.min(...d.temperature_2m_min.slice(n - 3).filter(v => v != null)) };
+    return passe;
+  }
+  const tempA = (p, alt) => p.t7 - 6.5 * (alt - REF.alt) / 1000;   // gradient moyen de 6,5 °C par 1 000 m
+
+  // ---------- Grille : altitude, pente, exposition et type de forêt par maille ----------
+  const memo = {};
+  async function terrain() {
+    await foretDeLaVue();
+    const b = app.emprise(0), cle = b.map(v => v.toFixed(4)).join();
+    if (memo.cle === cle) return memo;
+    app.occupe(true, 'Lecture du relief…'); const g = await app.grille(b, 420); const a = app.pentes(g);
+    // Les polygones de forêt sont dessinés dans une image aux dimensions de la grille : un code de couleur par type.
+    const c = document.createElement('canvas'); c.width = g.w; c.height = g.h; const ctx = c.getContext('2d', { willReadFrequently: true });
+    const X = lon => (app.versMerc(lon, 0)[0] - g.x0) / (g.x1 - g.x0) * g.w, Y = lat => (g.y1 - app.versMerc(0, lat)[1]) / (g.y1 - g.y0) * g.h;
+    for (const f of foret.features) {
+      ctx.fillStyle = `rgb(${(CODES.indexOf(f.properties.g) + 1) * 20},0,0)`; ctx.beginPath();
+      for (const poly of (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates)) for (const an of poly) { an.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.closePath(); }
+      ctx.fill('evenodd');
+    }
+    const px = ctx.getImageData(0, 0, g.w, g.h).data, type = new Uint8Array(g.w * g.h);
+    for (let k = 0; k < type.length; k++) type[k] = Math.round(px[4 * k] / 20);
+    // Position dans le relief : un point plus bas que ses alentours (creux, bas de pente) garde mieux l'humidité.
+    const creux = new Float32Array(g.w * g.h), D = Math.max(3, Math.round(60 / g.pas));
+    for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) {
+      const k = j * g.w + i, z = g.z[k]; let som = 0, n = 0;
+      for (const [di, dj] of [[D, 0], [-D, 0], [0, D], [0, -D]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= g.w || jj >= g.h) continue; const v = g.z[jj * g.w + ii]; if (v === v) { som += v; n++; } }
+      creux[k] = (z === z && n) ? Math.max(0, Math.min(1, 0.5 + (som / n - z) / 30)) : 0.5;
+    }
+    Object.assign(memo, { cle, g, a, type, creux }); app.occupe(false); return memo;
+  }
+
+  // ---------- 1. Où chercher tel champignon ----------
+  let choisi = 'cepe', obsActif = false, sentActif = false;
+  const seuils = {}, obs = { cle: '', liste: null };
+  const masquesNotes = new Set(), masquesForet = new Set();   // niveaux masqués, gardés d'une ouverture à l'autre
+  const q1 = {
+    theme: 'Champignons', libelle: 'Où chercher ?',
+    aide: 'Les classes sont relatives à chaque espèce : le « meilleur » est le dixième le plus favorable de la forêt regardée en vue d\'ensemble, avec un plancher qui évite d\'annoncer un meilleur quand rien n\'est vraiment favorable. C\'est un potentiel d\'habitat, pas une garantie de cueillette. Les observations viennent de la base ouverte GBIF (iNaturalist, inventaires) : peu nombreuses, concentrées près des chemins, et les bons coins sont rarement partagés. Les sentiers sont ceux de la BD TOPO de l\'IGN. Pour le champignon choisi, chaque maille reçoit une note : le type de forêt qui lui convient, multiplié par l\'altitude où la température de la semaine lui va, et par la fraîcheur du versant (nord et est favorisés, davantage par temps sec). Les préférences de chaque espèce sont des règles de cueilleur simplifiées, pas des mesures : la carte désigne des secteurs plausibles, pas des coins sûrs. Les dessins rappellent une silhouette, ils ne servent pas à identifier un champignon.',
+    async ouvrir(app) {
+      const c = app.repondre(q1.libelle, `<div class="vignettes esp">${Object.entries(CHAMPIGNONS).map(([k, v]) => `<button data-k="${k}" aria-pressed="${k === choisi}">${DESSINS[k]}<span>${v.nom}</span></button>`).join('')}</div>
+        <p class="mot"></p><p class="etat"></p>
+        <div class="legende"></div>
+        <div class="puces" style="margin-top:6px"><button class="bobs" aria-pressed="false">Observations</button><button class="bsent" aria-pressed="false">Sentiers</button></div>
+        <p class="obs petit2"></p><p class="sent petit2"></p>
+        <p class="petit">Note de chaque maille : type de forêt × altitude où la température de la semaine convient × fraîcheur du versant × creux du relief. Les classes sont relatives à l'espèce : « le meilleur » est le dixième le plus favorable de la forêt regardée, « très bon » les deux dixièmes suivants. C'est un potentiel d'habitat, pas une garantie de cueillette. Touche les niveaux de la légende pour n'en garder qu'un : il ressort alors en teinte vive.</p>`);
+      /* Classes relatives : chaque espèce est classée par rapport à elle-même. Le « meilleur » est le dixième le plus
+         favorable de la forêt regardée, le « très bon » les deux dixièmes suivants. Un plancher absolu évite d'annoncer un
+         « meilleur » quand rien n'est vraiment favorable. Les seuils sont pris sur une vue d'ensemble et gardés en zoomant. */
+      const COUL = { p: [59, 47, 99, 150], b: [181, 68, 110, 195], t: [244, 162, 97, 220], m: [255, 243, 176, 238] };
+      const VIF = { p: [124, 92, 214, 255], b: [222, 52, 118, 255], t: [255, 140, 36, 255], m: [255, 226, 64, 255] };
+      const classe = v => { const S = seuils[choisi]; return v < 0.05 || !S ? null : v >= S.m ? 'm' : v >= S.t ? 't' : v >= S.b ? 'b' : 'p'; };
+      const peindreNotes = (eclat) => {
+        const g = memo.g, notes = memo.notes; if (!g || !notes || app.active !== q1) return;
+        const visibles = ['p', 'b', 't', 'm'].filter(k => !masques.has(k)), seul = visibles.length === 1 ? visibles[0] : null, w = g.w, h = g.h;
+        const cl = new Array(w * h); for (let k = 0; k < cl.length; k++) cl[k] = classe(notes[k]);
+        memo.classes = cl;
+        app.poser('note', g, app.peindre(g, k => {
+          const c0 = cl[k];
+          if (!seul) return c0 && !masques.has(c0) ? COUL[c0] : null;
+          // Une seule classe gardée : teinte vive et pleine, contour sombre, fond de carte assombri autour.
+          if (c0 !== seul) return [12, 18, 30, 125];
+          const i = k % w, j = (k - i) / w;
+          if ((i > 0 && cl[k - 1] !== seul) || (i < w - 1 && cl[k + 1] !== seul) || (j > 0 && cl[k - w] !== seul) || (j < h - 1 && cl[k + w] !== seul)) return [22, 16, 28, 255];
+          return VIF[seul];
+        }));
+        // Repères sur les petites zones, qui disparaissent en vue large : un anneau au centre de chaque pavé peu rempli.
+        const fc = { type: 'FeatureCollection', features: [] };
+        if (seul) {
+          const B = 28, nbx = Math.ceil(w / B), nby = Math.ceil(h / B), cpt = new Int32Array(nbx * nby), sx = new Float64Array(nbx * nby), sy = new Float64Array(nbx * nby);
+          for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (cl[j * w + i] === seul) { const b = Math.floor(j / B) * nbx + Math.floor(i / B); cpt[b]++; sx[b] += i; sy[b] += j; }
+          const petit = B * B * 0.04;
+          for (let bj = 0; bj < nby && fc.features.length < 30; bj++) for (let bi = 0; bi < nbx; bi++) {
+            const b = bj * nbx + bi; if (!cpt[b] || cpt[b] >= petit) continue;
+            let seule = true; for (let dj = -1; dj <= 1 && seule; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const ii = bi + di, jj = bj + dj; if (ii >= 0 && jj >= 0 && ii < nbx && jj < nby && cpt[jj * nbx + ii] >= petit) { seule = false; break; } }
+            if (seule) fc.features.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: app.versGeo(g.x0 + (sx[b] / cpt[b] + 0.5) / w * (g.x1 - g.x0), g.y1 - (sy[b] / cpt[b] + 0.5) / h * (g.y1 - g.y0)) } });
+          }
+        }
+        if (map.getSource('reperes')) map.getSource('reperes').setData(fc);
+        else { map.addSource('reperes', { type: 'geojson', data: fc }); map.addLayer({ id: 'reperes', type: 'circle', source: 'reperes', maxzoom: 13.6, paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } }); }
+        // Un bref éclat au moment où l'on change le filtre, sans clignotement ensuite.
+        if (eclat && map.getLayer('note')) { map.setPaintProperty('note', 'raster-opacity-transition', { duration: 0 }); map.setPaintProperty('note', 'raster-opacity', 0.25); setTimeout(() => { if (map.getLayer('note')) { map.setPaintProperty('note', 'raster-opacity-transition', { duration: 550 }); map.setPaintProperty('note', 'raster-opacity', 1); } }, 70); }
+        if (obsActif) verifier();
+      };
+      const masques = app.legende(c, [{ cle: 'p', couleur: '#3b2f63', texte: 'possible' }, { cle: 'b', couleur: '#b5446e', texte: 'bon' }, { cle: 't', couleur: '#f4a261', texte: 'très bon' }, { cle: 'm', couleur: '#fff3b0', texte: 'le meilleur' }], () => peindreNotes(true), masquesNotes);
+      // Observations réelles (GBIF) : des points datés, et un contrôle du modèle.
+      const verifier = () => {
+        const cible = c.querySelector('.obs'), g = memo.g, cl = memo.classes; if (!cible || !g || !cl) return;
+        if (!obs.liste) { cible.textContent = 'Lecture des observations…'; return; }
+        const flou = obs.total > obs.liste.length ? ` (${obs.total} publiées en tout, mais les autres sont localisées à plus d'un kilomètre près, souvent floutées exprès, et ne sont pas affichées)` : '';
+        if (!obs.liste.length) { cible.textContent = (obs.total ? 'Aucune observation localisée précisément dans la zone affichée' : 'Aucune observation publiée de cette espèce dans la zone affichée') + flou + '.'; return; }
+        let dans = 0, haut = 0, surf = 0, surfHaut = 0;
+        for (const o of obs.liste) { const k = app.indice(g, o.lon, o.lat); if (k < 0) continue; dans++; if (cl[k] === 'm' || cl[k] === 't') haut++; }
+        for (let k = 0; k < cl.length; k++) if (cl[k]) { surf++; if (cl[k] === 'm' || cl[k] === 't') surfHaut++; }
+        cible.innerHTML = `<span class="fort">${obs.liste.length} observation${obs.liste.length > 1 ? 's' : ''}</span> localisée${obs.liste.length > 1 ? 's' : ''} précisément dans la zone${flou}${dans ? ` : ${haut} sur ${dans} tombent en « meilleur » ou « très bon », des classes qui couvrent ${surf ? Math.round(100 * surfHaut / surf) : 0} % de la forêt notée` : ''}. Peu de points, souvent pris au bord des chemins : c'est un indice, pas une preuve.`;
+      };
+      const chargerObs = async () => {
+        if (!obsActif) { app.retirer('obs-mois', 'obs'); c.querySelector('.obs').textContent = ''; return; }
+        const b = app.emprise(0.1), cle = choisi + b.map(v => v.toFixed(2)).join();
+        if (obs.cle !== cle) {
+          obs.cle = cle; obs.liste = null; verifier();
+          try {
+            const r = await fetch(`https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&hasGeospatialIssue=false&limit=300&taxonKey=${CHAMPIGNONS[choisi].gbif}&decimalLatitude=${b[1].toFixed(3)},${b[3].toFixed(3)}&decimalLongitude=${b[0].toFixed(3)},${b[2].toFixed(3)}`);
+            const j = await r.json(); if (obs.cle !== cle) return;
+            obs.total = j.count || 0; obs.liste = (j.results || []).filter(o => !(o.coordinateUncertaintyInMeters > 1000)).map(o => ({ lon: o.decimalLongitude, lat: o.decimalLatitude, mois: o.month, an: o.year }));
+          } catch (e) { obs.liste = null; obs.cle = ''; c.querySelector('.obs').textContent = 'Les observations n\'ont pas pu être lues (la base GBIF ne répond pas).'; return; }
+        }
+        if (app.active !== q1 || !obsActif) return;
+        const MOIS = ['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+        const fc = { type: 'FeatureCollection', features: obs.liste.map(o => ({ type: 'Feature', properties: { t: (MOIS[o.mois] || '') + (o.an ? ' ' + o.an : '') }, geometry: { type: 'Point', coordinates: [o.lon, o.lat] } })) };
+        if (map.getSource('obs')) map.getSource('obs').setData(fc);
+        else { map.addSource('obs', { type: 'geojson', data: fc }); }
+        if (!map.getLayer('obs')) {
+          map.addLayer({ id: 'obs', type: 'circle', source: 'obs', paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-color': '#10192a', 'circle-stroke-width': 2.5 } });
+          map.addLayer({ id: 'obs-mois', type: 'symbol', source: 'obs', minzoom: 12, layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top' }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+        }
+        verifier();
+      };
+      /* Sentiers et chemins de la BD TOPO (en vue rapprochée), et tronçons qui passent à moins de 100 m d'une zone « meilleur ». */
+      const chargerSentiers = () => {
+        const cible = c.querySelector('.sent');
+        if (!sentActif) { app.retirer('sentiers-bons', 'sentiers', 'sentiers-bord'); if (map.getSource('sentiers-bons')) map.removeSource('sentiers-bons'); cible.textContent = ''; return; }
+        const filtre = ['in', ['get', 'nature'], ['literal', ['Sentier', 'Chemin']]];
+        if (!map.getLayer('sentiers')) {
+          map.addSource('sentiers-bons', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+          map.addLayer({ id: 'sentiers-bons', type: 'line', source: 'sentiers-bons', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#19e3c8', 'line-width': 9, 'line-opacity': 0.9 } });
+          map.addLayer({ id: 'sentiers-bord', type: 'line', source: 'bdtopo', 'source-layer': 'troncon_de_route', minzoom: 15, filter: filtre, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 4.5, 'line-opacity': 0.9 } });
+          map.addLayer({ id: 'sentiers', type: 'line', source: 'bdtopo', 'source-layer': 'troncon_de_route', minzoom: 15, filter: filtre, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['case', ['==', ['get', 'prive'], true], '#b3261e', '#10192a'], 'line-width': 2, 'line-dasharray': ['literal', [2, 1.5]] } });
+        }
+        if (map.getZoom() < 15) { cible.textContent = 'Approche-toi : les sentiers de l\'IGN s\'affichent en vue rapprochée (à partir du niveau 15).'; map.getSource('sentiers-bons').setData({ type: 'FeatureCollection', features: [] }); return; }
+        const g = memo.g, cl = memo.classes; if (!g || !cl) return;
+        const r = Math.max(1, Math.round(100 / g.pas)), pas = Math.max(1, Math.round(r / 6));
+        const pres = (lon, lat) => { const k = app.indice(g, lon, lat); if (k < 0) return false; const i0 = k % g.w, j0 = (k - i0) / g.w; for (let dj = -r; dj <= r; dj += pas) for (let di = -r; di <= r; di += pas) { if (di * di + dj * dj > r * r) continue; const i = i0 + di, j = j0 + dj; if (i >= 0 && j >= 0 && i < g.w && j < g.h && cl[j * g.w + i] === 'm') return true; } return false; };
+        const bons = [], vus = new Set(); let nb = 0, km = 0;
+        for (const f of map.querySourceFeatures('bdtopo', { sourceLayer: 'troncon_de_route', filter: filtre })) {
+          const id = f.properties.cleabs + '|' + JSON.stringify(f.geometry.coordinates[0]).slice(0, 40); if (vus.has(id)) continue; vus.add(id);
+          for (const ligne of (f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates)) for (let n = 1; n < ligne.length; n++) {
+            const a = ligne[n - 1], b = ligne[n]; if (pres((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) { bons.push([a, b]); km += app.distKm(a, b); }
+          }
+          nb++;
+        }
+        map.getSource('sentiers-bons').setData({ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: bons } });
+        cible.innerHTML = nb ? `Sentiers et chemins de l'IGN (en rouge : signalés privés). En turquoise, ${km >= 0.05 ? `<span class="fort">${km.toFixed(1).replace('.', ',')} km</span> de tronçons` : 'aucun tronçon'} à moins de 100 m d'une zone « meilleur ». Un chemin de la carte peut avoir disparu ou traverser une propriété.` : 'Aucun sentier de l\'IGN dans cette vue.';
+      };
+      let p = await meteoPassee();
+      const dessiner = async () => {
+        const { g, a, type } = await terrain(); if (app.active !== q1) return;
+        p = await meteoPassee();
+        const ch = CHAMPIGNONS[choisi], mois = new Date().getMonth() + 1, sec = p ? p.pluie14 < ch.pluie * 0.6 : false;
+        const note = k => {
+          const z = g.z[k], t = CODES[type[k] - 1]; if (!(z === z) || !t) return 0;
+          let n = ch.arbres[t] || 0; if (!n) return 0;
+          // altitude : plage habituelle, resserrée par la température de la semaine si on la connaît
+          let fa = z < ch.alt[0] - 150 || z > ch.alt[1] + 150 ? 0 : (z < ch.alt[0] || z > ch.alt[1]) ? 0.4 : 1;
+          if (p) { const T = tempA(p, z), [t0, t1] = ch.temp; fa *= T < t0 - 3 || T > t1 + 3 ? 0.15 : T < t0 ? 0.55 : T > t1 ? 0.55 : 1; }
+          // fraîcheur : versants nord et est, pentes modérées ; elle compte davantage par temps sec
+          const e = a.expo[k], pe = a.pente[k], nord = e === e ? (Math.cos(e * Math.PI / 180) + 1) / 2 : 0.5, poids = Math.min(1, ch.frais + (sec ? 0.3 : 0));
+          const ff = (1 - poids) + poids * nord, fp = pe > 40 ? 0.3 : pe > 30 ? 0.7 : 1;
+          const fh = 1 + 0.35 * ch.frais * (2 * memo.creux[k] - 1);   // creux humides favorisés pour les espèces qui aiment le frais
+          return Math.min(1, n * fa * ff * fp * fh);
+        };
+        const notes = new Float32Array(g.w * g.h); let max = 0; for (let k = 0; k < notes.length; k++) { notes[k] = note(k); if (notes[k] > max) max = notes[k]; }
+        memo.notes = notes; memo.max = max;
+        if (map.getZoom() < 12.7 || !seuils[choisi]) {
+          const vals = []; for (let k = 0; k < notes.length; k++) if (notes[k] >= 0.05) vals.push(notes[k]); vals.sort((x, y) => x - y);
+          const q = f => vals.length ? vals[Math.min(vals.length - 1, Math.floor(f * vals.length))] : 1;
+          seuils[choisi] = { m: Math.max(q(0.9), 0.5), t: Math.max(q(0.7), 0.35), b: Math.max(q(0.4), 0.2), max };
+        }
+        peindreNotes(); if (obsActif) chargerObs(); if (sentActif) setTimeout(chargerSentiers, 400);
+        c.querySelector('.mot').textContent = ch.mot;
+        let avis = !ch.mois.includes(mois) ? `<span class="fort">Hors saison</span> (elle va de ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[0] - 1]} à ${['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'][ch.mois[ch.mois.length - 1] - 1]}) : la carte montre les secteurs, pas une pousse en cours.` : '';
+        if (p) {
+          const zBas = Math.round((REF.alt + (p.t7 - ch.temp[1]) / 6.5 * 1000) / 50) * 50, zHaut = Math.round((REF.alt + (p.t7 - ch.temp[0]) / 6.5 * 1000) / 50) * 50;
+          const lo = Math.max(ch.alt[0], zBas), hi = Math.min(ch.alt[1], zHaut);
+          avis += ` Cette semaine, la température lui convient ${lo < hi ? `entre <span class="fort">${lo} et ${hi} m</span>` : (zHaut < ch.alt[0] ? 'nulle part : il fait trop froid, même en bas' : 'nulle part : il fait trop chaud, même en haut')}. Pluie des 14 derniers jours : <span class="fort">${Math.round(p.pluie14)} mm</span>${sec ? ', trop peu : les versants frais sont favorisés' : ', suffisant'}${p.tmin3 < -1 ? '. Il a gelé ces trois derniers jours, ce qui arrête la plupart des pousses' : ''}.`;
+        } else avis += ' La météo des derniers jours ne répond pas : la note ne tient compte que de la forêt, de l\'altitude et du versant.';
+        if (max < 0.5) avis += ' <span class="fort">Rien n\'atteint le niveau « meilleur »</span> dans cette zone en ce moment : la carte ne montre que du possible ou du bon.';
+        c.querySelector('.etat').innerHTML = avis;
+      };
+      c.querySelector('.bobs').onclick = e => { obsActif = !obsActif; e.target.setAttribute('aria-pressed', obsActif); chargerObs(); };
+      c.querySelector('.bsent').onclick = e => { sentActif = !sentActif; e.target.setAttribute('aria-pressed', sentActif); chargerSentiers(); };
+      c.querySelector('.bobs').setAttribute('aria-pressed', obsActif); c.querySelector('.bsent').setAttribute('aria-pressed', sentActif);
+      c.querySelector('.esp').onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; choisi = b.dataset.k; c.querySelectorAll('.esp button').forEach(x => x.setAttribute('aria-pressed', x === b)); dessiner(); };
+      const actif = c.querySelector('.esp button[aria-pressed="true"]'); if (actif) actif.scrollIntoView({ inline: 'center', block: 'nearest' });
+      app.suivre(q1, dessiner); await dessiner();
+    },
+    toucher(app, ll) {
+      const { g, a, type, notes } = memo; const k = g ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0 || !notes) return;
+      const t = CODES[type[k] - 1], e = a.expo[k];
+      document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, ${t ? LIB[t] : 'hors forêt'}, pente de ${Math.round(a.pente[k])}° tournée vers ${['le nord', 'le nord-est', 'l\'est', 'le sud-est', 'le sud', 'le sud-ouest', 'l\'ouest', 'le nord-ouest'][Math.round(e / 45) % 8]}${passe ? `, environ ${Math.round(tempA(passe, g.z[k]))} °C de moyenne cette semaine` : ''}. Note : <span class="fort">${Math.round(notes[k] * 100)} / 100</span> pour ${CHAMPIGNONS[choisi].nom.toLowerCase()}${memo.classes && memo.classes[k] ? `, classe « ${{ p: 'possible', b: 'bon', t: 'très bon', m: 'le meilleur' }[memo.classes[k]]} »` : ''}.`;
+    },
+    fermer(app) { app.retirer('note', 'reperes', 'obs-mois', 'obs', 'sentiers-bons', 'sentiers', 'sentiers-bord'); }
+  };
+
+  // ---------- 2. Pluie et température ----------
+  const q2 = {
+    plein: () => ({ bloc: '.pluie' }),
+    theme: 'Pluie', libelle: 'A-t-il assez plu ?',
+    aide: 'Pluie et température des quatorze derniers jours dans le secteur regardé, d\'après le modèle Open-Meteo, ramenées à 1 100 m. La règle retenue : environ 25 mm de pluie, puis 5 à 14 jours sans gel. C\'est un modèle météo, pas un pluviomètre : un orage local peut lui échapper.',
+    async ouvrir(app) {
+      app.occupe(true, 'Météo…'); const p = await meteoPassee(); app.occupe(false);
+      if (!p) { app.repondre(q2.libelle, '<p>La météo des derniers jours ne répond pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
+      const max = Math.max(5, ...p.d.precipitation_sum.map(v => v || 0));
+      // Une barre par jour, sur une échelle en millimètres (graduée à mi-hauteur et au maximum) ; sous chaque barre, le jour du mois.
+      const haut = Math.ceil(max / 5) * 5;
+      const barres = p.d.time.map((t, i) => `<div title="${t} : ${(p.d.precipitation_sum[i] || 0).toFixed(1)} mm" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:84px"><div style="width:70%;background:#4a90c2;border-radius:2px 2px 0 0;height:${Math.round(70 * (p.d.precipitation_sum[i] || 0) / haut)}px"></div><small style="font-size:9px;color:#9aa8bb;height:14px;line-height:14px">${+t.slice(8)}</small></div>`).join('');
+      const graphique = `<div class="pluie"><p class="petit2" style="margin:0 0 4px">Pluie par jour, en millimètres — les 14 derniers jours (jour du mois dessous)</p>
+        <div style="display:flex;gap:4px"><div style="display:flex;flex-direction:column;justify-content:space-between;height:70px;font-size:9px;color:#9aa8bb;text-align:right;min-width:30px"><span>${haut} mm</span><span>${haut / 2}</span><span>0</span></div>
+        <div style="flex:1;display:flex;gap:1px;align-items:flex-end;background:linear-gradient(#ffffff22,#ffffff22) 0 0/100% 1px no-repeat, linear-gradient(#ffffff22,#ffffff22) 0 35px/100% 1px no-repeat, linear-gradient(#ffffff44,#ffffff44) 0 70px/100% 1px no-repeat">${barres}</div></div></div>`;
+      const pousse = p.pluieAv >= 25 && p.t7 > 5 && p.tmin3 > -1;
+      app.repondre(q2.libelle, `${graphique}
+        <p><span class="fort">${Math.round(p.pluie14)} mm</span> en 14 jours, dont ${Math.round(p.pluie5)} mm sur les 5 derniers. À 1 100 m : <span class="fort">${p.t7.toFixed(0)} °C</span> de moyenne sur 7 jours, minimum de ${p.tmin3.toFixed(0)} °C ces 3 derniers jours.</p>
+        <p>${pousse ? '<span class="fort">Conditions de pousse réunies</span> : une pluie franche il y a 5 à 14 jours, puis de la douceur.' : p.tmin3 <= -1 ? 'Le gel de ces derniers jours a sans doute arrêté la pousse au-dessus de ' + Math.round((REF.alt - (0 - p.tmin3) / 6.5 * 1000) / 100) * 100 + ' m.' : p.pluieAv < 25 ? 'Pas assez de pluie il y a une à deux semaines : la pousse, s\'il y en a une, sera dans les fonds humides et les versants nord.' : 'Trop froid pour une pousse franche.'}</p>
+        <p class="petit">Règle de cueilleur : il faut environ 25 mm de pluie, puis 5 à 14 jours sans gel. Chaque barre est un jour (millimètres de pluie).</p>`);
+    }
+  };
+
+  // ---------- 3. Quelle forêt ici ----------
+  const q3 = {
+    theme: 'Forêt', libelle: 'Quelle forêt ici ?',
+    aide: 'Peuplements de la BD Forêt de l\'IGN. Elle décrit des types de forêt, pas des arbres un par un, et ne détaille pas les essences dans les mélanges.',
+    async ouvrir(app) {
+      q3.fondAvant = app.fond; if (app.fond !== 'ombrage') app.mettreFond('ombrage');
+      map.setLayoutProperty('foret', 'visibility', 'visible');
+      app.suivre(q3, foretDeLaVue); foretDeLaVue();
+      const c3 = app.repondre(q3.libelle, `<p class="etat">Touche une forêt pour connaître son peuplement, ou un type de la légende pour le masquer.</p><div class="legende"></div>
+        <p class="petit">La BD Forêt décrit des peuplements, pas des arbres : autour du Cheiron, les pins sont surtout des pins sylvestres, les chênes des chênes pubescents, et les « conifères » clairs des pinèdes qui regagnent les anciens pâturages.</p>`);
+      const filtrer = m => map.setFilter('foret', m.size ? ['!', ['in', ['get', 'g'], ['literal', [...m]]]] : null);
+      app.legende(c3, CODES.map(c => ({ cle: c, couleur: TEINTE[c], texte: LIB[c] })), filtrer, masquesForet); filtrer(masquesForet);
+    },
+    toucher(app, ll) {
+      const f = map.queryRenderedFeatures(map.project(ll), { layers: ['foret'] })[0];
+      document.querySelector('.reponse .etat').innerHTML = f ? `<span class="fort">${app.propre(Socle.foretLisible ? Socle.foretLisible(f.properties.t) : f.properties.t)}</span>. Champignons qui s'y plaisent : ${Object.values(CHAMPIGNONS).filter(c => (c.arbres[f.properties.g] || 0) >= 0.8).map(c => c.nom.toLowerCase()).join(', ') || 'aucun de la liste'}.` : 'Ce point n\'est pas en forêt.';
+    },
+    fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); if (q3.fondAvant && q3.fondAvant !== app.fond) app.mettreFond(q3.fondAvant); }
+  };
+  [q1, q2, q3].forEach(q => app.question(q));
+  app.question(Socle.trace({ cle: 'greolieres-rando', nom: 'Sortie autour de Gréolières', theme: 'Préparer', libelle: 'Par où passer ?', sentiers: true, seuilPente: false,
+    intro: 'Touche la carte pour poser le départ, puis chaque étape : le tracé suit les sentiers. Le fond « Carte 25 » les montre le mieux.', pied: 'Tracé calculé sur les sentiers de la BD TOPO.' }));
+})();
+</script>
+</body>
+</html>
