@@ -900,7 +900,7 @@
     }
 
     // --- Menu : signets (des vues), recherche de lieux, sources ---
-    const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['voile', 'Voile', 'de Cerbère à Menton, et la Corse'], ['corse', 'Randos', 'Corse et France, sur le relief']];
+    const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['greolieres', 'Champignons 06', 'autour de Gréolières'], ['voile', 'Voile', 'de Cerbère à Menton, et la Corse'], ['corse', 'Randos', 'Corse et France, sur le relief']];
     const cleSignets = 'cartes.signets.' + cfg.id;
     // Chaque saut (lieu, recherche, position) garde la vue quittée : le bouton Retour y ramène, un saut à la fois.
     const vues = [];
