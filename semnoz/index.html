@@ -108,11 +108,19 @@
     if (passe && cle === clePasse) return passe;
     REF.lat = +ct.lat.toFixed(1); REF.lon = +ct.lng.toFixed(1); clePasse = cle; passe = null;
     const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${REF.lat}&longitude=${REF.lon}&elevation=${REF.alt}&timezone=Europe%2FParis&past_days=14&forecast_days=1&daily=precipitation_sum,temperature_2m_mean,temperature_2m_min`);
+    passe = resumer(j, REF.alt);
+    return passe;
+  }
+  function resumer(j, alt) {
     if (!j || !j.daily) return null;
     const d = j.daily, n = d.time.length, som = (a, i0, i1) => a.slice(i0, i1).reduce((s, v) => s + (v || 0), 0);
-    passe = { d, pluie14: som(d.precipitation_sum, 0, n), pluie5: som(d.precipitation_sum, n - 5, n), pluieAv: som(d.precipitation_sum, Math.max(0, n - 14), n - 4),
+    return { d, alt, pluie14: som(d.precipitation_sum, 0, n), pluie5: som(d.precipitation_sum, n - 5, n), pluieAv: som(d.precipitation_sum, Math.max(0, n - 14), n - 4),
       t7: som(d.temperature_2m_mean, n - 7, n) / 7, tmin3: Math.min(...d.temperature_2m_min.slice(n - 3).filter(v => v != null)) };
-    return passe;
+  }
+  // Météo d'un point touché : la maille du modèle qui contient ce point, à l'altitude que le modèle lui donne.
+  async function meteoAuPoint(ll) {
+    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${ll.lat.toFixed(3)}&longitude=${ll.lng.toFixed(3)}&timezone=Europe%2FParis&past_days=14&forecast_days=1&daily=precipitation_sum,temperature_2m_mean,temperature_2m_min`);
+    return resumer(j, j && j.elevation != null ? Math.round(j.elevation) : null);
   }
   const tempA = (p, alt) => p.t7 - 6.5 * (alt - REF.alt) / 1000;   // gradient moyen de 6,5 °C par 1 000 m
 
@@ -309,9 +317,15 @@
   const q2 = {
     plein: () => ({ bloc: '.pluie' }),
     theme: 'Pluie', libelle: 'A-t-il assez plu ?',
-    aide: 'Pluie et température des quatorze derniers jours dans le secteur regardé, d\'après le modèle Open-Meteo, ramenées à 1 100 m. La règle retenue : environ 25 mm de pluie, puis 5 à 14 jours sans gel. C\'est un modèle météo, pas un pluviomètre : un orage local peut lui échapper.',
+    aide: 'Pluie et température des quatorze derniers jours, d\'après le modèle Open-Meteo. Sans point touché, ce sont celles du centre de la carte (arrondi au dixième de degré, soit une dizaine de kilomètres), ramenées à 1 100 m. En touchant la carte, ce sont celles de l\'endroit touché, à son altitude. Dans les deux cas la valeur est celle d\'une maille du modèle, de quelques kilomètres de côté : elle ne distingue pas deux vallons voisins. La règle retenue : environ 25 mm de pluie, puis 5 à 14 jours sans gel. C\'est un modèle météo, pas un pluviomètre : un orage local peut lui échapper.',
     async ouvrir(app) {
-      app.occupe(true, 'Météo…'); const p = await meteoPassee(); app.occupe(false);
+      const pt = q2.point;
+      app.occupe(true, 'Météo…'); const p = pt ? await meteoAuPoint(pt) : await meteoPassee(); app.occupe(false);
+      if (app.active !== q2 || pt !== q2.point) return;
+      const ct = map.getCenter(), altTxt = p && p.alt != null ? p.alt.toLocaleString('fr-FR') + ' m' : 'l\'altitude du point';
+      const ou = pt ? `<span class="fort">Au point touché</span> (${altTxt}), sur une maille de quelques kilomètres.`
+        : `<span class="fort">Secteur du centre de la carte</span> (une dizaine de kilomètres), ramené à 1 100 m. Touche un endroit pour sa pluie.`;
+      if (pt && p) app.bulle(pt, `<b>${Math.round(p.pluie14)} mm</b> en 14 jours`);
       if (!p) { app.repondre(q2.libelle, '<p>La météo des derniers jours ne répond pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
       const max = Math.max(5, ...p.d.precipitation_sum.map(v => v || 0));
       // Une barre par jour, sur une échelle en millimètres (graduée à mi-hauteur et au maximum) ; sous chaque barre, le jour du mois.
@@ -321,11 +335,15 @@
         <div style="display:flex;gap:4px"><div style="display:flex;flex-direction:column;justify-content:space-between;height:70px;font-size:9px;color:#9aa8bb;text-align:right;min-width:30px"><span>${haut} mm</span><span>${haut / 2}</span><span>0</span></div>
         <div style="flex:1;display:flex;gap:1px;align-items:flex-end;background:linear-gradient(#ffffff22,#ffffff22) 0 0/100% 1px no-repeat, linear-gradient(#ffffff22,#ffffff22) 0 35px/100% 1px no-repeat, linear-gradient(#ffffff44,#ffffff44) 0 70px/100% 1px no-repeat">${barres}</div></div></div>`;
       const pousse = p.pluieAv >= 25 && p.t7 > 5 && p.tmin3 > -1;
-      app.repondre(q2.libelle, `${graphique}
-        <p><span class="fort">${Math.round(p.pluie14)} mm</span> en 14 jours, dont ${Math.round(p.pluie5)} mm sur les 5 derniers. À 1 100 m : <span class="fort">${p.t7.toFixed(0)} °C</span> de moyenne sur 7 jours, minimum de ${p.tmin3.toFixed(0)} °C ces 3 derniers jours.</p>
-        <p>${pousse ? '<span class="fort">Conditions de pousse réunies</span> : une pluie franche il y a 5 à 14 jours, puis de la douceur.' : p.tmin3 <= -1 ? 'Le gel de ces derniers jours a sans doute arrêté la pousse au-dessus de ' + Math.round((REF.alt - (0 - p.tmin3) / 6.5 * 1000) / 100) * 100 + ' m.' : p.pluieAv < 25 ? 'Pas assez de pluie il y a une à deux semaines : la pousse, s\'il y en a une, sera dans les fonds humides et les versants nord.' : 'Trop froid pour une pousse franche.'}</p>
+      const c2 = app.repondre(q2.libelle, `<p class="etat" style="margin:0 0 8px">${ou}</p>${graphique}${pt ? '<p style="margin:6px 0"><button class="centre" style="padding:4px 11px;font-size:12.5px">Revenir au secteur du centre de la carte</button></p>' : ''}
+        <p><span class="fort">${Math.round(p.pluie14)} mm</span> en 14 jours, dont ${Math.round(p.pluie5)} mm sur les 5 derniers. À ${altTxt} : <span class="fort">${p.t7.toFixed(0)} °C</span> de moyenne sur 7 jours, minimum de ${p.tmin3.toFixed(0)} °C ces 3 derniers jours.</p>
+        <p>${pousse ? '<span class="fort">Conditions de pousse réunies</span> : une pluie franche il y a 5 à 14 jours, puis de la douceur.' : p.tmin3 <= -1 ? 'Le gel de ces derniers jours a sans doute arrêté la pousse au-dessus de ' + Math.round(((p.alt != null ? p.alt : REF.alt) - (0 - p.tmin3) / 6.5 * 1000) / 100) * 100 + ' m.' : p.pluieAv < 25 ? 'Pas assez de pluie il y a une à deux semaines : la pousse, s\'il y en a une, sera dans les fonds humides et les versants nord.' : 'Trop froid pour une pousse franche.'}</p>
         <p class="petit">Règle de cueilleur : il faut environ 25 mm de pluie, puis 5 à 14 jours sans gel. Chaque barre est un jour (millimètres de pluie).</p>`);
-    }
+      const bc = c2 && c2.querySelector('.centre'); if (bc) bc.onclick = () => { q2.point = null; app.sansBulle(); q2.ouvrir(app); };
+      if (!pt && !q2.suivi) { q2.suivi = true; app.suivre(q2, () => { const c = map.getCenter(); if (!q2.point && c.lat.toFixed(1) + ',' + c.lng.toFixed(1) !== clePasse) q2.ouvrir(app); }); }   // on ne relit que si le secteur a changé
+    },
+    toucher(app, ll) { q2.point = ll; q2.ouvrir(app); },
+    fermer(app) { q2.point = null; q2.suivi = false; app.sansBulle(); }
   };
 
   // ---------- 3. Quelle forêt ici ----------
