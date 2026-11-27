@@ -21,6 +21,7 @@
 <script src="../socle/socle.js"></script>
 <script src="../socle/vent.js"></script>
 <script src="../socle/fonds.js"></script>
+<script src="../socle/cetaces.js"></script>
 </head>
 <body>
 <script>
@@ -55,7 +56,7 @@
       { nom: 'Golfe d\'Ajaccio', centre: [8.7000, 41.8700], zoom: 10.8, pitch: 45, bearing: 0 },
       { nom: 'Bouches de Bonifacio', centre: [9.1800, 41.3800], zoom: 11.4, pitch: 50, bearing: 0 }
     ],
-    sources: 'Vent : prévision Open-Meteo (modèles de Météo-France), à 10 m de hauteur. Vagues, houle et température de l\'eau : modèle de vagues d\'Open-Meteo, dont la maille est de plusieurs kilomètres. Ports, caps, îles, anses et feux : BD TOPO de l\'IGN, de Cerbère à Menton et en Corse. Fonds marins : modèle bathymétrique de façade du Shom (HOMONIM, maille de 100 m). Balises, roches et épaves : contributeurs d\'OpenStreetMap, relevé incomplet. Plan et photo aérienne : IGN ; carte géologique : BRGM. Cette carte aide à préparer une sortie ; elle ne remplace ni le bulletin côtier de Météo-France, ni la carte marine et les Instructions nautiques du Shom.'
+    sources: 'Vent : prévision Open-Meteo (modèles de Météo-France), à 10 m de hauteur. Vagues, houle et température de l\'eau : modèle de vagues d\'Open-Meteo, dont la maille est de plusieurs kilomètres. Ports, caps, îles, anses et feux : BD TOPO de l\'IGN, de Cerbère à Menton et en Corse. Fonds marins : modèle bathymétrique de façade du Shom (HOMONIM, maille de 100 m). Balises, roches et épaves : contributeurs d\'OpenStreetMap, relevé incomplet. Baleines et dauphins : signalements rassemblés par GBIF.org. Plan et photo aérienne : IGN ; carte géologique : BRGM. Cette carte aide à préparer une sortie ; elle ne remplace ni le bulletin côtier de Météo-France, ni la carte marine et les Instructions nautiques du Shom.'
   });
   const map = app.map;
 
@@ -612,6 +613,31 @@
     }
   };
   app.question(qMer2);
+
+  // Baleines et dauphins : signalements ouverts rassemblés par GBIF (relevés scientifiques, lignes de ferries, observations
+  // naturalistes), sans les échouages ni les synthèses par maille. Sans effort connu, la carte compare les espèces entre elles.
+  // Le sanctuaire Pelagos : ses deux limites en mer, telles que l'accord les définit (les côtes ferment le reste).
+  const PELAGOS = { type: 'FeatureCollection', features: [
+    { type: 'Feature', properties: { nom: 'Sanctuaire Pelagos' }, geometry: { type: 'LineString', coordinates: [[6.0983, 43.0283], [8.2, 40.9667]] } },
+    { type: 'Feature', properties: { nom: 'Sanctuaire Pelagos' }, geometry: { type: 'LineString', coordinates: [[9.5217, 41.155], [11.5167, 42.3567]] } }] };
+  app.question(Socle.cetaces.theme({
+    url: 'cetaces.json', vue: { center: [7.6, 43.1], zoom: 7.2 }, maille: 0.05, lignes: PELAGOS,
+    especes: [
+      { k: 'F', nom: 'Rorqual commun', dessin: 'rorqual', note: 'Le deuxième plus grand animal du monde ; il vient se nourrir de krill en mer Ligure, surtout l\'été.' },
+      { k: 'P', nom: 'Cachalot', dessin: 'cachalot', note: 'Au large, au-dessus des grands fonds et des canyons ; il plonge longtemps.' },
+      { k: 'G', nom: 'Globicéphale noir', dessin: 'globi', note: 'En groupes soudés, au large.' },
+      { k: 'R', nom: 'Dauphin de Risso', dessin: 'risso', note: 'Gris, couvert de cicatrices blanches ; le long du talus continental.' },
+      { k: 'Z', nom: 'Baleine à bec de Cuvier', dessin: 'ziphius', note: 'Discrète, des grandes profondeurs : rarement vue.' },
+      { k: 'S', nom: 'Dauphin bleu et blanc', dessin: 'bleublanc', note: 'Le dauphin le plus vu au large, en grands groupes.' },
+      { k: 'T', nom: 'Grand dauphin', dessin: 'dauphin', note: 'Le plus côtier : près des côtes et des îles.' },
+      { k: 'D', nom: 'Dauphin commun', dessin: 'dauphin', note: 'Devenu rare en Méditerranée nord-occidentale.' }
+    ],
+    regles: `· dans les aires marines protégées, dont tout le <b>sanctuaire Pelagos</b>, les parcs nationaux et le parc marin du golfe du Lion : jamais à moins de <b>100 m</b> d'un cétacé, quel que soit l'engin, <b>drone compris</b> ; la même distance est recommandée partout ailleurs ;<br>
+      · s'approcher par le côté, en parallèle, jamais par l'avant ni par l'arrière, à vitesse lente et constante, sans les poursuivre ni couper leur route ;<br>
+      · ne pas se mettre à l'eau avec eux.`,
+    source: 'Signalements de cétacés rassemblés par GBIF.org : Tethys Research Institute, EcoOcéan Institut, Observatoire Pelagis, lignes de ferries (Fixed-Line-Transect), iNaturalist, DREAL Corse (OGREVA), OceanCare, Cybelle Méditerranée et d\'autres.',
+    aide: 'Ces points sont des signalements publiés en données ouvertes (GBIF.org) : relevés scientifiques en bateau et en avion, lignes de ferries suivies en continu, observations de naturalistes et de plaisanciers. Les échouages et les synthèses ramenées au centre de mailles de 10 km sont écartés, comme les points tombés à terre. Ils disent où l\'on a cherché autant que où sont les animaux : il y en a beaucoup en mer Ligure, très suivie, et peu ailleurs. C\'est pourquoi les couleurs ne comptent pas les animaux : dans chaque maille de 5 km environ, elles donnent la part de l\'espèce parmi les cétacés signalés, comparée à sa part sur toute la carte. Une part compare les espèces entre elles et gomme en bonne partie le poids des observateurs ; elle dit où une espèce domine, pas combien il y en a. Seules les mailles où l\'espèce est plus présente que d\'habitude sont peintes, et pas celles de moins de six signalements. La frise des mois compte les signalements de l\'espèce : elle dit quand on la voit, sachant qu\'on sort bien plus en mer l\'été. La plupart des données datent de 1990 à 2015. Les animaux en mouvement sont un décor : ils nagent dans les mailles où l\'espèce domine, en nombre suivant le mois, mais ne disent pas où ils sont aujourd\'hui. La ligne dorée marque les limites en mer du sanctuaire Pelagos (accord de 1999 entre la France, Monaco et l\'Italie). Règles d\'approche : arrêté ministériel du 1er juillet 2011 modifié (100 m dans les aires marines protégées) et recommandations du ministère ; seul le texte officiel fait foi.'
+  }));
 })();
 </script>
 </body>
