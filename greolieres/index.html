@@ -39,7 +39,7 @@
       { nom: 'Thorenc et col de Bleine', centre: [6.8088, 43.8053], zoom: 12.6, pitch: 55, bearing: 0 },
       { nom: 'Montagne de l\'Audibergue', centre: [6.7709, 43.7492], zoom: 12.6, pitch: 55, bearing: 0 }
     ],
-    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges), fournie avec la page autour du Cheiron et lue à la volée plus loin. Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
+    sources: 'Forêts : BD Forêt de l\'IGN (types de peuplement, sans détail des essences dans les mélanges), fournie avec la page de l\'Audibergue à la vallée du Var (une vingtaine de kilomètres autour du Cheiron), et lue à la volée plus loin. Relief : LiDAR HD de l\'IGN. Pluie et température : Open-Meteo, 14 derniers jours. Les préférences de chaque champignon (arbres, altitude, température, délai après la pluie) sont des règles de cueilleur, simplifiées : la carte désigne des secteurs plausibles, pas des coins sûrs. Elle n\'aide pas à reconnaître un champignon : en cas de doute, le faire vérifier par un pharmacien ou une société mycologique. La cueillette est réglementée, se renseigner sur les quantités autorisées.'
   });
   const { map } = app;
 
@@ -79,14 +79,19 @@
   const TEINTE = { feuillus: '#7fb069', hetre: '#a7c957', chene: '#c2603f', mixte_f: '#5fa8a0', mixte_c: '#3d8b8b', sapin: '#2f6690', coniferes: '#3a7ca5', pin: '#c9a227', ouvert: '#8d7b68' };
   const CODES = Object.keys(LIB);
 
-  /* Forêts : le tour du Cheiron est fourni avec la page (affichage immédiat) ; plus loin, les peuplements de la vue
-     sont lus auprès de l'IGN. */
-  let foret = await (await fetch('foret.geojson')).json();
-  const SEMNOZ = [6.84, 43.74, 7.05, 43.86]; let cleForet = 'semnoz';
+  /* Forêts : une vingtaine de kilomètres autour du Cheiron sont fournis avec la page (affichage immédiat) ; plus loin,
+     les peuplements de la vue sont lus auprès de l'IGN. */
+  const foretLocale = await (await fetch('foret.geojson')).json(); let foret = foretLocale;
+  const SEMNOZ = [6.66, 43.66, 7.20, 43.98]; let cleForet = 'semnoz';
   const groupe = pr => { const e = pr.essence || '', t = pr.tfv || ''; return /feuillus prépondérants/.test(t) ? 'mixte_f' : /conifères prépondérants/.test(t) ? 'mixte_c' : e === 'Hêtre' ? 'hetre' : /^Chênes décidus/.test(e) ? 'chene' : e === 'Sapin, épicéa' ? 'sapin' : /^Pin/.test(e) ? 'pin' : e === 'Mixte' ? 'mixte_f' : /Conifères|Mélèze|Douglas/.test(e) ? 'coniferes' : /NC|NR/.test(e) || !e ? 'ouvert' : 'feuillus'; };
   async function foretDeLaVue() {
-    const b = app.emprise(0.05);
-    if (b[0] >= SEMNOZ[0] && b[1] >= SEMNOZ[1] && b[2] <= SEMNOZ[2] && b[3] <= SEMNOZ[3] && cleForet === 'semnoz') return;
+    const b = app.emprise(0.05), ct = map.getCenter(), M = 0.04;
+    // Tant que le centre de la vue reste dans le secteur fourni avec la page, on s'en sert : la lecture à la volée
+    // rapporte des dizaines de mégaoctets de contours détaillés, et c'est elle qui faisait attendre.
+    if (ct.lng >= SEMNOZ[0] + M && ct.lat >= SEMNOZ[1] + M && ct.lng <= SEMNOZ[2] - M && ct.lat <= SEMNOZ[3] - M) {
+      if (cleForet !== 'semnoz') { foret = foretLocale; cleForet = 'semnoz'; map.getSource('foret').setData(foret); memo.cle = null; }
+      return;
+    }
     const cle = b.map(v => v.toFixed(2)).join(); if (cle === cleForet) return;
     if (map.getZoom() < 11) return;   // trop large : on garde ce qui est chargé
     app.occupe(true, 'Lecture des forêts…');
