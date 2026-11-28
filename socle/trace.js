@@ -52,6 +52,17 @@
       } catch (e) { return [a, b]; }
     }
     let d = null, tour = 0, suivi = null;
+    let taillePlein = 'profil';   // ce que le plein écran montre sous la carte : 'profil', 'reglages' ou 'carte' (voir q.plein)
+    // La carte cadrée sur le tracé, dans la place que laissent l'en-tête et les commandes du plein écran.
+    function cadrerTrace(app) {
+      setTimeout(() => {
+        const l = chemin(); if (l.length < 2) return;
+        let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of l) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
+        const bas = document.querySelector('.pilote.plein .p-bas'), tete = document.querySelector('.pilote.plein .p-tete'), cv = app.map.getCanvas().getBoundingClientRect();
+        const m = app.marges({ top: (tete ? tete.getBoundingClientRect().bottom - cv.top : 90) + 28, bottom: (bas ? cv.bottom - bas.getBoundingClientRect().top : 60) + 28, left: 36, right: 36 });
+        app.map.fitBounds([[o, s], [e, n]], { padding: m, pitch: app.map.getPitch(), bearing: app.map.getBearing(), maxZoom: 16, duration: 900 });
+      }, 80);
+    }
     // Échantillon du tracé le plus proche d'une distance (m) depuis le départ, ou d'un point de la carte.
     const indiceA = s => { let a = 0, b = d.dist.length - 1; while (b - a > 1) { const m = (a + b) >> 1; if (d.dist[m] < s) a = m; else b = m; } return s - d.dist[a] < d.dist[b] - s ? a : b; };
     const indicePres = ll => { const k = Math.cos(ll.lat * Math.PI / 180); let im = 0, dm = Infinity; d.xy.forEach((p, i) => { const dx = (p[0] - ll.lng) * k, dy = p[1] - ll.lat, q = dx * dx + dy * dy; if (q < dm) { dm = q; im = i; } }); return im; };
@@ -283,7 +294,19 @@
         pts.push(p); courant = null; if (q._majGardes) q._majGardes(); garder(); dessinerLigne(app); calculer(app, q._c);
       },
       // Plein écran : on pose les points sur toute la carte ; le profil reste dessous, avec les gestes utiles en route.
-      plein() { return { bloc: '.profil', boutons: ['.hmoins', '.hdep', '.hplus', opts.sentiers ? '.sent' : null, '.undo', '.raz', '.garde', '.enr', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
+      /* Plein écran en trois tailles, pour que les commandes ne mangent pas la carte :
+           « profil »    le profil et trois boutons (voir le tracé, retirer le dernier point, réglages) ;
+           « reglages »  les mêmes, plus l'horaire, les sentiers, effacer, garder, enregistrer, GPX ;
+           « carte »     ni profil ni réglages : la carte entière, cadrée sur le tracé, pour le lire ou le poser.
+         Changer de taille refait le plein écran sur le même panneau. */
+      plein(app) {
+        const clic = sel => () => { const b = q._c && q._c.querySelector(sel); if (b) b.click(); };
+        const aller = t => () => { taillePlein = t; app.plein(q.plein(app)); if (t === 'carte') cadrerTrace(app); };
+        const dernier = { texte: '↶ Dernier point', action: clic('.undo') }, consigne = opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.';
+        if (taillePlein === 'carte') return { boutons: [{ texte: '▴ Profil et réglages', action: aller('profil') }, dernier], consigne };
+        const base = [{ texte: '⤢ Voir le tracé', action: aller('carte') }, dernier, { texte: taillePlein === 'reglages' ? 'Réglages ▴' : 'Réglages ▾', action: aller(taillePlein === 'reglages' ? 'profil' : 'reglages'), actif: () => taillePlein === 'reglages' }];
+        return { bloc: '.profil', boutons: taillePlein === 'reglages' ? base.concat(['.hmoins', '.hdep', '.hplus', opts.sentiers ? '.sent' : null, '.raz', '.garde', '.enr', '.gpx'].filter(Boolean)) : base, consigne };
+      },
       // « Garder sur la carte » : le tracé reste dessiné sous les autres thèmes ; on revient ici pour le retirer ou l'effacer.
       fermer(app) { tour++; suivi = null; app.map.off('mousemove', 'trace-bord', surTrace); app.map.off('mouseleave', 'trace-bord', horsTrace); app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) { setTimeout(majPastille, 0); return; } oter(app); majPastille(); }
     };
