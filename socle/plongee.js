@@ -362,16 +362,22 @@
         vivants = [...mieux.values()]; for (const i of vivants) etages[i] = L;
       }
     }
-    // Distance du point à la terre la plus proche (m), cherchée jusqu'à 150 m dans le relief ; gardée en mémoire.
+    // Distance du point à la terre la plus proche (m), gardée en mémoire : jusqu'à 150 m dans le relief (avec la mer du
+    // moment), puis jusqu'à 1 km sur le masque terre-mer, plus grossier, qui suffit en vue large où un banc couvre large.
     const large = new Map();
     function versTerre(i) {
       if (!large.has(i)) large.set(i, (async () => {
-        const h = D.habitats[i];
+        const h = D.habitats[i], kx = 1 / (111200 * Math.cos(h[1] * RAD)), ky = 1 / 111200;
         for (const r of [15, 30, 50, 75, 105, 150]) for (let a = 0; a < 8; a++) {
-          const z = await altitude(h[0] + r * Math.cos(a * Math.PI / 4) / (111200 * Math.cos(h[1] * RAD)), h[1] + r * Math.sin(a * Math.PI / 4) / 111200);
+          const z = await altitude(h[0] + r * Math.cos(a * Math.PI / 4) * kx, h[1] + r * Math.sin(a * Math.PI / 4) * ky);
           if (!(z < -0.8)) return r;
         }
-        return 200;
+        const terre = lireMasque().terre;
+        for (const r of [220, 320, 450, 620, 800, 1000]) for (let a = 0; a < 12; a++) {
+          const k = caseMasque(h[0] + r * Math.cos(a * Math.PI / 6) * kx, h[1] + r * Math.sin(a * Math.PI / 6) * ky);
+          if (k >= 0 && terre[k]) return r;
+        }
+        return 1400;
       })().then(d => { large.set(i, d); return d; }));
       return large.get(i);
     }
@@ -388,7 +394,7 @@
       // La marée a bougé : les profondeurs ont changé, donc les espèces possibles et l'eau autour de chaque point.
       if (Math.abs(MER - merVue) > 0.4) { merVue = MER; large.clear(); bancs.clear(); etagesDe = undefined; }
       trier();
-      const z = map.getZoom(); visibles = []; if (z < 14.6) return;
+      const z = map.getZoom(); visibles = []; if (z < D.zPoissons) return;
       const b = map.getBounds(), o = b.getWest(), e = b.getEast(), su = b.getSouth(), no = b.getNorth(), c = map.getCenter();
       const mpp = 156543 * Math.cos(c.lat * RAD) / Math.pow(2, z), L = Math.max(0, Math.min(6, Math.ceil(Math.log2(105 * mpp / 70))));
       const H = D.habitats, dans = [];
@@ -398,12 +404,13 @@
       visibles = dans;
       for (const i of dans) if (typeof large.get(i) !== 'number') versTerre(i);
     }
-    const taille = (z, cm) => (z <= 17 ? 0.5 * Math.pow(2, (z - 14.6) / 2.4) : Math.pow(1.7, Math.min(1, (z - 17) / 2.5))) * Math.pow(cm / 25, 0.4);
+    // En vue large, le dessin ne rétrécit plus sous une taille lisible : le poisson est alors un signe, pas une échelle.
+    const taille = (z, cm) => (z <= 17 ? Math.max(0.5, 0.5 * Math.pow(2, (z - 14.6) / 2.4)) : Math.pow(1.7, Math.min(1, (z - 17) / 2.5))) * Math.pow(cm / 25, 0.4);
     function pas() {
       if (!actif) return false;
       const s = src(); if (!s) return false;
       const z = map.getZoom();
-      if (z < 14.6) { s.setData({ type: 'FeatureCollection', features: [] }); return false; }
+      if (z < D.zPoissons) { s.setData({ type: 'FeatureCollection', features: [] }); return false; }
       const t = performance.now() / 1000, mpp = 156543 * Math.cos(map.getCenter().lat * RAD) / Math.pow(2, z), br = map.getBearing() * RAD, feats = [];
       for (const i of visibles) {
         const d = large.get(i); if (typeof d !== 'number') continue;        // l'eau autour du point n'est pas encore mesurée
@@ -597,7 +604,7 @@
       fetch(racine + 'habitats.json').then(r => r.json())]);
     // Les herbiers n'existent que si le script de préparation les a trouvés (fonds.herbiers) : pas de requête perdue sinon.
     const herbiers = fonds.herbiers ? await fetch(racine + 'herbiers.json').then(r => r.ok ? r.json() : null).catch(() => null) : null;
-    D = { racine, index, fonds, habitats, herbiers, zt: Math.max(...Object.keys(index.tuiles).map(Number)), zMonde: opts.zoomMonde || 12, nordFerme: opts.nordFerme !== false };
+    D = { racine, index, fonds, habitats, herbiers, zt: Math.max(...Object.keys(index.tuiles).map(Number)), zMonde: opts.zoomMonde || 12, zPoissons: opts.zoomPoissons || 13.8, nordFerme: opts.nordFerme !== false };
     const NV = fonds.niveaux || { haut: 0, moyen: 0, bas: 0 }, TX = Object.assign({ releve: 'relevé au lidar (1 m)', autre: 'modèle à 100 m : ordre de grandeur', credit: 'Fonds : Litto3D® Shom-IGN, HOMONIM Shom, natures de fond Shom' }, opts.textes || {});
     if (opts.especes) ESPECES = opts.especes;
     MER = NV.moyen;
@@ -624,7 +631,10 @@
     map.addLayer({ id: 'pl-nature', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'nature'], layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'm'], 'roche', '#6b4a3a', 'sable', '#f2d27a', 'vase', '#8fa3b5', '#cccccc'], 'fill-opacity': 0.72, 'fill-outline-color': 'rgba(40,30,20,0.45)' } }, 'analyses');
     // L'eau lit le relief dans sa propre source (les mêmes tuiles, déjà en mémoire du navigateur) : la carte dessine mieux
     // une teinte et un relief 3D qui ne partagent pas la même source.
-    map.addSource('pl-relief', { type: 'raster-dem', tiles: ['plongee://{z}/{x}/{y}'], tileSize: 512, maxzoom: D.zt, encoding: 'terrarium' });
+    // Au-delà du zoom des tuiles, le relief est recalculé (adouci) jusqu'au zoom 17 plutôt qu'étiré par la carte graphique :
+    // très grossie, une maille du relevé laissait voir ses carrés, et sur certains téléphones des anneaux parasites.
+    map.addSource('pl-relief', { type: 'raster-dem', tiles: ['plongee://{z}/{x}/{y}'], tileSize: 512, maxzoom: Math.max(D.zt, 17), encoding: 'terrarium' });
+    map.setMaxZoom(Math.min(map.getMaxZoom(), 19));   // une maille du relevé fait 3 à 6 m : plus près, il n'y a plus rien à voir
     map.addLayer({ id: 'pl-eau', type: 'color-relief', source: 'pl-relief', paint: { 'color-relief-color': regleEau(MER), 'color-relief-opacity': 1 } }, 'analyses');
     if (herbiers) map.moveLayer('pl-herbiers-aplat', 'pl-eau');   // l'herbier se lit par-dessus le sédiment
     map.addLayer({ id: 'pl-iso', type: 'line', source: 'pl-vect', filter: ['==', ['get', 'k'], 'iso'], layout: { 'line-join': 'round', visibility: 'none' }, paint: { 'line-color': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 'rgba(240,250,255,0.75)', 'rgba(230,245,255,0.4)'], 'line-width': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 1.3, 0.7] } }, 'analyses');
@@ -853,10 +863,10 @@
         const c = q._c = app.repondre(q.libelle, `<p class="etat"></p>
           <div class="vignettes pl-esp"><button data-e="" aria-pressed="${!filtre}">Toutes</button>${ESPECES.map(e => `<button data-e="${e.id}" aria-pressed="${filtre === e.id}" title="${e.nom}"><img src="${vignette(e)}" alt="" style="width:48px;height:28px;display:block;margin:0 auto 2px">${e.nom}</button>`).join('')}</div>
           <div class="pl-detail"></div>`);
-        const etat = () => { c.querySelector('.etat').innerHTML = map.getZoom() < 14.6 ? 'Rapproche-toi d\'un fond (zoom plus fort) : les poissons apparaissent près du fond, là où vit leur espèce. Touche un poisson, ou un endroit, pour savoir qui on y croise.' : !sim.nb ? (filtre ? `Pas de milieu pour ${espece(filtre).nom.toLowerCase()} dans cette vue. Essaie plus près du bord, ou une autre espèce.` : 'Pas de poissons à montrer ici : la carte les place sur le plateau relevé au lidar, jusqu\'à 70 m de fond. Reviens vers les îles ou la côte.') : (filtre ? `${espece(filtre).nom} : là où son milieu existe dans la vue.` : 'Touche un poisson pour sa fiche, ou un endroit pour savoir qui on y croise.'); };
+        const etat = () => { c.querySelector('.etat').innerHTML = map.getZoom() < D.zPoissons ? 'Rapproche-toi d\'un fond (zoom plus fort) : les poissons apparaissent près du fond, là où vit leur espèce. Touche un poisson, ou un endroit, pour savoir qui on y croise.' : !sim.nb ? (filtre ? `Pas de milieu pour ${espece(filtre).nom.toLowerCase()} dans cette vue. Essaie plus près du bord, ou une autre espèce.` : 'Pas de poissons à montrer ici : la carte les place sur le plateau relevé au lidar, jusqu\'à 70 m de fond. Reviens vers les îles ou la côte.') : (filtre ? `${espece(filtre).nom} : là où son milieu existe dans la vue.` : 'Touche un poisson pour sa fiche, ou un endroit pour savoir qui on y croise.'); };
         c.querySelector('.pl-esp').onclick = ev => { const b = ev.target.closest('button[data-e]'); if (!b) return; filtre = b.dataset.e || null; c.querySelectorAll('.pl-esp button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); sim.filtrer(filtre); etat(); c.querySelector('.pl-detail').innerHTML = filtre ? fiche(espece(filtre)) : ''; };
         sim.allumer(true, filtre); etat(); app.suivre(q, etat);
-        if (map.getZoom() < 14.6) map.easeTo({ zoom: 15.6, pitch: Math.max(map.getPitch(), 55), duration: 1200 });
+        if (map.getZoom() < D.zPoissons) map.easeTo({ zoom: D.zPoissons + 0.9, pitch: Math.max(map.getPitch(), 50), duration: 1200 });
       };
       q.toucher = async (app, ll) => {
         const p = map.project(ll), f = map.queryRenderedFeatures([[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]], { layers: ['pl-poissons'] })[0];
