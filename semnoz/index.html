@@ -214,12 +214,13 @@
       const verifier = () => {
         const cible = c.querySelector('.obs'), g = memo.g, cl = memo.classes; if (!cible || !g || !cl) return;
         if (!obs.liste) { cible.textContent = 'Lecture des observations…'; return; }
-        const flou = obs.total > obs.liste.length ? ` (${obs.total} publiées en tout, mais les autres sont localisées à plus d'un kilomètre près, souvent floutées exprès, et ne sont pas affichées)` : '';
-        if (!obs.liste.length) { cible.textContent = (obs.total ? 'Aucune observation localisée précisément dans la zone affichée' : 'Aucune observation publiée de cette espèce dans la zone affichée') + flou + '.'; return; }
+        const nf = (obs.floues || []).length, reste = obs.total - obs.liste.length - nf;
+        const flou = (nf ? ` ; ${nf} autre${nf > 1 ? 's' : ''} en cercle pâle, placée${nf > 1 ? 's' : ''} à plusieurs kilomètres près (souvent floutées exprès)` : '') + (reste > 0 ? ` ; ${reste} trop imprécise${reste > 1 ? 's' : ''} pour être montrée${reste > 1 ? 's' : ''}` : '');
+        if (!obs.liste.length) { cible.innerHTML = nf ? `Aucune trouvaille localisée précisément dans cette vue${flou}.` : obs.autour ? `<span class="fort">Aucune trouvaille publiée dans cette vue.</span> Il y en a ${obs.autour} aux alentours : dézoome pour les voir. Peu de gens publient leurs coins.` : 'Aucune trouvaille publiée de cette espèce ici ni aux alentours. Peu de gens publient leurs coins : cela ne dit rien de sa présence.'; return; }
         let dans = 0, haut = 0, surf = 0, surfHaut = 0;
         for (const o of obs.liste) { const k = app.indice(g, o.lon, o.lat); if (k < 0) continue; dans++; if (cl[k] === 'm' || cl[k] === 't') haut++; }
         for (let k = 0; k < cl.length; k++) if (cl[k]) { surf++; if (cl[k] === 'm' || cl[k] === 't') surfHaut++; }
-        cible.innerHTML = `<span class="fort">${obs.liste.length} observation${obs.liste.length > 1 ? 's' : ''}</span> localisée${obs.liste.length > 1 ? 's' : ''} précisément dans la zone${flou}${dans ? ` : ${haut} sur ${dans} tombent en « meilleur » ou « très bon », des classes qui couvrent ${surf ? Math.round(100 * surfHaut / surf) : 0} % de la forêt notée` : ''}. Peu de points, souvent pris au bord des chemins : c'est un indice, pas une preuve.`;
+        cible.innerHTML = `<span class="fort">${obs.liste.length} trouvaille${obs.liste.length > 1 ? 's' : ''}</span> localisée${obs.liste.length > 1 ? 's' : ''} précisément dans cette vue (points blancs cerclés)${flou}${dans ? ` : ${haut} sur ${dans} tombent en « meilleur » ou « très bon », des classes qui couvrent ${surf ? Math.round(100 * surfHaut / surf) : 0} % de la forêt notée` : ''}. Peu de points, souvent pris au bord des chemins : c'est un indice, pas une preuve.`;
       };
       const chargerObs = async () => {
         if (!obsActif) { app.retirer('obs-mois', 'obs'); c.querySelector('.obs').textContent = ''; return; }
@@ -229,17 +230,26 @@
           try {
             const r = await fetch(`https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&hasGeospatialIssue=false&limit=300&taxonKey=${CHAMPIGNONS[choisi].gbif}&decimalLatitude=${b[1].toFixed(3)},${b[3].toFixed(3)}&decimalLongitude=${b[0].toFixed(3)},${b[2].toFixed(3)}`);
             const j = await r.json(); if (obs.cle !== cle) return;
-            obs.total = j.count || 0; obs.liste = (j.results || []).filter(o => !(o.coordinateUncertaintyInMeters > 1000)).map(o => ({ lon: o.decimalLongitude, lat: o.decimalLatitude, mois: o.month, an: o.year }));
+            obs.total = j.count || 0; const lire = o => ({ lon: o.decimalLongitude, lat: o.decimalLatitude, mois: o.month, an: o.year, flou: o.coordinateUncertaintyInMeters > 1000 ? Math.round(o.coordinateUncertaintyInMeters / 1000) : 0 });
+            obs.liste = (j.results || []).filter(o => !(o.coordinateUncertaintyInMeters > 1000)).map(lire);
+            // Les trouvailles localisées à plus d'un kilomètre près (souvent floutées exprès) : montrées à part, en cercles pâles, jusqu'à 10 km de flou.
+            obs.floues = (j.results || []).filter(o => o.coordinateUncertaintyInMeters > 1000 && o.coordinateUncertaintyInMeters <= 10000).map(lire);
+            // Rien dans la vue : y en a-t-il aux alentours (une vue sept fois plus large) ?
+            obs.autour = 0;
+            if (!obs.liste.length && !obs.floues.length) { try { const g = app.emprise(3), a = await (await fetch(`https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&hasGeospatialIssue=false&limit=0&taxonKey=${CHAMPIGNONS[choisi].gbif}&decimalLatitude=${g[1].toFixed(3)},${g[3].toFixed(3)}&decimalLongitude=${g[0].toFixed(3)},${g[2].toFixed(3)}`)).json(); if (obs.cle !== cle) return; obs.autour = a.count || 0; } catch (e) { obs.autour = 0; } }
           } catch (e) { obs.liste = null; obs.cle = ''; c.querySelector('.obs').textContent = 'Les observations n\'ont pas pu être lues (la base GBIF ne répond pas).'; return; }
         }
         if (app.active !== q1 || !obsActif) return;
+        // En plein écran, le texte du panneau ne se voit pas : un mot bref dit ce que la carte vient de poser (ou de ne pas trouver).
+        if (obs.dit !== obs.cle) { obs.dit = obs.cle; const n = obs.liste.length, nf = (obs.floues || []).length; app.occupe(true, n || nf ? `${n + nf} trouvaille${n + nf > 1 ? 's' : ''} dans cette vue${nf ? ` (${nf} à plusieurs km près)` : ''}` : obs.autour ? `Aucune trouvaille ici, ${obs.autour} aux alentours : dézoome` : 'Aucune trouvaille publiée ici'); setTimeout(() => app.occupe(false), 2600); }
         const MOIS = ['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-        const fc = { type: 'FeatureCollection', features: obs.liste.map(o => ({ type: 'Feature', properties: { t: (MOIS[o.mois] || '') + (o.an ? ' ' + o.an : '') }, geometry: { type: 'Point', coordinates: [o.lon, o.lat] } })) };
+        const fc = { type: 'FeatureCollection', features: obs.liste.concat(obs.floues || []).map(o => ({ type: 'Feature', properties: { flou: o.flou ? 1 : 0, t: (MOIS[o.mois] || '') + (o.an ? ' ' + o.an : '') + (o.flou ? ` · à ${o.flou} km près` : '') }, geometry: { type: 'Point', coordinates: [o.lon, o.lat] } })) };
         if (map.getSource('obs')) map.getSource('obs').setData(fc);
         else { map.addSource('obs', { type: 'geojson', data: fc }); }
         if (!map.getLayer('obs')) {
-          map.addLayer({ id: 'obs', type: 'circle', source: 'obs', paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-color': '#10192a', 'circle-stroke-width': 2.5 } });
-          map.addLayer({ id: 'obs-mois', type: 'symbol', source: 'obs', minzoom: 12, layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top' }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+          // Précise : un point blanc bien cerclé, qui ressort sur toutes les teintes de la carte. Floue : un grand cercle pâle.
+          map.addLayer({ id: 'obs', type: 'circle', source: 'obs', paint: { 'circle-radius': ['case', ['==', ['get', 'flou'], 1], 13, 7.5], 'circle-color': ['case', ['==', ['get', 'flou'], 1], 'rgba(255,255,255,0.22)', '#ffffff'], 'circle-stroke-color': ['case', ['==', ['get', 'flou'], 1], '#ffffff', '#10192a'], 'circle-stroke-width': ['case', ['==', ['get', 'flou'], 1], 1.5, 3] } });
+          map.addLayer({ id: 'obs-mois', type: 'symbol', source: 'obs', minzoom: 10.5, layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top' }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
         }
         verifier();
       };
