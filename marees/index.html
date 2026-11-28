@@ -293,10 +293,9 @@
     apres(app, c) { brancherJour(c, () => q5.relancer(app)); },
     pied: 'Hauteurs de mer issues d\'un modèle, pas de l\'annuaire du Shom : vérifier les horaires officiels et garder une large marge.',
     async analyse(app, d) {
-      d.repere = d.xy[d.imin]; d.repereNom = 'point le plus bas du trajet';
       const marche = d.total / 1000 / 3;   // 3 km/h sur sable mouillé et vase
       const s = await maree();
-      let txt = champJour() + `<p>Point le plus bas du trajet : <span class="fort">${m(d.zmin)}</span> (point rouge), à ${T.km(d.dist[d.imin])} du départ. Compter environ <span class="fort">${T.duree(marche)}</span> de marche à 3 km/h.</p>`;
+      let txt = champJour() + `<p>Point le plus bas du trajet : <span class="fort">${m(d.zmin)}</span>, à ${T.km(d.dist[d.imin])} du départ (le profil le montre : glisse le doigt dessus). Compter environ <span class="fort">${T.duree(marche)}</span> de marche à 3 km/h.</p>`;
       if (!s) return txt + '<p>Le modèle de marée ne répond pas : la fenêtre de passage ne peut pas être calculée pour l\'instant.</p>';
       const MARGE = 0.5, t0 = depart(), plages = []; let deb = null;
       for (let t = t0; t <= t0 + 48 * 36e5; t += 3e5) { const sec = niveau(s, t) < d.zmin - MARGE; if (sec && deb == null) deb = t; if (!sec && deb != null) { plages.push([deb, t]); deb = null; } }
