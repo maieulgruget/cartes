@@ -859,7 +859,24 @@
         let prevu = false; const veille = new MutationObserver(() => { if (prevu) return; prevu = true; requestAnimationFrame(() => { prevu = false; if (pleinCourant === api) copier(); }); });
         if (corps) veille.observe(corps, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'class', 'hidden', 'disabled', 'style'] });
         // Un toucher sur une copie (légende, bloc, rangée de boutons) est rejoué sur l'original.
-        racine.addEventListener('click', e => { const t = e.target.closest('[data-pi]'); if (!t || !racine.contains(t)) return; const c = C(), src = c && c.querySelector(`[data-pi="${t.dataset.pi}"]`); if (src) { e.preventDefault(); src.click(); } });
+        racine.addEventListener('click', e => { const t = e.target.closest('[data-pi]'); if (!t || !racine.contains(t)) return; const c = C(), src = c && c.querySelector(`[data-pi="${t.dataset.pi}"]`); if (src && src.click) { e.preventDefault(); src.click(); } });
+        /* Un profil recopié se suit du doigt comme l'original (app.suiviProfil) : le doigt est tenu par le plein écran
+           lui-même, car la copie est refaite dès que la phrase du panneau change. */
+        {
+          const suiviDe = pi => { const c = C(), src = c && c.querySelector(`svg[data-profil][data-pi="${pi}"]`); return src && src._suivi; };
+          const copieDe = pi => racine.querySelector(`svg[data-profil][data-pi="${pi}"]`);
+          const sous = e => { const t = e.target.closest && e.target.closest('svg[data-profil]'); return t && racine.contains(t) && suiviDe(t.dataset.pi) ? t.dataset.pi : null; };
+          let tenu = null, vole = null;
+          const aller = (pi, e) => { const s = suiviDe(pi), cp = copieDe(pi); if (s && cp) s.auDoigt(cp, e); };
+          racine.addEventListener('pointerdown', e => { const pi = sous(e); if (!pi) return; tenu = pi; try { racine.setPointerCapture(e.pointerId); } catch (x) { } aller(pi, e); });
+          racine.addEventListener('pointermove', e => {
+            if (tenu) { aller(tenu, e); return; }
+            if (e.pointerType !== 'mouse') return;
+            const pi = sous(e); if (pi) { vole = pi; aller(pi, e); } else if (vole) { const s = suiviDe(vole); vole = null; if (s) s.effacer(); }
+          });
+          const lacher = () => { tenu = null; };
+          racine.addEventListener('pointerup', lacher); racine.addEventListener('pointercancel', lacher);
+        }
         if (r) {
           bande.style.width = (r.max - r.min) * k + 'px';
           bande.innerHTML = '<div class="p-plages"></div>' + (r.graduations || []).map(g => `<span style="left:${(g.v - r.min) * k}px"${g.texte ? '' : ' class="fin"'}>${g.texte || ''}</span>`).join('');
@@ -908,6 +925,71 @@
         if (map.getSource('pointbulle')) map.getSource('pointbulle').setData(d);
         else { map.addSource('pointbulle', { type: 'geojson', data: d }); map.addLayer({ id: 'pointbulle', type: 'circle', source: 'pointbulle', paint: { 'circle-radius': 6, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
       },
+      /* Profil lié à la carte : le doigt (ou la souris) promené sur un profil pose un repère sur le tracé, à l'endroit
+         correspondant, et un trait sur le profil. svg : le profil du panneau ; o = { x0, x1 : abscisses du départ et de
+         l'arrivée dans le repère du dessin, total : longueur du tracé, y : [haut, bas] du trait,
+         ici(s) : ce qu'il y a à la distance s, { p: [lon, lat], texte } }, phrase : l'élément qui porte le texte.
+         Au doigt, le repère reste posé quand on lâche ; à la souris, il s'efface en quittant le profil.
+         Renvoie { montrer(s, sansCadrer), effacer() } : le thème s'en sert pour le sens inverse (un point du tracé touché sur
+         la carte) et pour le survol, qui tient lui-même la caméra (sansCadrer). */
+      suiviProfil(svg, o) {
+        if (!svg) return null;
+        if (suiviCourant && suiviCourant.svg !== svg) app.repereProfil(null);
+        const vb = svg.viewBox.baseVal, y = o.y || [0, vb.height];
+        let trait = svg.querySelector('.curseur');
+        if (!trait) { trait = document.createElementNS('http://www.w3.org/2000/svg', 'line'); trait.setAttribute('class', 'curseur'); svg.append(trait); }
+        for (const [k, v] of [['y1', y[0]], ['y2', y[1]], ['stroke', 'currentColor'], ['stroke-width', 1.2], ['vector-effect', 'non-scaling-stroke'], ['pointer-events', 'none'], ['opacity', 0]]) trait.setAttribute(k, v);
+        svg.dataset.profil = '1';
+        let repos = null;
+        const tracer = (el, x, voir) => { const t = el && el.querySelector('.curseur'); if (!t) return; if (voir) { t.setAttribute('x1', x); t.setAttribute('x2', x); } t.setAttribute('opacity', voir ? 0.85 : 0); };
+        const copie = () => svg.dataset.pi ? document.querySelector(`.pilote.plein svg[data-profil][data-pi="${svg.dataset.pi}"]`) : null;
+        const api = {
+          svg,
+          montrer(s, sansCadrer) {
+            if (!svg.isConnected) return;
+            s = Math.max(0, Math.min(o.total, s)); const r = o.ici(s); if (!r) return;
+            const x = (o.x0 + (o.x1 - o.x0) * (o.total ? s / o.total : 0)).toFixed(1);
+            tracer(svg, x, true); tracer(copie(), x, true);
+            if (o.phrase && r.texte != null) { if (repos === null) repos = o.phrase.innerHTML; o.phrase.innerHTML = r.texte; }
+            app.repereProfil(r.p, sansCadrer); api.actif = true;
+          },
+          effacer() {
+            if (!api.actif) return; api.actif = false;
+            tracer(svg, 0, false); tracer(copie(), 0, false);
+            if (o.phrase && repos !== null && o.phrase.isConnected) o.phrase.innerHTML = repos; repos = null;
+            if (suiviCourant === api) app.repereProfil(null);
+          },
+          // Le doigt sur le dessin (l'original ou sa copie du plein écran) : son abscisse donne la distance le long du tracé.
+          auDoigt(el, e) {
+            if (app.survol.enCours) return;
+            const b = el.getBoundingClientRect(), w = el.viewBox.baseVal.width, x = (e.clientX - b.left) / b.width * w;
+            suiviCourant = api; api.montrer(Math.max(0, Math.min(1, (x - o.x0) / (o.x1 - o.x0))) * o.total);
+          }
+        };
+        svg._suivi = api; suiviCourant = api;
+        svg.addEventListener('pointerdown', e => api.auDoigt(svg, e));
+        svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons || e.pressure > 0) api.auDoigt(svg, e); });
+        svg.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !app.survol.enCours) api.effacer(); });
+        return api;
+      },
+      /* Le repère du profil sur la carte (null pour l'ôter). Hors de la partie visible de la carte, la vue s'y recentre. */
+      repereProfil(p, sansCadrer) {
+        const d = { type: 'FeatureCollection', features: p ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p[0], p[1]] } }] : [] };
+        if (map.getSource('repereprofil')) map.getSource('repereprofil').setData(d);
+        else if (p) {
+          map.addSource('repereprofil', { type: 'geojson', data: d });
+          map.addLayer({ id: 'repereprofil-halo', type: 'circle', source: 'repereprofil', paint: { 'circle-radius': 13, 'circle-color': '#ffffff', 'circle-opacity': 0.45, 'circle-stroke-color': '#10192a', 'circle-stroke-width': 1, 'circle-stroke-opacity': 0.5 } });
+          map.addLayer({ id: 'repereprofil', type: 'circle', source: 'repereprofil', paint: { 'circle-radius': 6.5, 'circle-color': '#b8963e', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } });
+        }
+        if (!p) return;
+        if (map.getLayer('repereprofil')) { map.moveLayer('repereprofil-halo'); map.moveLayer('repereprofil'); }
+        if (sansCadrer) return;
+        // La partie de la carte que rien ne couvre : sous l'en-tête, au-dessus du panneau ou des commandes du plein écran.
+        const bas = document.querySelector('.pilote.plein .p-bas'), tete = document.querySelector('.pilote.plein .p-tete'), cv = map.getCanvas().getBoundingClientRect();
+        const z = app.marges({ top: (tete ? tete.getBoundingClientRect().bottom - cv.top : 80) + 16, bottom: (bas ? cv.bottom - bas.getBoundingClientRect().top : reponse.offsetHeight ? Math.max(0, cv.bottom - reponse.getBoundingClientRect().top) : 0) + 16, left: 24, right: 24 });
+        const pt = map.project([p[0], p[1]]);
+        if (pt.x < z.left || pt.x > cv.width - z.right || pt.y < z.top || pt.y > cv.height - z.bottom) map.easeTo({ center: [p[0], p[1]], offset: [(z.left - z.right) / 2, (z.top - z.bottom) / 2], duration: 350 });
+      },
       sansBulle() { if (bulleCarte) { bulleCarte.remove(); bulleCarte = null; } if (map.getLayer('pointbulle')) { map.removeLayer('pointbulle'); map.removeSource('pointbulle'); } },
       questions: [], active: null,
       masquer() { appliquerMasque(); },
@@ -933,7 +1015,7 @@
         auPanneau = null;
         if (masque) { masque = false; appliquerMasque(); }   // avant la fermeture : le thème éteint ensuite lui-même ses calques
         if (app.active) { const a = app.active; a.bouton.setAttribute('aria-pressed', 'false'); app.active = null; try { a.fermer && a.fermer(app); } catch (e) { console.error(e); } }
-        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle();
+        reponse.hidden = true; reponse.innerHTML = ''; app.occupe(false); app.sansBulle(); suiviCourant = null; app.repereProfil(null);
         sous.hidden = true; sous.innerHTML = '';
         if (!q) return;
         app.active = q; q.bouton.setAttribute('aria-pressed', 'true'); q.bouton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
@@ -956,7 +1038,7 @@
     };
     // Couches du fond de carte, relevées une fois : tout ce qui s'y ajoute ensuite appartient à un thème.
     const couchesFond = new Set(map.getStyle().layers.map(l => l.id).concat(['maposition']));
-    let masque = false, bulleCarte = null, pleinCourant = null, pleinEtaitLibre = false, numeroPi = 0, auPanneau = null;
+    let masque = false, bulleCarte = null, suiviCourant = null, pleinCourant = null, pleinEtaitLibre = false, numeroPi = 0, auPanneau = null;
     /* « Calque » éteint ce que le thème a posé, puis ne rallume que ce qui était allumé : un calque gardé éteint par la
        carte (les forêts hors du thème Forêt, par exemple) ne doit pas apparaître au retour. */
     const eteints = new Set();

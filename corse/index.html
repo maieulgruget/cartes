@@ -32,7 +32,6 @@
   .barres div { display: grid; grid-template-columns: 9.5em 1fr 4.2em; gap: 6px; align-items: center; margin: 2px 0; }
   .barres div i { display: block; height: 8px; border-radius: 4px; background: var(--gold); min-width: 2px; }
   .barres div span:last-child { text-align: right; white-space: nowrap; color: var(--muted); }
-  .profil svg { touch-action: none; }
 </style>
 </head>
 <body>
@@ -145,7 +144,6 @@
     }
     return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Profil de la rando" style="display:block;margin:4px 0">
       <path d="${aire}L${X(f.total).toFixed(1)} ${H - 14}L${mg} ${H - 14}Z" fill="currentColor" opacity="0.12"/>${traits}
-      <line class="curseur" x1="0" x2="0" y1="6" y2="${H - 14}" stroke="currentColor" stroke-width="1" opacity="0"/>
       <text x="${mg}" y="10" font-size="9" fill="currentColor" opacity="0.75">${milliers(f.properties.altmax)} m</text>
       <text x="${mg}" y="${H - 3}" font-size="9" fill="currentColor" opacity="0.75">${milliers(f.properties.altmin)} m · départ</text>
       <text x="${W - mg}" y="${H - 3}" font-size="9" fill="currentColor" opacity="0.75" text-anchor="end">${km(f.total)}</text></svg>`;
@@ -155,6 +153,7 @@
   // Survol : la rando choisie est proposée au bouton « Survol » des outils de la carte (socle/survol.js).
   const arreter = () => app.survol.arreter();
   let suivreVol = null;   // le panneau des randos, quand il est ouvert, suit le survol sur le profil
+  let montrerPres = null; // et un toucher sur le tracé choisi y place le trait, au point le plus proche
 
   function cadrer(f) {
     let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity; for (const p of f.geometry.coordinates) { o = Math.min(o, p[0]); e = Math.max(e, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
@@ -164,7 +163,7 @@
   const qRandos = {
     plein: () => ({ bloc: '.profil' }),
     theme: 'Randos', libelle: 'Où suis-je passé ?',
-    aide: 'Mes itinéraires, drapés sur le relief. De loin, chaque rando est un point ; les tracés arrivent à l\'échelle d\'une région, et la liste ne porte que les randos de la vue affichée. Le tracé choisi se colore selon la pente le long du chemin, l\'altitude, ou, quand Komoot en donne le détail, la nature du sol et le type de chemin. La pente est celle du sentier (lissée sur 150 m), pas celle du versant.',
+    aide: 'Mes itinéraires, drapés sur le relief. De loin, chaque rando est un point ; les tracés arrivent à l\'échelle d\'une région, et la liste ne porte que les randos de la vue affichée. Le tracé choisi se colore selon la pente le long du chemin, l\'altitude, ou, quand Komoot en donne le détail, la nature du sol et le type de chemin. La pente est celle du sentier (lissée sur 150 m), pas celle du versant. Le doigt promené sur le profil montre l\'endroit sur la carte ; toucher le tracé choisi place le repère sur le profil.',
     ouvrir(app) {
       if (!randos.length) { app.repondre(qRandos.libelle, '<p class="etat">Aucune rando pour l\'instant : dépose un GPX dans corse/gpx/ puis lance relais/randos.py.</p>'); return; }
       const f = randos[etat.choisie], p = f.properties;
@@ -186,18 +185,17 @@
       c.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { arreter(); etat.choisie = +b.dataset.i; etat.repere = null; dessiner(); qRandos.ouvrir(app); cadrer(randos[etat.choisie]); });
       c.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => { etat.mode = b.dataset.m; dessiner(); qRandos.ouvrir(app); });
       c.querySelector('.cadre').onclick = () => { arreter(); cadrer(f); };
-      const svg = c.querySelector('.profil svg'), cur = svg.querySelector('.curseur'), phrase = c.querySelector('.etat'), repos = phrase.innerHTML;
-      const montrer = i => {
-        const q = f.geometry.coordinates[i], x = 4 + 312 * f.d[i] / f.total; cur.setAttribute('x1', x); cur.setAttribute('x2', x); cur.setAttribute('opacity', '0.7');
-        const j = cl.k[i]; phrase.innerHTML = `km <span class="fort">${f.d[i].toFixed(1).replace('.', ',')}</span> · ${milliers(q[2])} m · pente ${f.pente[i] > 0 ? '+' : ''}${Math.round(f.pente[i])} %${etat.mode !== 'pente' && etat.mode !== 'alti' && j >= 0 ? ' · ' + P(cl.items[j].texte) : ''}`;
-        etat.repere = [q[0], q[1]]; dessiner();
-      };
-      const doigt = e => { if (app.survol.enCours) return; const r = svg.getBoundingClientRect(), s = Math.max(0, Math.min(1, ((e.clientX - r.left) / r.width * 320 - 4) / 312)) * f.total; montrer(indiceA(f, s)); };
-      svg.addEventListener('pointerdown', doigt); svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons || e.pressure > 0) doigt(e); });
-      svg.addEventListener('pointerleave', () => { if (!app.survol.enCours) { cur.setAttribute('opacity', '0'); phrase.innerHTML = repos; etat.repere = null; dessiner(); } });
+      // Le doigt sur le profil pose le repère sur la carte (app.suiviProfil) ; le survol et un toucher sur le tracé y renvoient.
+      const n = f.geometry.coordinates.length, indiceA = km => { let a = 0, b = n - 1; while (b - a > 1) { const m = (a + b) >> 1; if (f.d[m] < km) a = m; else b = m; } return km - f.d[a] < f.d[b] - km ? a : b; };
+      const suivi = app.suiviProfil(c.querySelector('.profil svg'), { x0: 4, x1: 316, total: f.total, y: [6, 90], phrase: c.querySelector('.etat'), ici(km) {
+        const i = indiceA(km), q = f.geometry.coordinates[i], j = cl.k[i];
+        return { p: [q[0], q[1]], texte: `km <span class="fort">${f.d[i].toFixed(1).replace('.', ',')}</span> · ${milliers(q[2])} m · pente ${f.pente[i] > 0 ? '+' : ''}${Math.round(f.pente[i])} %${etat.mode !== 'pente' && etat.mode !== 'alti' && j >= 0 ? ' · ' + P(cl.items[j].texte) : ''}` };
+      } });
+      const montrer = i => suivi.montrer(f.d[i], app.survol.enCours);
+      montrerPres = ll => { const k = Math.cos(ll.lat * Math.PI / 180), cs = f.geometry.coordinates; let im = 0, dm = Infinity; for (let i = 0; i < n; i++) { const dx = (cs[i][0] - ll.lng) * k, dy = cs[i][1] - ll.lat, d2 = dx * dx + dy * dy; if (d2 < dm) { dm = d2; im = i; } } montrer(im); };
       suivreVol = montrer;
     },
-    fermer() { suivreVol = null; etat.repere = null; dessiner(); }
+    fermer() { suivreVol = null; montrerPres = null; etat.repere = null; dessiner(); }
   };
   app.question(qRandos);
   app.survol.proposer('randos', () => {
@@ -207,7 +205,10 @@
   // Toucher un tracé le choisit (sauf pendant qu'on dessine un itinéraire : le toucher y pose un point).
   const prendre = (e, aller) => {
     if (app.active && app.active !== qRandos) return;
-    const i = e.features[0].properties.i; if (i !== etat.choisie) { etat.choisie = i; etat.repere = null; dessiner(); }
+    const i = e.features[0].properties.i;
+    // Le tracé déjà choisi, panneau ouvert : le toucher place le repère du profil à cet endroit.
+    if (!aller && i === etat.choisie && app.active === qRandos && montrerPres && !app.survol.enCours) { montrerPres(e.lngLat); return; }
+    if (i !== etat.choisie) { etat.choisie = i; etat.repere = null; dessiner(); }
     if (app.active === qRandos) qRandos.ouvrir(app); else app.choisir(qRandos);
     if (aller) cadrer(randos[i]);
   };

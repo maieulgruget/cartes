@@ -988,6 +988,7 @@
       async function calculer(c) {
         const moi = ++tour, bloc = c.querySelector('.pl-prof');
         garde.ecrire(CLE, pts); dessiner();
+        app.repereProfil(null);
         if (pts.length < 2) { c.querySelector('.etat').innerHTML = pts.length ? 'Touche la carte pour le point suivant.' : 'Touche la carte pour poser la mise à l\'eau, puis chaque point du parcours.'; bloc.innerHTML = ''; return; }
         c.querySelector('.etat').textContent = 'Lecture du fond…';
         const p = await profil(pts, 140); if (moi !== tour) return;
@@ -995,6 +996,13 @@
         const min = Math.round(p.total / 10);
         c.querySelector('.etat').innerHTML = `<span class="fort">${p.total < 1000 ? Math.round(p.total) + ' m' : fr(p.total / 1000, 2) + ' km'}</span>, fond le plus bas à <span class="fort">${m(prof)}</span> ; environ ${min} min de palmage tranquille${min > 45 ? ' : long pour une seule plongée' : ''}.${trop > 0 ? ` <span style="color:#e8be5a">${Math.round(trop * 100)} % du parcours passe sous ${L} m.</span>` : ''}${T ? ` Hauteurs d'eau de maintenant (mer à ${cote(MER)}).` : ''}`;
         bloc.innerHTML = svgProfil(p, L);
+        // Le doigt promené sur le profil montre l'endroit sur la carte, avec le fond à cet endroit.
+        const connus = p.points.filter(x => x.z === x.z);
+        if (connus.length > 1) app.suiviProfil(bloc.querySelector('svg'), { x0: 26, x1: 314, total: p.total, y: [6, 102], phrase: c.querySelector('.etat'), ici(s) {
+          if (moi !== tour) return null;
+          const x = connus.reduce((a, b) => Math.abs(b.d - s) < Math.abs(a.d - s) ? b : a);
+          return { p: [x.lon, x.lat], texte: `<span class="fort">${x.d < 1000 ? Math.round(x.d) + ' m' : fr(x.d / 1000, 2) + ' km'}</span> du départ · ${x.z < 0 ? `fond à <span class="fort">${m(-x.z)}</span>${-x.z > L ? ` <span style="color:#e8be5a">(sous la limite de ${L} m)</span>` : ''}` : 'hors de l\'eau'} · ${Math.round(x.d / 10)} min de palmage` };
+        } });
         app.survol.proposer('plongee', () => pts.length > 1 ? { pts: pts.slice() } : null);
       }
       q.ouvrir = async (app) => {
