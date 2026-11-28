@@ -149,6 +149,10 @@
     }
     let alt = null;
     try { alt = await lireBil(MNT, x0, y1 - t, x0 + t, y1, 256, 256); } catch (e) { alt = null; }
+    /* Au bord de ses données, en mer, le service de l'IGN mélange parfois son « sans donnée » à de vraies altitudes : il
+       en sort des valeurs de -80 ou -400 m, qui creusaient des puits noirs dans la mer en vue 3D. Le sol du LiDAR HD ne
+       descend pas sous les plus basses mers (-7 m environ en Manche) : tout ce qui est sous -12 m est écarté. */
+    if (alt) for (let k = 0; k < 65536; k++) if (alt[k] < -12) alt[k] = NaN;
     /* Arbres : le modèle de surface brut, point par point, donne un hérisson (chaque cime est un pic, et le maillage de
        la carte n'en garde qu'un point sur deux). On ne garde donc que la hauteur du couvert au-dessus du sol (surface
        moins sol nu), sans ce qui fait moins de 2 m (herbes, bruit : routes et prés restent lisses), puis on l'adoucit
@@ -247,11 +251,11 @@
     // se lit en rectangles. Une tuile sans blanc ni bleu clair (moins de 1 %) est rendue telle quelle.
     const clair = k => { const r = d[4 * k], g = d[4 * k + 1], b = d[4 * k + 2]; return r > 48 && r < 104 && g > 137 && g < 178 && b > 160 && b < 208 && b - r > 80; };   // du bleu clair du plan (76, 158, 188) à ses mélanges avec le bleu courant
     let blancs = 0, clairs = 0; for (let k = 0; k < 65536; k += 7) { if (d[4 * k] > 243 && d[4 * k + 1] > 243 && d[4 * k + 2] > 243) blancs++; else if (clair(k)) clairs++; }
-    if (blancs < 90 && clairs < 90 && brut) return brut;
+    if (blancs < 20 && clairs < 90 && brut) return brut;
     let m = await masqueMer(z, x, y);
     // Un module (les fonds marins) peut donner un trait de côte bien plus fin que le relief mondial : 1 mer, 0 terre, 2 inconnu.
     if (planMer.fin && !(lim && lim.max < -20)) { try { const f = await planMer.fin(z, x, y); if (f) { const g = new Uint8Array(65536); for (let k = 0; k < 65536; k++) g[k] = f[k] === 2 ? (m ? m[k] : 0) : f[k]; m = g; } } catch (e) { /* on garde le masque grossier */ } }
-    if (!m) return brut || (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer();
+    if (!m) { if (!brut) return (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer(); m = new Uint8Array(65536); }   // pas de mer connue ici : restent les trous cernés de bleu, plus bas
     /* Seules les grandes plages blanches sont repeintes : un nom écrit en blanc sur la mer doit rester lisible. Un point
        est au cœur d'une plage si tout son voisinage (5 × 5) est blanc ; la plage est ensuite élargie de cinq
        points, pour reprendre sa lisière pâle jusqu'au bleu du plan. */
@@ -266,6 +270,46 @@
       d[4 * k] = MER_PLAN[0]; d[4 * k + 1] = MER_PLAN[1]; d[4 * k + 2] = MER_PLAN[2]; change = true;
     }
     if (clairs >= 90) for (let k = 0; k < 65536; k++) if (m[k] && clair(k)) { d[4 * k] = MER_PLAN[0]; d[4 * k + 1] = MER_PLAN[1]; d[4 * k + 2] = MER_PLAN[2]; change = true; }
+    /* Trous blancs en mer. Près des côtes, le relief mondial est trop grossier pour dire où est la mer : un banc, une
+       anse, un haut-fond restaient en blanc au milieu du bleu. Chaque plage blanche restante est suivie de proche en
+       proche, et l'on regarde ce qui la borde dans la tuile : cernée de bleu aux trois quarts au moins, c'est un trou
+       dans la mer, repeint ; bordée de terre, c'est un manque du plan à terre, laissé blanc. Le bord de la tuile ne
+       compte pas : un trou à cheval sur deux tuiles est jugé de chaque côté sur ce qui l'entoure. */
+    if (brut) {
+      const bleu = k => { const r = d[4 * k], b = d[4 * k + 2]; return r < 120 && b > 120 && b - r > 40; };
+      const zone = new Uint8Array(65536); let nz = 0;
+      for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { const k = j * 256 + i; if (!bleu(k) && d[4 * k] + d[4 * k + 1] + d[4 * k + 2] >= 395 && compte(Ic, i, j, 5)[0]) { zone[k] = 1; nz++; } }
+      if (nz) {
+        const pile = new Int32Array(65536), membres = new Int32Array(65536), indecis = [];
+        for (let k0 = 0; k0 < 65536; k0++) {
+          if (zone[k0] !== 1) continue;
+          let np = 0, nm = 0, nb = 0, na = 0; pile[np++] = k0; zone[k0] = 2;
+          while (np) {
+            const k = pile[--np], i = k & 255, j = k >> 8; membres[nm++] = k;
+            for (let v = 0; v < 4; v++) {
+              const ii = i + (v === 0 ? 1 : v === 1 ? -1 : 0), jj = j + (v === 2 ? 1 : v === 3 ? -1 : 0); if (ii < 0 || jj < 0 || ii > 255 || jj > 255) continue;
+              const q = jj * 256 + ii;
+              if (zone[q] === 1) { zone[q] = 2; pile[np++] = q; } else if (!zone[q]) { if (bleu(q)) nb++; else na++; }
+            }
+          }
+          if (nb >= 1 && nb >= 3 * na) { for (let n = 0; n < nm; n++) { const k = membres[n]; d[4 * k] = MER_PLAN[0]; d[4 * k + 1] = MER_PLAN[1]; d[4 * k + 2] = MER_PLAN[2]; } change = true; }
+          else if (nm >= 150) indecis.push(membres.slice(0, nm));
+        }
+        /* Les grandes plages restées indécises (elles débordent de la tuile, ou touchent autant la terre que la mer), près
+           du niveau de la mer seulement : on demande à l'IGN une petite grille d'altitudes (64 × 64). Son relief n'a pas
+           de valeur en mer : une plage dont les trois quarts sont sans altitude, ou sous 30 cm, est de la mer. À
+           l'intérieur des terres rien n'est demandé, et un manque du plan y reste blanc. */
+        if (indecis.length && lim && lim.min < 3) {
+          try {
+            const t = 2 * R / (1 << z), x0 = -R + x * t, y1 = R - y * t, alt = await lireBil(RGEALTI, x0, y1 - t, x0 + t, y1, 64, 64);
+            for (const mb of indecis) {
+              let mer = 0; for (let n = 0; n < mb.length; n++) { const k = mb[n], v = alt[(k >> 10) * 64 + ((k & 255) >> 2)]; if (absent(v) || v < 0.3) mer++; }
+              if (mer >= 0.75 * mb.length) { for (let n = 0; n < mb.length; n++) { const k = mb[n]; d[4 * k] = MER_PLAN[0]; d[4 * k + 1] = MER_PLAN[1]; d[4 * k + 2] = MER_PLAN[2]; } change = true; }
+            }
+          } catch (e) { /* altitudes indisponibles : la plage reste blanche */ }
+        }
+      }
+    }
     if (!change && brut) return brut;
     ctx.putImageData(im, 0, 0);
     return (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer();

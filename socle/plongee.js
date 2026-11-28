@@ -3,7 +3,7 @@
    est posé dessus, et l'eau est une teinte calculée par la carte graphique selon l'épaisseur d'eau : baisser la mer ne
    recharge rien, on change seulement la règle de couleur.
    Le module est transposable : il ne connaît que le dossier de données qu'on lui donne (relief/, fond/, fonds.json,
-   habitats.json, herbiers.json facultatif), produit pour n'importe quelle emprise par le même script.
+   habitats.json, herbiers.json s'il existe), produit pour n'importe quelle emprise par le même script.
 
    Socle.plongee.installer(app, { donnees: '../plongee/', fuseau, centreMeteo: [lon, lat] }) → { themes… } */
 (function () {
@@ -102,8 +102,16 @@
   const dansLidar = (lon, lat) => D.lidar.some(pg => dansPoly(pg, lon, lat));
   function dansAnneau(r, x, y) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const a = r[i], b = r[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
   function dansPoly(g, x, y) { const ps = g.type === 'Polygon' ? [g.coordinates] : g.coordinates; return ps.some(p => dansAnneau(p[0], x, y) && !p.slice(1).some(t => dansAnneau(t, x, y))); }
-  const NOMS_MILIEU = { roche: 'Roche', sable: 'Sable', vase: 'Vase' };
+  const NOMS_MILIEU = { roche: 'Roche', sable: 'Sable', vase: 'Vase', herbier: 'Herbier', matte: 'Matte morte' };
+  const HERBIER = { herbier: { m: 'herbier', t: 'Herbier de posidonie' }, matte: { m: 'matte', t: 'Matte morte de posidonie' } };
+  // Herbier vivant ou matte morte au point, s'il y en a (polygones triés par boîte englobante : la recherche reste brève).
+  function herbierEn(lon, lat) {
+    for (const h of D.herb || []) if (lon >= h.b[0] && lon <= h.b[2] && lat >= h.b[1] && lat <= h.b[3] && dansAnneau(h.p[0], lon, lat) && !h.p.slice(1).some(t => dansAnneau(t, lon, lat))) return HERBIER[h.k];
+    return null;
+  }
+  // Ce qu'il y a au fond : l'herbier (cartographié finement) l'emporte sur le sédiment (carte au 1/50 000).
   function natureEn(lon, lat) {
+    const h = herbierEn(lon, lat); if (h) return h;
     let res = null;
     for (const f of D.natures) if (dansPoly(f.geometry, lon, lat)) { if (!res || f.properties.m === 'roche') res = f.properties; }
     return res;
@@ -137,11 +145,12 @@
   }
   // Profondeurs en teintes franches (thème Profondeurs), à la façon des cartes bathymétriques.
   const BANDES = [[0, '#d7f0ee'], [3, '#b5e3e6'], [5, '#93d3df'], [10, '#6fbdd6'], [15, '#55a7cb'], [20, '#4290bd'], [30, '#3479ab'], [40, '#2a6597'], [60, '#215281'], [100, '#1a416a'], [200, '#133254'], [500, '#0d243f']];
-  // Chaque teinte vaut de sa profondeur à la suivante ; deux repères très proches font une limite nette.
-  function regleBandes() {
-    const st = [-12000, BANDES[BANDES.length - 1][1]];
-    for (let i = BANDES.length - 1; i >= 1; i--) st.push(-BANDES[i][0] - 0.02, BANDES[i][1], -BANDES[i][0], BANDES[i - 1][1]);
-    st.push(-0.25, BANDES[0][1], -0.05, 'rgba(215,240,238,0)', 9000, 'rgba(215,240,238,0)');
+  // Chaque teinte vaut de sa profondeur à la suivante ; deux repères très proches font une limite nette. N : niveau de
+  // la mer (0 ou négatif) ; ce qui est au-dessus est à sec, donc sans teinte, et les teintes gardent leur profondeur vraie.
+  function regleBandes(N) {
+    N = N || 0; const st = [-12000, BANDES[BANDES.length - 1][1]];
+    for (let i = BANDES.length - 1; i >= 1; i--) if (BANDES[i][0] > -N + 0.3) st.push(-BANDES[i][0] - 0.02, BANDES[i][1], -BANDES[i][0], BANDES[i - 1][1]);
+    st.push(N - 0.25, st[st.length - 1], N - 0.05, 'rgba(215,240,238,0)', 9000, 'rgba(215,240,238,0)');
     return ['interpolate', ['linear'], ['elevation'], ...st];
   }
   // Niveau de plongée : l'eau comme d'habitude jusqu'à la limite L, la limite en or, un voile orangé au-delà.
@@ -152,42 +161,27 @@
     return ['interpolate', ['linear'], ['elevation'], ...st.flat()];
   }
 
-  // ---------- Motifs animés : lumière qui danse en eau claire, herbiers qui ondulent ----------
+  // ---------- Motif animé : herbiers qui ondulent (quand la donnée existe) ----------
   const NIMG = 6;
-  function motifCaustiques(k) {
-    const T = 192, c = document.createElement('canvas'); c.width = c.height = T; const x = c.getContext('2d');
-    x.strokeStyle = 'rgba(255,255,240,0.5)'; x.lineCap = 'round';
-    const ph = k / NIMG * 2 * Math.PI;
-    // Réseau de lignes ondulées entrecroisées, périodique sur la tuile : il se raccorde au motif voisin.
-    for (let f = 0; f < 3; f++) {
-      const ang = f * 2.1 + 0.4, ca = Math.cos(ang), sa = Math.sin(ang);
-      for (let l = -4; l <= 4; l++) {
-        x.lineWidth = 0.9 + (l & 1) * 0.5; x.beginPath();
-        for (let t = -T; t <= T * 2; t += 6) {
-          const off = l * T / 4 + Math.sin(t / T * 2 * Math.PI * 2 + ph + f + l) * 9 + Math.sin(t / T * 2 * Math.PI * 5 - ph + l * 2) * 4;
-          const px = T / 2 + ca * (t - T / 2) - sa * off, py = T / 2 + sa * (t - T / 2) + ca * off;
-          t === -T ? x.moveTo(px, py) : x.lineTo(px, py);
-        }
-        x.stroke();
+  /* Le vert de l'herbier est déjà dans l'image du fond. Ce motif n'ajoute, de près seulement, que des brins qui penchent
+     d'un côté puis de l'autre, comme dans la houle : peu contrastés, sur fond transparent. */
+  function motifHerbier(k) {
+    const T = 160, c = document.createElement('canvas'); c.width = c.height = T; const x = c.getContext('2d');
+    const ph = k / NIMG * 2 * Math.PI; x.lineCap = 'round';
+    for (let i = 0; i < 64; i++) {
+      const bx = (i * 67 + 13) % T, by = (i * 41 + (i % 5) * 9) % T, h = 9 + (i * 13) % 8, w = Math.sin(ph + bx / T * 2 * Math.PI) * 4.5;
+      for (let j = -1; j <= 1; j++) {
+        x.strokeStyle = (i + j) % 3 ? 'rgba(34,70,42,0.42)' : 'rgba(56,96,52,0.36)'; x.lineWidth = 1.9;
+        for (const dx of [0, -T, T]) for (const dy of [0, -T, T]) { const X = bx + dx + j * 2.2, Y = by + dy; x.beginPath(); x.moveTo(X, Y); x.quadraticCurveTo(X + w * 0.35 + j, Y - h * 0.55, X + w + j * 2.5, Y - h + Math.abs(j)); x.stroke(); }
       }
     }
     return x.getImageData(0, 0, T, T);
   }
-  function motifHerbier(k) {
-    const T = 128, c = document.createElement('canvas'); c.width = c.height = T; const x = c.getContext('2d');
-    x.fillStyle = 'rgba(40,74,44,0.82)'; x.fillRect(0, 0, T, T);
-    const ph = k / NIMG * 2 * Math.PI;
-    for (let i = 0; i < 46; i++) {
-      const bx = (i * 37) % T, by = (i * 61) % T, h = 14 + (i * 13) % 12, w = Math.sin(ph + i * 0.7) * 4;
-      x.strokeStyle = i % 3 ? 'rgba(92,140,70,0.9)' : 'rgba(150,170,80,0.8)'; x.lineWidth = 2.2;
-      for (const dx of [0, -T, T]) for (const dy of [0, -T, T]) { x.beginPath(); x.moveTo(bx + dx, by + dy); x.quadraticCurveTo(bx + dx + w * 0.4, by + dy - h * 0.5, bx + dx + w, by + dy - h); x.stroke(); }
-    }
-    return x.getImageData(0, 0, T, T);
-  }
-  // Une seule horloge pour toutes les animations, à cinq images par seconde. Elle s'arrête quand la page est cachée,
+  // Une seule horloge pour toutes les animations, à douze images par seconde. Elle s'arrête quand la page est cachée,
   // quand rien d'animé n'est à l'écran, et au bout d'une minute sans geste (le téléphone ne chauffe pas pour rien).
-  const horloge = { abonnes: new Set(), t: null, geste: Date.now(), map: null,
-    lancer() { if (this.t || document.hidden) return; const pas = () => { this.t = null; if (document.hidden || Date.now() - this.geste > 60000) return; let actif = false; for (const f of this.abonnes) { try { if (f()) actif = true; } catch (e) { console.error(e); } } if (actif) this.t = setTimeout(pas, 200); }; this.t = setTimeout(pas, 200); },
+  const PAS_MS = 80;
+  const horloge = { abonnes: new Set(), t: null, geste: Date.now(), n: 0,
+    lancer() { if (this.t || document.hidden) return; const pas = () => { this.t = null; if (document.hidden || Date.now() - this.geste > 60000) return; this.n++; let actif = false; for (const f of this.abonnes) { try { if (f(this.n)) actif = true; } catch (e) { console.error(e); } } if (actif) this.t = setTimeout(pas, PAS_MS); }; this.t = setTimeout(pas, PAS_MS); },
     ajouter(f) { this.abonnes.add(f); this.lancer(); }, retirer(f) { this.abonnes.delete(f); }
   };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) horloge.lancer(); });
@@ -201,6 +195,7 @@
     { id: 'girelle', nom: 'Girelle', latin: 'Coris julis', mil: [1, 'h'], p: [0, 40], banc: [1, 3], cm: 18, nage: 'vif', forme: 'long', c: ['#4f8a63', '#e3d7a8'], raie: '#e07a2e', f: 'Fine et vive, elle vient voir le plongeur. Le mâle porte une bande orange en zigzag sur le flanc.' },
     { id: 'sar', nom: 'Sar commun', latin: 'Diplodus sargus', mil: [1], p: [1, 40], banc: [3, 7], cm: 30, nage: 'banc', forme: 'haut', c: ['#b9c2c9', '#e6ebee'], bandes: '#4a5560', tache: true, f: 'Argenté, rayé de bandes sombres, avec une tache noire avant la queue. En petits groupes le long des tombants.' },
     { id: 'saupe', nom: 'Saupe', latin: 'Sarpa salpa', mil: [1, 'h'], p: [0, 20], banc: [8, 14], cm: 30, nage: 'banc', forme: 'fuseau', c: ['#a7b0b4', '#dfe4e2'], lignes: '#e2b93b', f: 'Bancs tranquilles sur les roches claires et les herbiers, rayés de lignes dorées. Elle broute les algues.' },
+    { id: 'crenilabre', nom: 'Crénilabre paon', latin: 'Symphodus tinca', mil: ['h', 1], p: [1, 30], banc: [1, 3], cm: 25, nage: 'vif', forme: 'fuseau', c: ['#7c9a58', '#d9cf8e'], lignes: '#b5563c', f: 'Le poisson des herbiers : verdâtre, rayé de lignes de points rouges, il picore entre les feuilles de posidonie.' },
     { id: 'merou', nom: 'Mérou brun', latin: 'Epinephelus marginatus', mil: [1], p: [8, 50], banc: [1, 1], cm: 90, nage: 'lent', forme: 'gros', c: ['#6b4f3a', '#a58a68'], taches: '#d9c7a1', f: 'Le seigneur des failles : massif, brun marbré de clair, il observe depuis son trou. Protégé par un moratoire en Méditerranée française.', statut: 'protégé' },
     { id: 'corb', nom: 'Corb', latin: 'Sciaena umbra', mil: [1], p: [3, 30], banc: [2, 5], cm: 40, nage: 'lent', forme: 'haut', c: ['#5b4630', '#8c6d47'], bord: '#f2efe6', f: 'Brun doré, nageoires bordées de blanc, en petits groupes à l\'entrée des failles. Protégé par un moratoire.', statut: 'protégé' },
     { id: 'rascasse', nom: 'Rascasse', latin: 'Scorpaena porcus', mil: [1], p: [1, 40], banc: [1, 1], cm: 20, nage: 'pose', forme: 'gros', c: ['#8a4b3a', '#c28466'], taches: '#5a2e22', f: 'Immobile et camouflée sur la roche. Ses épines dorsales sont venimeuses : on regarde, on ne touche pas.' },
@@ -263,62 +258,96 @@
   }
   const vignette = e => { const c = document.createElement('canvas'), im = dessinPoisson(e, false, true); c.width = im.width; c.height = im.height; c.getContext('2d').putImageData(im, 0, 0); return c.toDataURL(); };
 
-  /* Simulation : des groupes posés sur des points d'habitat (préparés tous les 70 m dans la zone du lidar : profondeur,
-     milieu, pente), qui tournent lentement autour de leur point. Vitesse et taille pensées pour l'écran, pas pour le réel :
-     à l'échelle vraie, un poisson ne ferait pas un point. */
+  /* Simulation : des bancs attachés au fond. Chaque point d'habitat (préparé tous les 70 m dans la zone du lidar :
+     profondeur, milieu, pente) porte toujours le même banc : même espèce, même nombre, tirés d'un numéro propre au point.
+     Déplacer la carte ne change donc rien à ce qui est déjà à l'écran : des bancs entrent et sortent par les bords.
+     Pour ne pas couvrir l'écran, les points sont triés par étages : à l'étage n, un seul point par carré de 70 m × 2ⁿ
+     (le même à tous les zooms), et l'étage montré dépend du zoom ; en se rapprochant, des bancs s'ajoutent entre ceux
+     qui étaient là. Chaque poisson reste un dessin à taille d'écran, écarté de son point de quelques points d'écran :
+     à l'échelle vraie, il ne ferait pas un point. Un banc n'apparaît que s'il a de l'eau tout autour de lui, mesurée
+     dans le relief : plus de poisson sur la plage. */
   function simulation(app) {
-    const map = app.map; let groupes = [], filtre = null, actif = false, dernier = 0;
+    const map = app.map; let filtre = null, actif = false, etages = null, etagesDe = undefined;
     const src = () => map.getSource('pl-poissons');
-    function peupler() {
-      const b = map.getBounds(), z = map.getZoom(), c = map.getCenter();
-      const dans = D.habitats.filter(h => h[0] > b.getWest() && h[0] < b.getEast() && h[1] > b.getSouth() && h[1] < b.getNorth());
-      groupes = []; if (z < 14.6 || !dans.length) return;
-      // Les points les plus proches du centre d'abord : c'est là qu'on regarde.
-      dans.sort((a, b2) => distM(a, [c.lng, c.lat]) - distM(b2, [c.lng, c.lat]));
-      const nbMax = z > 16.5 ? 14 : z > 15.5 ? 12 : 9;
-      const mpp0 = 156543 * Math.cos(c.lat * RAD) / Math.pow(2, z), ecart = Math.max(60, 95 * mpp0);   // deux groupes à 95 points d'écran au moins
-      let graine = Math.round(c.lng * 1e4 + c.lat * 1e4);
-      const alea = () => { graine = (graine * 16807) % 2147483647; return (graine % 10000) / 10000; };
-      for (const h of dans) {
-        if (groupes.length >= nbMax) break;
-        const mil = h[3], prof = h[2], pente = h[4];
-        const cand = ESPECES.filter(e => (!filtre || filtre === e.id) && e.mil.includes(mil || 2) && prof >= e.p[0] && prof <= e.p[1] && (e.forme !== 'gros' || mil === 1 || pente > 12));
-        if (!cand.length) continue;
-        if (groupes.some(g => distM(g.h, h) < ecart)) continue;
-        const e = cand[Math.floor(alea() * cand.length)], n = e.banc[0] + Math.floor(alea() * (e.banc[1] - e.banc[0] + 1));
-        const membres = []; for (let i = 0; i < n; i++) membres.push({ dx: (alea() - 0.5) * 2, dy: (alea() - 0.5) * 2, ph: alea() * 6.28 });
-        groupes.push({ e, h, membres, ph: alea() * 6.28, r: 18 + alea() * 30, w: 0.08 + alea() * 0.12 });
+    const hacher = (i, sel) => { let h = Math.imul(i + 1, 2654435761) ^ Math.imul(sel + 7, 40503); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
+    const candidats = h => ESPECES.filter(e => (!filtre || filtre === e.id) && e.mil.includes(h[3] === 4 ? 'h' : (h[3] || 2)) && h[2] >= e.p[0] && h[2] <= e.p[1] && (e.forme !== 'gros' || h[3] === 1 || h[4] > 12));
+    // Étage de chaque point : le plus grand n pour lequel il est le point retenu de son carré de 70 m × 2ⁿ.
+    function trier() {
+      if (etagesDe === filtre && etages) return; etagesDe = filtre;
+      const H = D.habitats, n = H.length; etages = new Int8Array(n).fill(-1);
+      let vivants = []; for (let i = 0; i < n; i++) if (candidats(H[i]).length) { vivants.push(i); etages[i] = 0; }
+      for (let L = 1; L <= 6 && vivants.length; L++) {
+        const c = 70 * (1 << L), mieux = new Map();
+        for (const i of vivants) { const h = H[i], cle = Math.floor(h[0] * 80500 / c) + ':' + Math.floor(h[1] * 111200 / c), v = mieux.get(cle); if (v === undefined || hacher(i, 0) < hacher(v, 0)) mieux.set(cle, i); }
+        vivants = [...mieux.values()]; for (const i of vivants) etages[i] = L;
       }
     }
+    // Distance du point à la terre la plus proche (m), cherchée jusqu'à 150 m dans le relief ; gardée en mémoire.
+    const large = new Map();
+    function versTerre(i) {
+      if (!large.has(i)) large.set(i, (async () => {
+        const h = D.habitats[i];
+        for (const r of [15, 30, 50, 75, 105, 150]) for (let a = 0; a < 8; a++) {
+          const z = await altitude(h[0] + r * Math.cos(a * Math.PI / 4) / (111200 * Math.cos(h[1] * RAD)), h[1] + r * Math.sin(a * Math.PI / 4) / 111200);
+          if (!(z < -0.8)) return r;
+        }
+        return 200;
+      })().then(d => { large.set(i, d); return d; }));
+      return large.get(i);
+    }
+    const bancs = new Map();   // numéro du point → banc (espèce, membres), refait à l'identique s'il a été oublié
+    function banc(i) {
+      let g = bancs.get(i); if (g) return g;
+      const h = D.habitats[i], cand = candidats(h), e = cand[Math.floor(hacher(i, 1) * cand.length)], n = e.banc[0] + Math.floor(hacher(i, 2) * (e.banc[1] - e.banc[0] + 1)), membres = [];
+      for (let k = 0; k < n; k++) membres.push({ dx: hacher(i, 10 + 3 * k) * 2 - 1, dy: hacher(i, 11 + 3 * k) * 2 - 1, ph: hacher(i, 12 + 3 * k) * 6.28 });
+      g = { e, h, membres, ph: hacher(i, 3) * 6.28, r: 9 + hacher(i, 4) * 12, w: 0.1 + hacher(i, 5) * 0.14 };
+      if (bancs.size > 400) bancs.clear(); bancs.set(i, g); return g;
+    }
+    let visibles = [];
+    function choisir() {
+      trier();
+      const z = map.getZoom(); visibles = []; if (z < 14.6) return;
+      const b = map.getBounds(), o = b.getWest(), e = b.getEast(), su = b.getSouth(), no = b.getNorth(), c = map.getCenter();
+      const mpp = 156543 * Math.cos(c.lat * RAD) / Math.pow(2, z), L = Math.max(0, Math.min(6, Math.ceil(Math.log2(105 * mpp / 70))));
+      const H = D.habitats, dans = [];
+      for (let i = 0; i < H.length; i++) if (etages[i] >= L && H[i][0] > o && H[i][0] < e && H[i][1] > su && H[i][1] < no) dans.push(i);
+      // Vue très inclinée : l'horizon ramène beaucoup de points ; on garde les plus proches du centre.
+      if (dans.length > 26) { dans.sort((p, q) => distM(H[p], [c.lng, c.lat]) - distM(H[q], [c.lng, c.lat])); dans.length = 26; }
+      visibles = dans;
+      for (const i of dans) if (typeof large.get(i) !== 'number') versTerre(i);
+    }
+    const taille = (z, cm) => (z <= 17 ? 0.5 * Math.pow(2, (z - 14.6) / 2.4) : Math.pow(1.7, Math.min(1, (z - 17) / 2.5))) * Math.pow(cm / 25, 0.4);
     function pas() {
       if (!actif) return false;
       const s = src(); if (!s) return false;
-      if (map.getZoom() < 14.6) { s.setData({ type: 'FeatureCollection', features: [] }); return false; }
-      const t = performance.now() / 1000, mpp = 156543 * Math.cos(map.getCenter().lat * RAD) / Math.pow(2, map.getZoom()), br = map.getBearing() * RAD, feats = [];
-      for (const g of groupes) {
-        const e = g.e, lent = e.nage === 'pose' ? 0.04 : e.nage === 'lent' ? 0.35 : e.nage === 'fouille' ? 0.5 : 1;
-        // Centre du groupe : une boucle lente autour de son point d'habitat (rayon en points d'écran).
-        const a = g.ph + t * g.w * lent, rr = g.r * mpp * (e.nage === 'pose' ? 0.1 : 1);
-        const cxm = Math.cos(a) * rr, cym = Math.sin(2 * a) * rr * 0.5, vx = -Math.sin(a), vy = Math.cos(2 * a);
-        const ecr = vx * Math.cos(br) - vy * Math.sin(br);   // composante du mouvement vers la droite de l'écran
-        for (const p of g.membres) {
-          const ec = (e.banc[1] > 4 ? 34 : 16) * mpp, ox = p.dx * ec + Math.sin(t * 1.3 + p.ph) * 2 * mpp, oy = p.dy * ec * 0.6 + Math.cos(t * 1.1 + p.ph) * 2 * mpp;
-          const dx = cxm + ox, dy = cym + oy, lon = g.h[0] + dx / (111200 * Math.cos(g.h[1] * RAD)), lat = g.h[1] + dy / 111200;
-          feats.push({ type: 'Feature', properties: { i: 'pl-' + e.id + (ecr < 0 ? '-g' : '-d'), e: e.id, t: e.cm }, geometry: { type: 'Point', coordinates: [lon, lat] } });
+      const z = map.getZoom();
+      if (z < 14.6) { s.setData({ type: 'FeatureCollection', features: [] }); return false; }
+      const t = performance.now() / 1000, mpp = 156543 * Math.cos(map.getCenter().lat * RAD) / Math.pow(2, z), br = map.getBearing() * RAD, feats = [];
+      for (const i of visibles) {
+        const d = large.get(i); if (typeof d !== 'number') continue;        // l'eau autour du point n'est pas encore mesurée
+        const g = banc(i), e = g.e, n = g.membres.length, etal = n > 5 ? 30 : n > 1 ? 15 : 0, besoin = (g.r + etal + 8) * mpp;
+        const k = Math.min(1, d / besoin); if (k < 0.4) continue;           // trop près du bord pour ce zoom : le banc attend qu'on se rapproche
+        const lent = e.nage === 'pose' ? 0.05 : e.nage === 'lent' ? 0.4 : e.nage === 'fouille' ? 0.55 : 1;
+        const a = g.ph + t * g.w * lent, rr = g.r * (e.nage === 'pose' ? 0.12 : 1) * k;
+        // Le banc décrit un huit lent autour de son point, en points d'écran ; chacun y garde sa place, avec un léger flottement.
+        const cx = Math.cos(a) * rr, cy = Math.sin(2 * a) * rr * 0.5, vx = -Math.sin(a), ta = taille(z, e.cm);
+        for (const m of g.membres) {
+          const ox = cx + m.dx * etal * k + Math.sin(t * 1.3 + m.ph) * 1.6, oy = cy + m.dy * etal * 0.55 * k + Math.cos(t * 1.1 + m.ph) * 1.6;
+          feats.push({ type: 'Feature', properties: { i: 'pl-' + e.id + (vx < 0 ? '-g' : '-d'), e: e.id, s: ta, o: [ox / ta, oy / ta] }, geometry: { type: 'Point', coordinates: [g.h[0], g.h[1]] } });
         }
       }
       s.setData({ type: 'FeatureCollection', features: feats });
       return true;
     }
-    const surFin = () => { if (actif) { peupler(); horloge.ajouter(pas); } };
+    const surFin = () => { if (actif) { choisir(); horloge.ajouter(pas); } };
     return {
       allumer(oui, id) {
         filtre = id || null; actif = oui;
-        if (oui) { peupler(); map.on('moveend', surFin); horloge.geste = Date.now(); horloge.ajouter(pas); }
+        if (oui) { bancs.clear(); choisir(); map.on('moveend', surFin); horloge.geste = Date.now(); horloge.ajouter(pas); }
         else { map.off('moveend', surFin); horloge.retirer(pas); const s = src(); if (s) s.setData({ type: 'FeatureCollection', features: [] }); }
       },
-      filtrer(id) { filtre = id || null; if (actif) { peupler(); pas(); } },
-      get nb() { return groupes.length; }
+      filtrer(id) { filtre = id || null; bancs.clear(); if (actif) { choisir(); pas(); } },
+      get nb() { return visibles.length; }
     };
   }
 
@@ -484,11 +513,17 @@
     map.addSource('pl-fond', { type: 'raster', tiles: [racine + 'fond/{z}/{x}/{y}.webp'], tileSize: 512, minzoom: 10, maxzoom: 14, bounds: e, attribution: 'Fonds : Litto3D® Shom-IGN, HOMONIM Shom, natures de fond Shom' });
     map.addLayer({ id: 'pl-fond', type: 'raster', source: 'pl-fond', paint: { 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, 'analyses');
     map.addSource('pl-vect', { type: 'geojson', data: fonds });
-    if (herbiers) map.addSource('pl-herbiers', { type: 'geojson', data: herbiers });
-    for (let k = 0; k < NIMG; k++) { map.addImage('pl-caust' + k, motifCaustiques(k)); if (herbiers) map.addImage('pl-herb' + k, motifHerbier(k)); }
-    if (herbiers) map.addLayer({ id: 'pl-herbiers', type: 'fill', source: 'pl-herbiers', minzoom: 12, paint: { 'fill-pattern': 'pl-herb0', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.55, 15, 0.9] } }, 'analyses');
+    if (herbiers) {
+      map.addSource('pl-herbiers', { type: 'geojson', data: herbiers });
+      D.herb = [];
+      for (const f of herbiers.features) for (const p of f.geometry.coordinates) { const b = [180, 90, -180, -90]; for (const q of p[0]) { if (q[0] < b[0]) b[0] = q[0]; if (q[0] > b[2]) b[2] = q[0]; if (q[1] < b[1]) b[1] = q[1]; if (q[1] > b[3]) b[3] = q[1]; } D.herb.push({ k: f.properties.k, b, p }); }
+    }
+    if (herbiers) for (let k = 0; k < NIMG; k++) map.addImage('pl-herb' + k, motifHerbier(k), { pixelRatio: 2 });
+    if (herbiers) {
+      map.addLayer({ id: 'pl-herbiers', type: 'fill', source: 'pl-herbiers', filter: ['==', ['get', 'k'], 'herbier'], minzoom: 15.6, paint: { 'fill-pattern': 'pl-herb0', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15.6, 0, 16.4, 0.8] } }, 'analyses');
+      map.addLayer({ id: 'pl-herbiers-aplat', type: 'fill', source: 'pl-herbiers', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'k'], 'herbier', '#3f8a4c', '#a39672'], 'fill-opacity': 0.62 } }, 'analyses');
+    }
     map.addLayer({ id: 'pl-nature', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'nature'], layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'm'], 'roche', '#7d6650', 'sable', '#f0d78e', 'vase', '#8f9a6a', '#cccccc'], 'fill-opacity': 0.5, 'fill-outline-color': 'rgba(255,255,255,0.35)' } }, 'analyses');
-    map.addLayer({ id: 'pl-clair', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'clair'], minzoom: 13, paint: { 'fill-pattern': 'pl-caust0', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.5, 0.22, 17, 0.32] } }, 'analyses');
     // L'eau lit le relief dans sa propre source (les mêmes tuiles, déjà en mémoire du navigateur) : la carte dessine mieux
     // une teinte et un relief 3D qui ne partagent pas la même source.
     map.addSource('pl-relief', { type: 'raster-dem', tiles: ['plongee://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium' });
@@ -513,18 +548,16 @@
     map.addSource('pl-sites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'pl-sites', type: 'symbol', source: 'pl-sites', layout: { visibility: 'none', 'icon-image': ['get', 'i'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 15, 1], 'icon-allow-overlap': true, 'text-field': ['step', ['zoom'], '', 13.5, ['get', 'nom']], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11.5, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-optional': true, 'symbol-sort-key': ['get', 'rang'] }, paint: { 'text-color': '#fff', 'text-halo-color': '#10192a', 'text-halo-width': 1.6 } });
     map.addSource('pl-poissons', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    map.addLayer({ id: 'pl-poissons', type: 'symbol', source: 'pl-poissons', layout: { 'icon-image': ['get', 'i'], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-pitch-alignment': 'viewport',
-      'icon-size': ['interpolate', ['exponential', 1.6], ['zoom'], 14.6, ['*', 0.5, ['^', ['/', ['get', 't'], 25], 0.4]], 17, ['*', 1.0, ['^', ['/', ['get', 't'], 25], 0.4]], 19.5, ['*', 1.7, ['^', ['/', ['get', 't'], 25], 0.4]]] } });
+    map.addLayer({ id: 'pl-poissons', type: 'symbol', source: 'pl-poissons', layout: { 'icon-image': ['get', 'i'], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-pitch-alignment': 'viewport', 'icon-size': ['get', 's'], 'icon-offset': ['get', 'o'] } });
 
-    // Animations : caustiques (et herbiers) à cinq images par seconde, seulement de près et sous une eau présente.
+    // Animation des herbiers (quand la donnée existe) : une image sur trois de l'horloge, de près seulement.
     let niveau = 0, image = 0;
-    const animer = () => {
-      const z = map.getZoom(); if (z < 13.5 || niveau < -8) return false;
-      image = (image + 1) % NIMG; map.setPaintProperty('pl-clair', 'fill-pattern', 'pl-caust' + image);
-      if (herbiers) map.setPaintProperty('pl-herbiers', 'fill-pattern', 'pl-herb' + image);
+    const animer = n => {
+      if (!herbiers || map.getZoom() < 15.6) return false;
+      if (n % 3 === 0) { image = (image + 1) % NIMG; map.setPaintProperty('pl-herbiers', 'fill-pattern', 'pl-herb' + image); }
       return true;
     };
-    const relancer = () => { horloge.geste = Date.now(); horloge.ajouter(animer); horloge.lancer(); };
+    const relancer = () => { horloge.geste = Date.now(); if (herbiers) horloge.ajouter(animer); horloge.lancer(); };
     for (const ev of ['movestart', 'zoomend', 'click']) map.on(ev, relancer);
     relancer();
     const sim = simulation(app);
@@ -537,7 +570,7 @@
       const p = new URLSearchParams(location.search).get('sites');
       if (p) { const recus = JSON.parse(decodeURIComponent(escape(atob(p.replace(/-/g, '+').replace(/_/g, '/'))))); let n = 0; for (const s of recus) if (!mesSites.some(t => distM(t.c, s.c) < 5 && t.nom === s.nom)) { mesSites.push(s); n++; } garde.ecrire(SITES_CLE, mesSites); if (n) setTimeout(() => { app.occupe(true, n + ' site' + (n > 1 ? 's' : '') + ' reçu' + (n > 1 ? 's' : '') + ' et ajouté' + (n > 1 ? 's' : '')); setTimeout(() => app.occupe(false), 3000); }, 1200); }
     } catch (err) { /* lien abîmé */ }
-    const nomEpave = p => p.nom ? casse(p.nom) : (p.type || 'Épave');
+    const nomEpave = p => p.nom ? casse(p.nom) : (p.type && !/inconnu/i.test(p.type) ? p.type : 'Épave');
     function tousSites() {
       const l = [];
       for (const f of de('epave')) { const p = f.properties; l.push({ id: 'e' + p.id, type: 'epave', nom: nomEpave(p), c: f.geometry.coordinates, p, rang: 1 }); }
@@ -578,13 +611,12 @@
     // ---------- Thèmes ----------
     const themes = {};
     const aide = {
-      vider: 'Le fond est le relevé Litto3D du Shom et de l\'IGN (2015) : un lidar aéroporté qui traverse l\'eau claire et relève le fond au mètre, jusqu\'à une quarantaine de mètres ici. Plus loin et plus profond, c\'est le modèle HOMONIM du Shom, à 100 m : formes générales seulement (teinte plus froide). Les couleurs du fond viennent de la carte des natures de fond du Shom (sable, roche, vase, au 1/50 000), adoucies, et l\'ombrage du relief lui-même. L\'eau est une teinte posée selon son épaisseur : baisser la mer ne déplace rien, elle fait voir le fond comme une vallée. Le menu propose un relief accentué, utile sous l\'eau où les pentes sont douces.',
-      profondeurs: 'Profondeurs en mètres sous le niveau moyen de la mer (Litto3D, IGN 69 ; à quelques décimètres du zéro des cartes marines en Méditerranée). Dans la zone du lidar (pointillé doré), le fond est relevé au mètre ; au-delà, modèle à 100 m. Les isobathes sont retracées sur le relief lissé à une dizaine de mètres. Une roche isolée de petite taille, une ancre, une épave récente peuvent manquer. Ni carte marine ni instrument de navigation.',
+      profondeurs: 'Profondeurs en mètres sous le niveau moyen de la mer (Litto3D, IGN 69 ; à quelques décimètres du zéro des cartes marines en Méditerranée). Le fond est le relevé Litto3D du Shom et de l\'IGN (2015) : un lidar aéroporté qui traverse l\'eau claire et relève le fond au mètre, jusqu\'à une quarantaine de mètres ici (pointillé doré). Plus loin et plus profond, c\'est le modèle HOMONIM du Shom, à 100 m : formes générales seulement. Faire baisser le niveau ne déplace rien : la carte retire la teinte de l\'eau au-dessus du niveau choisi, et le fond apparaît à sec, avec les couleurs de la carte des natures de fond du Shom (sable, roche, vase), le vert des herbiers de posidonie (inventaire de l\'OFB) et l\'ombrage du relief. Les teintes gardent leur profondeur vraie. Les isobathes sont retracées sur le relief lissé à une dizaine de mètres ; une roche isolée, une ancre, une épave récente peuvent manquer. Le menu propose un relief accentué, utile sous l\'eau où les pentes sont douces. Ni carte marine ni instrument de navigation.',
       lumiere: 'L\'eau absorbe les couleurs dans l\'ordre : le rouge dès les premiers mètres, puis l\'orange et le jaune ; le vert et le bleu vont loin. Calcul pour une eau très claire (coefficients d\'absorption de l\'eau pure, Pope et Fry 1997), sur le trajet de la lumière de la surface au fond ; une eau chargée ou un ciel couvert assombrissent bien davantage. La part de lumière tient compte de la hauteur du soleil, calculée pour le jour et l\'heure.',
-      poissons: 'Les espèces sont placées là où leur milieu existe (nature du fond, profondeur, pente), sur des points tous les 70 m de la zone du lidar. Personne ne cartographie les poissons : la carte montre ce qu\'on peut croiser, pas ce qui est là. Les dessins sont des pictogrammes ; tailles et vitesses sont pensées pour l\'écran. Les herbiers de posidonie, refuges de nombreuses espèces, ne sont pas encore sur la carte.',
-      natures: 'Natures de fond au 1/50 000 du Shom (Licence Ouverte) : sédiment et roche relevés par prélèvements et levés anciens, généralisés. À cette échelle, une limite peut être décalée de plusieurs dizaines de mètres, et une tête de roche dans le sable n\'y figure pas : le relief du lidar la montre souvent mieux. Les herbiers de posidonie ne font pas partie de ce produit.',
+      poissons: 'Les espèces sont placées là où leur milieu existe (nature du fond, profondeur, pente), sur des points tous les 70 m de la zone du lidar. Personne ne cartographie les poissons : la carte montre ce qu\'on peut croiser, pas ce qui est là. Les dessins sont des pictogrammes ; tailles et vitesses sont pensées pour l\'écran. L\'herbier de posidonie, refuge de nombreuses espèces, est un milieu à part : il vient de l\'inventaire de l\'Office français de la biodiversité.',
+      natures: 'Natures de fond au 1/50 000 du Shom (Licence Ouverte) : sédiment et roche relevés par prélèvements et levés anciens, généralisés. À cette échelle, une limite peut être décalée de plusieurs dizaines de mètres, et une tête de roche dans le sable n\'y figure pas : le relief du lidar la montre souvent mieux. Herbiers de posidonie : inventaire de l\'Office français de la biodiversité (programme Life Marha, Licence Ouverte), qui rassemble des cartographies de plusieurs producteurs, ici surtout Andromède Océanologie (levés de 2004 à 2010) et Semantic TS (2019). L\'herbier vivant est une prairie de plantes à fleurs, protégée ; la matte morte est le tapis de racines qui reste là où l\'herbier a disparu. Un herbier bouge peu, mais ces levés ont quinze ans pour la plupart : la limite a pu reculer par endroits.',
       sites: 'Épaves et obstructions : base du Shom (CC BY-SA 4.0), avec la précision de position annoncée. Secs : sommets sous-marins repérés par la carte dans le relief du lidar, qui dominent leurs alentours d\'au moins 4 m. Les sites que tu ajoutes restent dans ce téléphone ; « Partager » les envoie par un lien. Aucun site n\'est une autorisation : zones protégées, chenaux et mouillages réglementés restent à vérifier.',
-      parcours: 'Le profil lit le relief au pas de 3,5 m (lidar) le long du tracé. La durée suppose une palanquée qui palme tranquillement, autour de 10 m par minute, sans les paliers : elle donne un ordre de grandeur pour choisir un parcours, pas un temps de plongée. Ni la carte ni ce calcul ne remplacent le directeur de plongée, les tables ou l\'ordinateur.',
+      parcours: 'Le profil lit le relief au pas de 3,5 m (lidar) le long du tracé. La durée suppose un groupe de plongeurs qui palme tranquillement, autour de 10 m par minute, sans les paliers : elle donne un ordre de grandeur pour choisir un parcours, pas un temps de plongée. Ni la carte ni ce calcul ne remplacent le directeur de plongée, les tables ou l\'ordinateur.',
       niveaux: 'Repères de profondeur maximale de la Fédération française d\'études et de sports sous-marins : baptême 6 m ; niveau 1 jusqu\'à 20 m encadré ; niveau 2 jusqu\'à 40 m encadré (20 m en autonomie) ; niveau 3 jusqu\'à 60 m en autonomie. Les conditions du jour, l\'expérience et le directeur de plongée décident : ces lignes servent à lire le relief autour d\'un site.',
       conditions: 'Prévision Open-Meteo : vagues, houle, température de l\'eau et courant (modèles de vagues et d\'océan, maille de plusieurs kilomètres), vent (modèles de Météo-France). L\'abri compare, pour chaque endroit de la mer, la longueur d\'eau libre dans la direction d\'où viennent les vagues (le fetch) : un cap ou une île devant soi abrite. La diffraction autour des pointes et le ressac le long des falaises ne sont pas calculés. La visibilité sous l\'eau n\'est prévue par personne : elle dépend du plancton, des pluies et des derniers coups de vent.'
     };
@@ -594,22 +626,22 @@
     const aireDecouverte = N => D.fonds.aires.slice(0, Math.min(100, Math.round(-N))).reduce((a, b) => a + b, 0);
     const lidarTotal = D.fonds.aires.reduce((a, b) => a + b, 0);
 
-    // --- Vider la mer ---
-    themes.vider = (() => {
+    // --- Profondeurs, et le niveau de la mer que l'on fait baisser ---
+    themes.profondeurs = (() => {
       let anim = null;
-      const q = { theme: 'Vider', libelle: 'Et sans la mer ?', aide: aide.vider };
+      const q = { theme: 'Profondeurs', libelle: 'Quelle profondeur ?', aide: aide.profondeurs };
       const maj = c => {
-        poserEau(niveau);
-        const a = aireDecouverte(niveau);
+        map.setPaintProperty('pl-eau', 'color-relief-color', regleBandes(niveau));
+        for (const id of ['pl-iso', 'pl-iso-txt']) map.setFilter(id, ['all', ['==', ['get', 'k'], 'iso'], ['>', ['get', 'p'], -niveau], ...(id === 'pl-iso-txt' ? [['<=', ['get', 'p'], 100]] : [])]);
         c.querySelector('.v-n').textContent = niveau === 0 ? 'mer pleine' : '−' + Math.round(-niveau) + ' m';
-        c.querySelector('.etat').innerHTML = niveau === 0 ? 'La mer est à son niveau : l\'eau claire laisse voir le fond près du bord. Fais baisser la mer pour découvrir le relief.' : niveau <= -100 ? 'Mer vidée : tout le plateau relevé au lidar est à nu, le large reste en eau.' : `Mer baissée de <span class="fort">${Math.round(-niveau)} m</span> : ${fr(a, 1)} km² de fond découvert, sur les ${fr(lidarTotal, 0)} km² relevés au lidar.`;
+        c.querySelector('.etat').innerHTML = niveau === 0 ? 'Touche la mer pour lire la profondeur. Fais baisser le niveau pour voir le fond à sec.' : niveau <= -100 ? 'Mer vidée : tout le plateau relevé au lidar est à sec, le large reste en eau.' : `Mer baissée de <span class="fort">${Math.round(-niveau)} m</span> : ${fr(aireDecouverte(niveau), 1)} km² de fond à sec, sur les ${fr(lidarTotal, 0)} km² relevés au lidar.`;
       };
       q.ouvrir = async (app) => {
-        ouvrir3d();
+        ouvrir3d(); map.setPaintProperty('pl-eau', 'color-relief-opacity', 0.82); montrer(['pl-iso', 'pl-iso-txt', 'pl-lidar'], true);
         const c = q._c = app.repondre(q.libelle, `<p class="etat"></p>
           <div class="ligne"><label style="min-width:84px">Niveau</label><input type="range" class="n" min="-100" max="0" step="1" value="${niveau}" style="flex:1"><span class="fort v-n" style="min-width:84px;text-align:right"></span></div>
           <div class="puces"><button class="pl-plein">Mer pleine</button><button class="pl-m20">−20 m</button><button class="pl-vide">Vidée</button><button class="pl-anim">▶ Vider doucement</button></div>
-          <div class="legende">${[2, 10, 20, 40, 60, 120].map(p => { const t = EAU.find(r => r[0] >= p) || EAU[EAU.length - 1]; return `<span><i style="background:rgb(${t[1]},${t[2]},${t[3]})"></i>${p} m d'eau</span>`; }).join('')}</div>`);
+          <div class="legende">${BANDES.map((b, i) => `<span><i style="background:${b[1]}"></i>${BANDES[i + 1] ? b[0] + '–' + BANDES[i + 1][0] + ' m' : 'plus de ' + b[0] + ' m'}</span>`).join('')}<span><i style="background:transparent;border:1.5px dashed #e8be5a"></i>limite du lidar</span></div>`);
         const r = c.querySelector('.n');
         const aller = v => { niveau = v; r.value = v; maj(c); };
         r.oninput = () => { if (anim) { cancelAnimationFrame(anim); anim = null; } aller(+r.value); };
@@ -623,27 +655,16 @@
         };
         maj(c);
       };
-      q.fermer = () => { if (anim) cancelAnimationFrame(anim); anim = null; };
-      return q;
-    })();
-
-    // --- Profondeurs ---
-    themes.profondeurs = {
-      theme: 'Profondeurs', libelle: 'Quelle profondeur ?', aide: aide.profondeurs,
-      async ouvrir(app) {
-        map.setPaintProperty('pl-eau', 'color-relief-color', regleBandes()); map.setPaintProperty('pl-eau', 'color-relief-opacity', 0.82);
-        montrer(['pl-iso', 'pl-iso-txt', 'pl-lidar'], true);
-        app.repondre(this.libelle, `<p class="etat">Touche la mer pour lire la profondeur, le fond et la précision du relevé.</p>
-          <div class="legende">${BANDES.map((b, i) => `<span><i style="background:${b[1]}"></i>${BANDES[i + 1] ? b[0] + '–' + BANDES[i + 1][0] + ' m' : 'plus de ' + b[0] + ' m'}</span>`).join('')}<span><i style="background:transparent;border:1.5px dashed #e8be5a"></i>limite du lidar</span></div>`);
-      },
-      async toucher(app, ll) {
+      q.toucher = async (app, ll) => {
         const z = await altitude(ll.lng, ll.lat), n = natureEn(ll.lng, ll.lat), lid = dansLidar(ll.lng, ll.lat);
         if (z !== z) { app.bulle(ll, 'Hors du secteur relevé'); return; }
         if (z >= 0) { app.bulle(ll, `À terre<small>${m(z)} d'altitude</small>`); return; }
-        app.bulle(ll, `<span class="fort">${m(-z)}</span> de fond<small>${n ? n.t.toLowerCase() + ' · ' : ''}${lid ? 'relevé au lidar (1 m)' : 'modèle à 100 m : ordre de grandeur'}</small>`);
-      },
-      fermer() { poserEau(niveau); map.setPaintProperty('pl-eau', 'color-relief-opacity', 1); montrer(['pl-iso', 'pl-iso-txt', 'pl-lidar'], false); }
-    };
+        app.bulle(ll, `<span class="fort">${m(-z)}</span> de fond${z > niveau ? ', à sec ici' : ''}<small>${n ? n.t.toLowerCase() + ' · ' : ''}${lid ? 'relevé au lidar (1 m)' : 'modèle à 100 m : ordre de grandeur'}</small>`);
+      };
+      // La mer revient à son niveau en quittant le thème : les autres thèmes se lisent mer pleine.
+      q.fermer = () => { if (anim) cancelAnimationFrame(anim); anim = null; niveau = 0; poserEau(0); map.setPaintProperty('pl-eau', 'color-relief-opacity', 1); montrer(['pl-iso', 'pl-iso-txt', 'pl-lidar'], false); };
+      return q;
+    })();
 
     // --- Lumière : couleurs au fond ---
     themes.lumiere = (() => {
@@ -697,7 +718,7 @@
         const c = q._c; if (!c) return;
         if (f) { const e = espece(f.properties.e); c.querySelector('.pl-detail').innerHTML = fiche(e); app.bulle(ll, `<span class="fort">${e.nom}</span><small>${e.latin}</small>`); return; }
         const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, z >= 0 ? 'À terre' : 'Hors du secteur'); return; }
-        const n = natureEn(ll.lng, ll.lat), mil = n ? { roche: 1, sable: 2, vase: 3 }[n.m] : 2, l = liste(-z, mil);
+        const n = natureEn(ll.lng, ll.lat), mil = n ? { roche: 1, sable: 2, vase: 3, herbier: 'h', matte: 2 }[n.m] : 2, l = liste(-z, mil);
         app.bulle(ll, `<span class="fort">${m(-z)}</span>, ${n ? n.t.toLowerCase() : 'fond mal connu'}<small>${l.length} espèces qu'on peut y croiser</small>`);
         c.querySelector('.pl-detail').innerHTML = `<p class="petit2" style="margin-top:8px">Ici, sur ${n ? n.t.toLowerCase() : 'ce fond'} à ${m(-z)} :</p>` + l.map(fiche).join('');
       };
@@ -710,15 +731,20 @@
     themes.natures = {
       theme: 'Fonds', libelle: 'Sur quel fond ?', aide: aide.natures,
       async ouvrir(app) {
-        montrer(['pl-nature'], true);
-        const masques = new Set(), c = app.repondre(this.libelle, `<p class="etat">Touche le fond pour sa nature. ${D.herbiers ? '' : 'Les herbiers de posidonie arriveront avec la donnée de l\'OFB.'}</p><div class="legende"></div>`);
-        app.legende(c, [{ cle: 'roche', couleur: '#7d6650', texte: 'roche, cailloutis' }, { cle: 'sable', couleur: '#f0d78e', texte: 'sable, graviers' }, { cle: 'vase', couleur: '#8f9a6a', texte: 'vase' }], ms => map.setFilter('pl-nature', ['all', ['==', ['get', 'k'], 'nature'], ['!', ['in', ['get', 'm'], ['literal', [...ms]]]]]), masques);
+        montrer(['pl-nature', 'pl-herbiers-aplat'], true);
+        const masques = new Set(), c = app.repondre(this.libelle, `<p class="etat">Touche le fond pour sa nature.${D.herbiers ? ' En vert, les herbiers de posidonie.' : ''}</p><div class="legende"></div>`);
+        const postes = [{ cle: 'roche', couleur: '#7d6650', texte: 'roche, cailloutis' }, { cle: 'sable', couleur: '#f0d78e', texte: 'sable, graviers' }, { cle: 'vase', couleur: '#8f9a6a', texte: 'vase' }];
+        if (D.herbiers) postes.unshift({ cle: 'herbier', couleur: '#3f8a4c', texte: 'herbier de posidonie' }, { cle: 'matte', couleur: '#a39672', texte: 'matte morte' });
+        app.legende(c, postes, ms => {
+          map.setFilter('pl-nature', ['all', ['==', ['get', 'k'], 'nature'], ['!', ['in', ['get', 'm'], ['literal', [...ms]]]]]);
+          if (D.herbiers) map.setFilter('pl-herbiers-aplat', ['!', ['in', ['get', 'k'], ['literal', [...ms]]]]);
+        }, masques);
       },
       async toucher(app, ll) {
         const n = natureEn(ll.lng, ll.lat), z = await altitude(ll.lng, ll.lat);
-        app.bulle(ll, n ? `<span class="fort">${n.t}</span><small>${z === z && z < 0 ? m(-z) + ' de fond · ' : ''}${NOMS_MILIEU[n.m].toLowerCase()} pour la carte</small>` : (z >= 0 ? 'À terre' : 'Nature du fond inconnue ici'));
+        app.bulle(ll, n ? `<span class="fort">${n.t}</span><small>${z === z && z < 0 ? m(-z) + ' de fond' : ''}${HERBIER[n.m] ? '' : (z === z && z < 0 ? ' · ' : '') + NOMS_MILIEU[n.m].toLowerCase() + ' pour la carte'}</small>` : (z >= 0 ? 'À terre' : 'Nature du fond inconnue ici'));
       },
-      fermer() { montrer(['pl-nature'], false); map.setFilter('pl-nature', ['==', ['get', 'k'], 'nature']); }
+      fermer() { montrer(['pl-nature', 'pl-herbiers-aplat'], false); map.setFilter('pl-nature', ['==', ['get', 'k'], 'nature']); if (D.herbiers) map.setFilter('pl-herbiers-aplat', null); }
     };
 
     // --- Sites : où plonger ? ---
