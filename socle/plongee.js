@@ -847,6 +847,13 @@
         c.querySelector('.p').oninput = e => { prof = +e.target.value; maj(c); };
         maj(c);
       };
+      // Au point touché : la profondeur du fond, et ce qu'il y reste de chaque couleur.
+      q.toucher = async (app, ll) => {
+        const z = await altitude(ll.lng, ll.lat); if (app.active !== q) return;
+        if (!(z === z) || z >= 0) { app.bulle(ll, z >= 0 ? horsEau(z) : 'Hors du secteur'); return; }
+        const d = -z, vu = BANDE.map(b => [b[0], reste(b[2], d * 1.15)]), perdue = vu.filter(v => v[1] < 0.1).map(v => v[0]);
+        app.bulle(ll, `<span class="fort">${m(d)}</span> de fond<small>${vu.map(v => v[0] + ' ' + Math.round(v[1] * 100) + ' %').join(' · ')}</small><small>${perdue.length ? 'ici, plus ' + perdue.map(n => /^[aeiou]/.test(n) ? 'd\'' + n : 'de ' + n).join(' ni ') + ' sans lampe' : 'toutes les couleurs y sont encore visibles'}</small>`);
+      };
       q.plein = () => ({ bloc: '.pl-nuancier' });
       q.fermer = () => poserEau(niveau);
       return q;

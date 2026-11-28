@@ -248,12 +248,19 @@
         vider = () => { if (toile) toile.getContext('2d').clearRect(0, 0, toile.width, toile.height); }; app.map.on('move', vider);
         if (!app.map.getLayer('nappes-vue')) app.map.addLayer(couche);
         parts.forEach(l => { l.length = 0; for (let i = 0; i < (opts.particules || 650); i++) l.push({ lon: 0, lat: 0, age: 0, z: 0 }); });
-        c.querySelector('.hv').oninput = e => { h = +e.target.value; dire(app, c); };
-        c.querySelector('.now').onclick = () => { h = 0; dire(app, c); };
+        c.querySelector('.hv').oninput = e => { h = +e.target.value; dire(app, c); if (q.dernier) q.toucher(app, q.dernier); };
+        c.querySelector('.now').onclick = () => { h = 0; dire(app, c); if (q.dernier) q.toucher(app, q.dernier); };
         if (app.map.getPitch() < 30) app.map.easeTo({ pitch: 60, duration: 800 });
         app.suivre(q, () => charger(app, c)); boucle(app); await charger(app, c);
       },
+      // Au point touché : le vent à chaque hauteur, à l'heure du curseur.
+      toucher(app, ll) {
+        q.dernier = ll; if (!ch) return;
+        const ws = ch.couches.map(k => vent(k, h, ll.lng, ll.lat));
+        app.bulle(ll, ws.some(w => !w) ? 'Hors de la zone lue : déplace la carte.' : `<span class="fort">Vent à ${hhmm(ch.heures[h])}</span>` + NIV.map((v, i) => `<small>${v.nom} : <span class="fort">${dire2(force(ws[i]), UN)}</span> de ${rose(provenance(ws[i]))}</small>`).join(''));
+      },
       fermer(app) {
+        q.dernier = null;
         tour++; cancelAnimationFrame(anim); anim = null; if (vider) app.map.off('move', vider); removeEventListener('resize', q._caler);
         if (toile) { toile.remove(); toile = null; } if (app.map.getLayer('nappes-vue')) app.map.removeLayer('nappes-vue'); M = null;
       }

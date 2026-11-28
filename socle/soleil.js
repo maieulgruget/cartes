@@ -258,6 +258,11 @@
         brancherMaintenant(c, opts.fuseau, calculer);
         app.suivre(q, calculer); await calculer();
       },
+      // Au point touché : ce que la carte dit de ce versant, et son altitude.
+      toucher(app, ll) {
+        const g = memo.g, cl = memo.classes, k = g && cl ? app.indice(g, ll.lng, ll.lat) : -1; if (k < 0 || !cl[k]) { app.bulle(ll, 'Hors de la vue calculée, ou en mer.'); return; }
+        app.bulle(ll, `<span class="fort">${{ m: 'Lumière rasante le matin', s: 'Lumière rasante le soir', d: 'Lumière rasante matin et soir', j: 'Jamais de lumière rasante' }[cl[k]]}</span><small>${cl[k] === 'j' ? 'le relief cache le soleil quand il est bas' : 'le soleil bas y arrive sans être masqué'} · ${Math.round(g.z[k])} m</small>`);
+      },
       // Plein écran : le jour à choisir ; la légende, en haut, se touche pour ne garder que le matin ou le soir.
       plein() { return { boutons: ['.now'] }; },
       fermer(app) { tour++; app.retirer('rasante'); }
