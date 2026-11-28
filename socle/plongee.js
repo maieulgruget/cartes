@@ -68,6 +68,7 @@
     return (await new Promise(res => c.toBlob(res, 'image/png'))).arrayBuffer();
   }
   // Le relief 3D et la teinte de l'eau demandent les mêmes tuiles : chacune n'est préparée qu'une fois.
+  let ISO_ECHELLE = true;   // filtre des isobathes selon l'échelle, fixé à l'installation
   const cacheRelief = new Map();
   function brancher() {
     if (brancher.fait) return; brancher.fait = true;
@@ -637,9 +638,12 @@
     map.setMaxZoom(Math.min(map.getMaxZoom(), 19));   // une maille du relevé fait 3 à 6 m : plus près, il n'y a plus rien à voir
     map.addLayer({ id: 'pl-eau', type: 'color-relief', source: 'pl-relief', paint: { 'color-relief-color': regleEau(MER), 'color-relief-opacity': 1 } }, 'analyses');
     if (herbiers) map.moveLayer('pl-herbiers-aplat', 'pl-eau');   // l'herbier se lit par-dessus le sédiment
-    map.addLayer({ id: 'pl-iso', type: 'line', source: 'pl-vect', filter: ['==', ['get', 'k'], 'iso'], layout: { 'line-join': 'round', visibility: 'none' }, paint: { 'line-color': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 'rgba(240,250,255,0.75)', 'rgba(230,245,255,0.4)'], 'line-width': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 1.3, 0.7] } }, 'analyses');
+    /* Généralisation des isobathes : de loin, les courbes maîtresses seulement (10, 20, 50, 100 m…) ; les intermédiaires
+       arrivent à l'échelle d'une baie (5, 30, 40, 60 m), les plus fines (3, 15, 25 m) à celle d'un site. */
+    ISO_ECHELLE = ['<=', ['match', ['get', 'p'], [10, 20, 50, 100, 200, 500, 1000], 0, [5, 30, 40, 60, 150, 300], 1, 2], ['step', ['zoom'], 0, 12, 1, 13.5, 2]];
+    map.addLayer({ id: 'pl-iso', type: 'line', source: 'pl-vect', filter: ['all', ['==', ['get', 'k'], 'iso'], ISO_ECHELLE], layout: { 'line-join': 'round', visibility: 'none' }, paint: { 'line-color': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 'rgba(240,250,255,0.75)', 'rgba(230,245,255,0.4)'], 'line-width': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 1.3, 0.7] } }, 'analyses');
     map.addLayer({ id: 'pl-lidar', type: 'line', source: 'pl-vect', filter: ['==', ['get', 'k'], 'lidar'], layout: { visibility: 'none' }, paint: { 'line-color': '#e8be5a', 'line-width': 1.2, 'line-dasharray': [3, 3], 'line-opacity': 0.8 } }, 'analyses');
-    map.addLayer({ id: 'pl-iso-txt', type: 'symbol', source: 'pl-vect', filter: ['all', ['==', ['get', 'k'], 'iso'], ['<=', ['get', 'p'], 100]], minzoom: 13, layout: { visibility: 'none', 'symbol-placement': 'line', 'symbol-spacing': 280, 'text-field': ['concat', ['to-string', ['get', 'p']], ' m'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-max-angle': 30 }, paint: { 'text-color': '#0f2a44', 'text-halo-color': 'rgba(255,255,255,0.85)', 'text-halo-width': 1.4 } });
+    map.addLayer({ id: 'pl-iso-txt', type: 'symbol', source: 'pl-vect', filter: ['all', ['==', ['get', 'k'], 'iso'], ['<=', ['get', 'p'], 100], ISO_ECHELLE], minzoom: 13, layout: { visibility: 'none', 'symbol-placement': 'line', 'symbol-spacing': 280, 'text-field': ['concat', ['to-string', ['get', 'p']], ' m'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-max-angle': 30 }, paint: { 'text-color': '#0f2a44', 'text-halo-color': 'rgba(255,255,255,0.85)', 'text-halo-width': 1.4 } });
     // Sites : épaves, obstructions remarquables (les statues), secs, sites gardés.
     const pic = (nom, dessin, w, h) => { const c = document.createElement('canvas'); c.width = w || 40; c.height = h || 40; const x = c.getContext('2d'); dessin(x); map.addImage(nom, x.getImageData(0, 0, c.width, c.height), { pixelRatio: 2 }); };
     pic('pl-epave', x => { x.fillStyle = '#10192a'; x.beginPath(); x.arc(20, 20, 17, 0, 7); x.fill(); x.strokeStyle = '#e8be5a'; x.lineWidth = 2.4; x.lineCap = 'round'; x.beginPath(); x.moveTo(9, 24); x.lineTo(31, 18); x.moveTo(12, 25); x.lineTo(13, 13); x.moveTo(20, 23); x.lineTo(21, 9); x.moveTo(27, 21); x.lineTo(27, 14); x.stroke(); });
@@ -655,7 +659,8 @@
       'text-field': ['step', ['zoom'], '', 14.5, ['get', 'nom']], 'text-font': ['Source Sans Pro Italic'], 'text-size': 11.5, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-optional': true, 'text-allow-overlap': false },
       paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.6, 14.5, 0.95], 'text-color': '#f4e3b0', 'text-halo-color': 'rgba(10,24,44,0.9)', 'text-halo-width': 1.5 } });
     map.addSource('pl-sites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    map.addLayer({ id: 'pl-sites', type: 'symbol', source: 'pl-sites', layout: { visibility: 'none', 'icon-image': ['get', 'i'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 15, 1], 'icon-allow-overlap': true, 'text-field': ['step', ['zoom'], '', 13.5, ['get', 'nom']], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11.5, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-optional': true, 'symbol-sort-key': ['get', 'rang'] }, paint: { 'text-color': '#fff', 'text-halo-color': '#10192a', 'text-halo-width': 1.6 } });
+    // Les sites par ordre d'importance : de loin, les sites à soi et les grands sites ; les épaves à l'échelle d'une baie ; les secs de près.
+    map.addLayer({ id: 'pl-sites', type: 'symbol', source: 'pl-sites', filter: ['<=', ['get', 'rang'], ['step', ['zoom'], 0, 11.8, 1, 13.2, 3]], layout: { visibility: 'none', 'icon-image': ['get', 'i'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 15, 1], 'icon-allow-overlap': true, 'text-field': ['step', ['zoom'], '', 13.5, ['get', 'nom']], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11.5, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-optional': true, 'symbol-sort-key': ['get', 'rang'] }, paint: { 'text-color': '#fff', 'text-halo-color': '#10192a', 'text-halo-width': 1.6 } });
     map.addSource('pl-poissons', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'pl-poissons', type: 'symbol', source: 'pl-poissons', layout: { 'icon-image': ['get', 'i'], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-pitch-alignment': 'viewport', 'icon-size': ['get', 's'], 'icon-offset': ['get', 'o'] } });
 
@@ -767,7 +772,7 @@
       const q = { theme: 'Profondeurs', libelle: 'Quelle profondeur ?', aide: aide.profondeurs };
       const maj = c => {
         map.setPaintProperty('pl-eau', 'color-relief-color', T ? decaler(regleBandes(0), niveau) : regleBandes(niveau));
-        if (!T) for (const id of ['pl-iso', 'pl-iso-txt']) map.setFilter(id, ['all', ['==', ['get', 'k'], 'iso'], ['>', ['get', 'p'], -niveau], ...(id === 'pl-iso-txt' ? [['<=', ['get', 'p'], 100]] : [])]);
+        if (!T) for (const id of ['pl-iso', 'pl-iso-txt']) map.setFilter(id, ['all', ['==', ['get', 'k'], 'iso'], ['>', ['get', 'p'], -niveau], ISO_ECHELLE, ...(id === 'pl-iso-txt' ? [['<=', ['get', 'p'], 100]] : [])]);
         const sec = fr(aireDecouverte(niveau), 1);
         if (T) {
           c.querySelector('.v-n').textContent = cote(niveau);
