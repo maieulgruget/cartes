@@ -46,6 +46,12 @@ allures de la carte dans `opts.allure`, pauses non comptées). Le point rouge du
 la carte y signale). Tracé gardé sous un autre thème : la pastille « Tracé » propose « Profil », un bandeau posé au-dessus
 des commandes du thème ; le doigt levé, le thème en cours répond pour ce point du tracé (`q.toucher`, sauf
 `q.auTrace === false`).
+Les tracés s'enregistrent sous un nom (« Enregistrer ») et se ressortent d'un toucher ; ils restent sur l'appareil
+(`cartes.trace.<clé>.gardes`), le GPX sert à les emporter.
+
+`socle/refuges.js` : thème « Refuges » (Tarentaise, les deux cartes champignons, Corse). Refuges gardés, cabanes et gîtes
+d'étape de refuges.info (CC BY-SA 2.0), lus par la page pour la vue affichée ; un toucher ouvre la fiche (places, eau,
+bois, poêle, accès, remarques, date de mise à jour), qui s'imprime avec la carte autour.
 
 `socle/fonds.js` : fonds marins du Shom (modèle HOMONIM à 100 m, relu sur sa palette de couleurs), isobathes, profil
 le long d'une route. `relais/lieux.py` prépare `voile/lieux.json` (ports, caps, îles, anses, feux de la BD TOPO, avec un

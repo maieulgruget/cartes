@@ -20,6 +20,7 @@
 <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
 <script src="../socle/socle.js"></script>
 <script src="../socle/trace.js"></script>
+<script src="../socle/refuges.js"></script>
 </head>
 <body>
 <script>
@@ -371,6 +372,7 @@
     fermer(app) { map.setLayoutProperty('foret', 'visibility', 'none'); if (q3.fondAvant && q3.fondAvant !== app.fond) app.mettreFond(q3.fondAvant); }
   };
   [q1, q2, q3].forEach(q => app.question(q));
+  app.question(Socle.refuges.theme());
   app.question(Socle.trace({ cle: 'semnoz-rando', nom: 'Sortie autour d\'Annecy', theme: 'Préparer', libelle: 'Par où passer ?', sentiers: true, seuilPente: false,
     intro: 'Touche la carte pour poser le départ, puis chaque étape : le tracé suit les sentiers. Le fond « Carte 25 » les montre le mieux.', pied: 'Tracé calculé sur les sentiers de la BD TOPO.' }));
 })();

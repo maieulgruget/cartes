@@ -31,6 +31,13 @@
     for (let i = 0; i < pts.length - 1; i++) if (!brins[i] || brins[i].length < 2) brins[i] = [pts[i], pts[i + 1]];
     brins.length = Math.max(0, pts.length - 1);
     const garder = () => { try { localStorage.setItem(cle, JSON.stringify({ pts, brins, sentiers: surSentiers, garde: gardeTrace, profil: profilVu, depart })); } catch (e) { } };
+    /* Tracés enregistrés : « Enregistrer » range le tracé en cours sous un nom, sur l'appareil ; la rangée du panneau les
+       ressort d'un toucher (le tracé en cours est alors remplacé). Ils ne quittent pas l'appareil : le GPX sert à les
+       emporter ailleurs. */
+    const cleGardes = cle + '.gardes';
+    let gardes = []; try { const v = JSON.parse(localStorage.getItem(cleGardes)); if (Array.isArray(v)) gardes = v.filter(g => g && g.nom && Array.isArray(g.pts)); } catch (e) { gardes = []; }
+    let courant = null;      // nom du tracé enregistré que l'on a sous les yeux, tant qu'on ne l'a pas modifié
+    const rangerGardes = () => { try { localStorage.setItem(cleGardes, JSON.stringify(gardes)); } catch (e) { } };
     const chemin = () => { const l = []; brins.forEach((b, i) => { for (let k = i ? 1 : 0; k < b.length; k++) l.push(b[k]); }); return l; };
     async function brin(a, b) {
       if (!surSentiers) return [a, b];
@@ -229,11 +236,36 @@
         appli = app; majPastille();
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
           <div class="puces horaire" style="margin-top:8px"><button class="hmoins" aria-label="Partir un quart d'heure plus tôt">− 15 min</button><button class="hdep" title="Toucher pour partir maintenant">Départ ${heure(depart)}</button><button class="hplus" aria-label="Partir un quart d'heure plus tard">+ 15 min</button></div>
-          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer le tracé</button><button class="garde" aria-pressed="${gardeTrace}" title="Le tracé reste dessiné quand on passe à un autre thème">Garder sur la carte</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
+          <div class="puces gardes" style="margin-top:8px"></div>
+          <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer le tracé</button><button class="garde" aria-pressed="${gardeTrace}" title="Le tracé reste dessiné quand on passe à un autre thème">Garder sur la carte</button><button class="enr" title="Ranger ce tracé sous un nom, sur cet appareil, pour le ressortir plus tard">Enregistrer</button><button class="sup" hidden>Retirer de la liste</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
         q._c = c;
         if (opts.sentiers) c.querySelector('.sent').onclick = e => { surSentiers = !surSentiers; e.currentTarget.setAttribute('aria-pressed', surSentiers); garder(); };
-        c.querySelector('.undo').onclick = () => { pts.pop(); brins.length = Math.max(0, pts.length - 1); garder(); calculer(app, c); };
-        c.querySelector('.raz').onclick = () => { pts.length = 0; brins.length = 0; garder(); calculer(app, c); };
+        c.querySelector('.undo').onclick = () => { pts.pop(); brins.length = Math.max(0, pts.length - 1); courant = null; garder(); calculer(app, c); majGardes(); };
+        c.querySelector('.raz').onclick = () => { pts.length = 0; brins.length = 0; courant = null; garder(); calculer(app, c); majGardes(); };
+        // Tracés enregistrés.
+        const majGardes = q._majGardes = () => {
+          c.querySelector('.gardes').innerHTML = gardes.map((g, i) => `<button data-g="${i}" aria-pressed="${g.nom === courant}">${app.propre(g.nom)}<small>${g.km ? km(g.km) : ''}${g.dplus ? ' · +' + Math.round(g.dplus) + ' m' : ''}</small></button>`).join('');
+          const s = c.querySelector('.sup'); s.hidden = !courant; if (courant) s.textContent = `Retirer « ${courant} » de la liste`;
+        };
+        c.querySelector('.gardes').onclick = e => {
+          const b = e.target.closest('button[data-g]'), g = b && gardes[+b.dataset.g]; if (!g) return;
+          pts = g.pts.map(p => p.slice()); brins = (g.brins || []).map(l => l.map(p => p.slice()));
+          for (let i = 0; i < pts.length - 1; i++) if (!brins[i] || brins[i].length < 2) brins[i] = [pts[i], pts[i + 1]];
+          brins.length = Math.max(0, pts.length - 1);
+          if (g.depart >= 0) depart = g.depart; courant = g.nom; garder(); majHeure(c); dessinerLigne(app); calculer(app, c); majGardes();
+          let o = Infinity, s = Infinity, e2 = -Infinity, n = -Infinity; for (const p of chemin()) { o = Math.min(o, p[0]); e2 = Math.max(e2, p[0]); s = Math.min(s, p[1]); n = Math.max(n, p[1]); }
+          app.map.fitBounds([[o, s], [e2, n]], { padding: app.marges({ top: 110, bottom: Math.round(innerHeight * 0.45), left: 40, right: 70 }), pitch: app.map.getPitch(), bearing: app.map.getBearing(), maxZoom: 15.5, duration: 1200 });
+        };
+        c.querySelector('.enr').onclick = () => {
+          if (pts.length < 2) { app.occupe(true, 'Pose au moins deux points avant d\'enregistrer'); setTimeout(() => app.occupe(false), 2200); return; }
+          const nom = (prompt('Nom du tracé à enregistrer', courant || `Tracé du ${new Date().toLocaleDateString('fr-FR')}`) || '').trim().slice(0, 60); if (!nom) return;
+          const g = { nom, pts: pts.map(p => p.slice()), brins: brins.map(l => l.map(p => p.slice())), depart, km: d ? d.total : 0, dplus: d ? d.dplus : 0, date: new Date().toISOString().slice(0, 10) };
+          const i = gardes.findIndex(x => x.nom === nom); if (i >= 0) gardes[i] = g; else gardes.push(g);
+          courant = nom; rangerGardes(); majGardes();
+          app.occupe(true, `« ${nom} » enregistré sur cet appareil`); setTimeout(() => app.occupe(false), 2200);
+        };
+        c.querySelector('.sup').onclick = () => { if (!courant || !confirm(`Retirer « ${courant} » des tracés enregistrés ? Le tracé affiché reste sur la carte.`)) return; gardes = gardes.filter(g => g.nom !== courant); courant = null; rangerGardes(); majGardes(); };
+        majGardes();
         c.querySelector('.garde').onclick = e => { gardeTrace = !gardeTrace; e.currentTarget.setAttribute('aria-pressed', gardeTrace); garder(); };
         c.querySelector('.gpx').onclick = gpx;
         // Heure de départ : par quarts d'heure ; toucher l'heure la met à maintenant. Elle donne l'arrivée et l'heure de passage sur le profil.
@@ -248,10 +280,10 @@
       async toucher(app, ll) {
         const p = [+ll.lng.toFixed(6), +ll.lat.toFixed(6)], avant = pts[pts.length - 1];
         if (avant) { if (surSentiers) app.occupe(true, 'Recherche du sentier…'); const b = await brin(avant, p); app.occupe(false); if (app.active !== q || pts[pts.length - 1] !== avant) return; brins.push(b); }
-        pts.push(p); garder(); dessinerLigne(app); calculer(app, q._c);
+        pts.push(p); courant = null; if (q._majGardes) q._majGardes(); garder(); dessinerLigne(app); calculer(app, q._c);
       },
       // Plein écran : on pose les points sur toute la carte ; le profil reste dessous, avec les gestes utiles en route.
-      plein() { return { bloc: '.profil', boutons: ['.hmoins', '.hdep', '.hplus', opts.sentiers ? '.sent' : null, '.undo', '.raz', '.garde', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
+      plein() { return { bloc: '.profil', boutons: ['.hmoins', '.hdep', '.hplus', opts.sentiers ? '.sent' : null, '.undo', '.raz', '.garde', '.enr', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
       // « Garder sur la carte » : le tracé reste dessiné sous les autres thèmes ; on revient ici pour le retirer ou l'effacer.
       fermer(app) { tour++; suivi = null; app.map.off('mousemove', 'trace-bord', surTrace); app.map.off('mouseleave', 'trace-bord', horsTrace); app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) { setTimeout(majPastille, 0); return; } oter(app); majPastille(); }
     };

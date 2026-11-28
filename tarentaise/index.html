@@ -23,6 +23,7 @@
 <script src="../socle/soleil.js"></script>
 <script src="../socle/foret.js"></script>
 <script src="../socle/trace.js"></script>
+<script src="../socle/refuges.js"></script>
 </head>
 <body>
 <script>
@@ -341,6 +342,7 @@
   famille('Météo', qTemps);
   famille('Météo', Socle.vent.theme({ fuseau: 'Europe/Paris', unite: 'kmh', theme: 'Vent au sol', libelle: 'D\'où souffle le vent au sol ?' }));
   famille('Météo', Socle.vent.nappes({ fuseau: 'Europe/Paris', unite: 'kmh', exageration: 1, theme: 'Vent en altitude', niveaux: [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '800hPa', alt: 2000, nom: 'vers 2 000 m', coul: '#ffd166' }, { cle: '700hPa', alt: 3000, nom: 'vers 3 000 m', coul: '#ff7b9c' }] }));
+  app.question(Socle.refuges.theme());
   app.question(Socle.foret({ note: 'En lisière haute, les mélèzes et les aulnes verts signalent souvent les couloirs.' }));
 })();
 </script>
