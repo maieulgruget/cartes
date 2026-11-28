@@ -40,6 +40,13 @@ tracé. Le doigt (ou la souris) promené sur le profil pose un repère au même 
 cela marche aussi sur la copie du profil en plein écran. Branché sur l'itinéraire commun (`socle/trace.js`), les randos,
 le parcours de plongée et la route à la voile.
 
+Itinéraire (`socle/trace.js`) : heure de départ réglable par quarts d'heure ; la carte en tire l'heure d'arrivée et
+l'heure de passage en chaque point du profil (plat et dénivelé comptés à part, le plus long plus la moitié de l'autre ;
+allures de la carte dans `opts.allure`, pauses non comptées). Le point rouge du tracé porte son nom (ce que l'analyse de
+la carte y signale). Tracé gardé sous un autre thème : la pastille « Tracé » propose « Profil », un bandeau posé au-dessus
+des commandes du thème ; le doigt levé, le thème en cours répond pour ce point du tracé (`q.toucher`, sauf
+`q.auTrace === false`).
+
 `socle/fonds.js` : fonds marins du Shom (modèle HOMONIM à 100 m, relu sur sa palette de couleurs), isobathes, profil
 le long d'une route. `relais/lieux.py` prépare `voile/lieux.json` (ports, caps, îles, anses, feux de la BD TOPO, avec un
 rang d'apparition) ; `relais/balises.py` prépare `voile/balises.json` (balises d'OpenStreetMap), à lancer à la main ou
