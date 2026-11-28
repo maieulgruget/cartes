@@ -112,3 +112,7 @@ valeur en mer). Le blanc d'un manque du plan à terre reste blanc. Relief : les 
 (sous -12 m) sont écartées, elles creusaient des puits noirs en vue 3D.
 
 Données : IGN (Géoplateforme), BRGM, Shom, OpenStreetMap, Open-Meteo. Versions de travail, à vérifier sur le terrain.
+
+### Fonds par activité
+
+Quatre fonds ne sont proposés que sur les cartes qui les demandent (`fondsEnPlus` dans la configuration de la carte) : `pentes` (pentes de plus de 30° de l'IGN sur la carte au 1/25 000 — Tarentaise), `littoral` (carte littorale Shom-IGN — Voile, Saint-Brieuc), `infrarouge` (BD ORTHO en infrarouge — champignons) et `photo1950` (photos aériennes 1950-1965 — Saint-Brieuc, La Réunion). Les cartes de plongée ne prennent pas la carte littorale : leur propre dessin des fonds recouvre la mer.

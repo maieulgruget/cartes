@@ -507,6 +507,13 @@
       etatmajor: { type: 'raster', tiles: [wmts('GEOGRAPHICALGRIDSYSTEMS.ETATMAJOR40', 'image/jpeg')], tileSize: 256, minzoom: 6, maxzoom: 15, attribution: 'Carte de l\'état-major © IGN' },
       cassini: { type: 'raster', tiles: [wmts('BNF-IGNF_GEOGRAPHICALGRIDSYSTEMS.CASSINI', 'image/png')], tileSize: 256, minzoom: 6, maxzoom: 14, attribution: 'Carte de Cassini © BnF, IGN' },
       carte1950: { type: 'raster', tiles: [wmts('GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN50.1950', 'image/jpeg')], tileSize: 256, minzoom: 3, maxzoom: 15, attribution: 'Carte de 1950 © IGN' },
+      /* Fonds propres à une activité, qu'une carte demande (cfg.fondsEnPlus) : les pentes de plus de 30° (ski de randonnée),
+         la carte littorale Shom-IGN (voile, plongée, estran), la photo en infrarouge (la végétation, pour les champignons)
+         et les photos aériennes des années 1950. Non demandés, ils ne chargent rien. */
+      pentes: { type: 'raster', tiles: [wmts('GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN', 'image/png')], tileSize: 256, maxzoom: 17, attribution: 'Carte des pentes © IGN' },
+      littoral: { type: 'raster', tiles: [wmts('GEOGRAPHICALGRIDSYSTEMS.COASTALMAPS', 'image/png')], tileSize: 256, minzoom: 6, maxzoom: 16, attribution: 'Carte littorale © Shom, IGN' },
+      infrarouge: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS.IRC', 'image/jpeg')], tileSize: 256, minzoom: 6, maxzoom: 19, attribution: 'BD ORTHO® infrarouge © IGN' },
+      photo1950: { type: 'raster', tiles: [wmts('ORTHOIMAGERY.ORTHOPHOTOS.1950-1965', 'image/png')], tileSize: 256, maxzoom: 18, attribution: 'Photos aériennes 1950-1965 © IGN' },
       bdtopo: { type: 'vector', tiles: [`${GEOPF}/tms/1.0.0/BDTOPO/{z}/{x}/{y}.pbf`], minzoom: 15, maxzoom: 18, attribution: 'BD TOPO © IGN' },
       // Relief en tuiles de 512 points à l'écran : quatre fois moins de tuiles à demander qu'en 256, pour un maillage 3D qui n'y perd rien de visible.
       relief: { type: 'raster-dem', tiles: ['ignalti://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium', attribution: 'Relief : LiDAR HD © IGN' },
@@ -520,6 +527,10 @@
       { id: 'orthothr', type: 'raster', source: 'orthothr', minzoom: 13, layout: { visibility: 'none' } },
       { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
       { id: 'scan25', type: 'raster', source: 'scan25', layout: { visibility: 'none' } },
+      { id: 'pentes', type: 'raster', source: 'pentes', paint: { 'raster-opacity': 0.62 }, layout: { visibility: 'none' } },   // par-dessus la carte au 1/25 000, qui reste lisible dessous
+      { id: 'littoral', type: 'raster', source: 'littoral', minzoom: 6, layout: { visibility: 'none' } },
+      { id: 'infrarouge', type: 'raster', source: 'infrarouge', minzoom: 6, layout: { visibility: 'none' } },
+      { id: 'photo1950', type: 'raster', source: 'photo1950', layout: { visibility: 'none' } },
       { id: 'ombrage', type: 'raster', source: 'ombrage', layout: { visibility: 'none' } },
       // Géologie à trois échelles, enchaînées selon le zoom : le million de loin, le 1/250 000, puis le 1/50 000.
       { id: 'geol1m', type: 'raster', source: 'geol1m', maxzoom: 7.5, layout: { visibility: 'none' } },
@@ -628,22 +639,28 @@
 
     /* Fonds de carte. Chacun allume un ou plusieurs calques en image ; « estompe » est la force de l'ombrage du relief posé
        dessus (0 : aucun). La carte géologique et les cartes anciennes ne couvrent que la métropole : une carte peut en
-       écarter (cfg.geologie = false, cfg.fondsExclus = ['etatmajor', …]). */
+       écarter (cfg.geologie = false, cfg.fondsExclus = ['etatmajor', …]). À l'inverse, les fonds marqués « enPlus » ne sont
+       proposés que sur les cartes qui les demandent (cfg.fondsEnPlus = ['pentes', …]) : chacun sert une activité, pas toutes. */
     const FONDS = {
       plan: { nom: 'Plan HD', note: 'Plan IGN HD, drapé sur le relief', calques: ['plan'], estompe: 0 },
       scan25: { nom: 'Carte 25', note: 'carte de randonnée au 1/25 000 (SCAN 25)', calques: ['scan25'], estompe: 0, sansNoms: true },
+      pentes: { nom: 'Pentes', note: 'pentes de plus de 30° sur la carte au 1/25 000 : jaune 30°, orange 35°, rouge 40°, violet 45°', calques: ['scan25', 'pentes'], estompe: 0, sansNoms: true, enPlus: true },
+      littoral: { nom: 'Carte marine', note: 'carte littorale Shom-IGN : sondes, dangers, balisage, estran', calques: ['littoral'], estompe: 0, sansNoms: true, enPlus: true },
       gris: { nom: 'Gris', note: 'fond sobre, bâtiments en volume de près', calques: [], estompe: 0.4 },
       ortho: { nom: 'Photo', note: 'photographie aérienne, la plus fine disponible de près', calques: ['ortho', 'orthothr'], estompe: 0.12 },
       recent: { nom: 'Photo 2025', note: 'ortho-express 2025 là où elle existe : plus récente, moins soignée', calques: ['ortho', 'orthorecent', 'orthothr'], estompe: 0.12, photo: true },
+      infrarouge: { nom: 'Infrarouge', note: 'photo en infrarouge : feuillus rouge vif, résineux rouge sombre, sol nu et roche gris-bleu', calques: ['infrarouge'], estompe: 0.12, enPlus: true },
       ombrage: { nom: 'Relief', note: 'ombrage du LiDAR HD', calques: ['ombrage'], estompe: 0 },
       geologie: { nom: 'Géologie', note: 'cartes géologiques du BRGM, trois échelles', calques: ['geol1m', 'geol250', 'geologie'], estompe: 0.25 },
+      photo1950: { nom: 'Photo 1950', note: 'photographies aériennes de 1950 à 1965', calques: ['photo1950'], estompe: 0.12, ancien: true, enPlus: true },
       carte1950: { nom: 'Carte 1950', note: 'carte topographique des années 1950', calques: ['carte1950'], estompe: 0.12, ancien: true },
       etatmajor: { nom: 'État-major', note: 'carte de l\'état-major, 1820-1866', calques: ['etatmajor'], estompe: 0.12, ancien: true },
       cassini: { nom: 'Cassini', note: 'carte de Cassini, XVIIIe siècle', calques: ['cassini'], estompe: 0, ancien: true }
     };
     /* Une seule photo dans le choix des fonds : la meilleure (« Photo »). L'ortho-express (« Photo 2025 ») reste dans le code,
        qu'une carte peut rallumer (cfg.photoRecente = true) là où elle apporterait vraiment quelque chose. */
-    const exclus = (cfg.fondsExclus || []).concat(cfg.geologie === false ? ['geologie'] : [], cfg.photoRecente ? [] : ['recent']);
+    const exclus = (cfg.fondsExclus || []).concat(cfg.geologie === false ? ['geologie'] : [], cfg.photoRecente ? [] : ['recent'],
+      Object.keys(FONDS).filter(f => FONDS[f].enPlus && !(cfg.fondsEnPlus || []).includes(f)));
     const fonds = Object.keys(FONDS).filter(f => !exclus.includes(f)), IMAGES = [...new Set(Object.values(FONDS).flatMap(f => f.calques))];
     let fond = 'gris', nomsEteints = false;
     const surFond = [];   // fonctions prévenues à chaque changement de fond
