@@ -197,7 +197,7 @@
       let i0 = hh.time.findIndex(t => new Date(t).getTime() >= maintenant); if (i0 < 0) i0 = 0;
       const c = app.repondre(qGel.libelle, `<p>Il gèle au-dessus de <span class="fort iso"></span> <span class="quand"></span></p>
         <div class="ligne"><button class="now">Maintenant</button><input type="range" class="h" min="0" max="${hh.time.length - 1}" value="${i0}" style="flex:1;min-width:120px"></div>
-        <p class="etat"></p><div class="legende"></div>`);
+        <p class="etat"></p><div class="legende"></div><p class="petit">Touche la carte pour la température estimée en un point.</p>`);
       const CL = [['a', '#bfe3f2', '0 à −3 °C', [191, 227, 242, 120]], ['b', '#7fb8de', '−3 à −6 °C', [127, 184, 222, 150]], ['c', '#3f7fc0', '−6 à −10 °C', [63, 127, 192, 170]], ['d', '#3b3f9e', 'sous −10 °C', [59, 63, 158, 185]]];
       const dessiner = () => {
         const g = memoG.g; if (!g || app.active !== qGel) return;
@@ -213,11 +213,20 @@
         if (memoG.cle !== cle) { app.occupe(true, 'Lecture du relief…'); memoG.g = await app.grille(b, 460); memoG.cle = cle; app.occupe(false); }
         dessiner();
       };
-      c.querySelector('.h').oninput = dessiner;
-      c.querySelector('.now').onclick = () => { c.querySelector('.h').value = i0; dessiner(); };
+      /* Au point touché : son altitude, la température estimée de l'air à l'heure du curseur, et l'écart à l'isotherme
+         0 °C. Le point est gardé : la bulle suit le curseur des heures. */
+      qGel.lire = ll => {
+        const g = memoG.g, k = g ? app.indice(g, ll.lng, ll.lat) : -1, z = k >= 0 ? g.z[k] : NaN; if (!(z === z)) { app.bulle(ll, 'Hors de la vue calculée : déplace la carte.'); return; }
+        const i = +c.querySelector('.h').value, iso = hh.freezing_level_height[i], t = new Date(hh.time[i]), T = -(z - iso) * 0.0065, ec = Math.round(Math.abs(z - iso) / 10) * 10;
+        app.bulle(ll, `<span class="fort">${z >= iso ? 'Il gèle ici' : 'Il dégèle ici'}</span> : environ ${T > -0.5 && T < 0.5 ? '0' : (T > 0 ? '+' : '−') + Math.abs(Math.round(T))} °C<small>${Math.round(z)} m, ${ec < 30 ? 'à la hauteur du 0 °C' : ec + ' m ' + (z >= iso ? 'au-dessus' : 'en dessous') + ' du 0 °C'} (${Math.round(iso / 50) * 50} m)</small><small>${JOURS[t.getDay()]} ${t.getDate()} à ${t.getHours()} h · température de l'air, pas de la neige</small>`);
+      };
+      qGel.dernier = null;
+      c.querySelector('.h').oninput = () => { dessiner(); if (qGel.dernier) qGel.lire(qGel.dernier); };
+      c.querySelector('.now').onclick = () => { c.querySelector('.h').value = i0; dessiner(); if (qGel.dernier) qGel.lire(qGel.dernier); };
       app.suivre(qGel, recharger); await recharger();
     },
-    fermer(app) { app.retirer('gel'); }
+    toucher(app, ll) { if (qGel.lire) { qGel.dernier = ll; qGel.lire(ll); } },
+    fermer(app) { qGel.lire = null; qGel.dernier = null; app.retirer('gel'); }
   };
 
   // ---------- Neige : manteau probable, peint sur le relief ----------
