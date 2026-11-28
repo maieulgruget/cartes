@@ -110,7 +110,7 @@
         { id: 'cote', type: 'line', source: 'terres', layout: { visibility: 'none' }, paint: { 'line-color': '#fdf3d6', 'line-width': 0.8, 'line-opacity': 0.55 } }
       ]
     },
-    center: [127.966, 27.042], zoom: 12.1, bearing: 41, pitch: 0, maxPitch: 75,
+    center: [127.966, 27.042], zoom: 12.1, bearing: 41, pitch: 62, maxPitch: 75,
     attributionControl: { compact: true }
   });
 
@@ -184,7 +184,7 @@
 
   // ---------- lieux (vues, sans repère : le cadrage suffit) ----------
   const LIEUX = [
-    { nom: "Toute l'île", vue: { center: [127.966, 27.042], zoom: 12.1, bearing: 41, pitch: 0 } },
+    { nom: "Toute l'île", vue: { center: [127.966, 27.042], zoom: 12.1, bearing: 41, pitch: 62 } },
     { nom: 'Le nord, vers Tana', vue: { center: [128.002, 27.083], zoom: 13.6, bearing: 20, pitch: 55 } },
     { nom: 'Le sud, Noho et le pont', vue: { center: [127.927, 26.995], zoom: 14.2, bearing: 30, pitch: 50 } },
     { nom: 'Le lagon, vers Izena', vue: { center: [127.945, 26.975], zoom: 12.9, bearing: 200, pitch: 60 } },
@@ -205,7 +205,8 @@
   for (const ev of ['touchend', 'touchmove', 'touchcancel']) map.getCanvas().addEventListener(ev, () => clearTimeout(minuteur), { passive: true });
   document.addEventListener('keydown', e => { if (e.key === 'l' || e.key === 'L') document.body.classList.toggle('libre'); });
 
-  map.once('load', () => mettreTheme('lagon'));
+  // Ouverture en 3D : le relief est posé d'office, le bouton 3D le retire.
+  map.once('load', () => { mettreTheme('lagon'); en3d = true; b3d.setAttribute('aria-pressed', true); map.setTerrain({ source: 'mnt', exaggeration: 1.4 }); });
 })();
 </script>
 </body>
