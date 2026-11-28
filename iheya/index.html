@@ -80,7 +80,8 @@
   /* Fonds : tuiles de l'Institut géographique du Japon (GSI), sans clé. Le relief vient des tuiles « terrarium »
      publiques d'AWS (modèle mondial, à terre seulement autour d'Iheya : pas de bathymétrie fine en données ouvertes ici). */
   const FONDS = {
-    photo: { nom: 'Photo', note: 'photographie aérienne récente du GSI', calques: ['photo'] },
+    hybride: { nom: 'Photo et noms', note: 'la photo, avec les noms d\'OpenStreetMap en lettres latines', calques: ['photo'], noms: true },
+    photo: { nom: 'Photo seule', note: 'photographie aérienne récente du GSI', calques: ['photo'] },
     plan: { nom: 'Plan', note: 'carte pâle du GSI', calques: ['plan'] },
     p1977: { nom: 'Photo 1974-1978', note: 'premières photos en couleur après le retour au Japon (1972)', calques: ['p1977'] }
   };
@@ -89,25 +90,32 @@
     container: 'carte',
     style: {
       version: 8,
-      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
       sources: {
         photo: { type: 'raster', tiles: [GSI + 'seamlessphoto/{z}/{x}/{y}.jpg'], tileSize: 256, maxzoom: 18, attribution: ATTR_GSI },
         plan: { type: 'raster', tiles: [GSI + 'pale/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 18, attribution: ATTR_GSI },
         p1977: { type: 'raster', tiles: [GSI + 'gazo1/{z}/{x}/{y}.jpg'], tileSize: 256, minzoom: 10, maxzoom: 17, attribution: '国土画像情報（第一期：1974～1978年撮影）' },
         mnt: { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : Mapzen / AWS Terrain Tiles' },
-        terres: { type: 'geojson', data: 'terres.geojson' }
+        terres: { type: 'geojson', data: 'terres.geojson' },
+        // Noms d'OpenStreetMap, en tuiles vectorielles d'OpenFreeMap (schéma OpenMapTiles, sans clé).
+        osm: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' }
       },
       layers: [
         { id: 'fond', type: 'background', paint: { 'background-color': '#0f3b4d' } },
         { id: 'photo', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 150 } },
         { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
         { id: 'p1977', type: 'raster', source: 'p1977', layout: { visibility: 'none' } },
-        // Thème « Lagon » : la photo plus vive par-dessus, et les terres assombries pour que l'eau ressorte.
+        // Thème « Lagon » : la photo plus vive par-dessus, sans voile sur les terres (jugé trop sombre).
         { id: 'lagon', type: 'raster', source: 'photo', layout: { visibility: 'none' }, paint: { 'raster-saturation': 0.55, 'raster-contrast': 0.18, 'raster-brightness-min': 0.04 } },
-        { id: 'terres-voile', type: 'fill', source: 'terres', layout: { visibility: 'none' }, paint: { 'fill-color': '#0e1622', 'fill-opacity': 0.55 } },
         // Thème « Hier » : la photo des années 1970 posée sur l'actuelle, avec un curseur.
         { id: 'hier', type: 'raster', source: 'p1977', layout: { visibility: 'none' }, paint: { 'raster-opacity': 1 } },
-        { id: 'cote', type: 'line', source: 'terres', layout: { visibility: 'none' }, paint: { 'line-color': '#fdf3d6', 'line-width': 0.8, 'line-opacity': 0.55 } }
+        { id: 'cote', type: 'line', source: 'terres', layout: { visibility: 'none' }, paint: { 'line-color': '#fdf3d6', 'line-width': 0.8, 'line-opacity': 0.55 } },
+        // Noms : en lettres latines quand OSM les a (name:latin), le nom japonais en petit dessous.
+        { id: 'noms-routes', type: 'symbol', source: 'osm', 'source-layer': 'transportation_name', minzoom: 14, layout: { visibility: 'none', 'symbol-placement': 'line', 'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': 11.5 }, paint: { 'text-color': '#fdf6e3', 'text-halo-color': 'rgba(14,22,34,.85)', 'text-halo-width': 1.4, 'text-halo-blur': 0.4 } },
+        { id: 'noms-eau', type: 'symbol', source: 'osm', 'source-layer': 'water_name', layout: { visibility: 'none', 'text-field': ['format', ['coalesce', ['get', 'name:latin'], ['get', 'name_en'], ['get', 'name']], {}, '\\n', {}, ['case', ['all', ['has', 'name:latin'], ['!=', ['get', 'name:latin'], ['get', 'name']]], ['get', 'name'], ''], { 'font-scale': 0.78 }], 'text-font': ['Noto Sans Italic'], 'text-size': 13, 'text-letter-spacing': 0.08 }, paint: { 'text-color': '#bff3f0', 'text-halo-color': 'rgba(14,22,34,.8)', 'text-halo-width': 1.2 } },
+        { id: 'noms-lieux-poi', type: 'symbol', source: 'osm', 'source-layer': 'poi', minzoom: 13.5, filter: ['<=', ['get', 'rank'], 12], layout: { visibility: 'none', 'text-field': ['format', ['coalesce', ['get', 'name:latin'], ['get', 'name_en'], ['get', 'name']], {}, '\\n', {}, ['case', ['all', ['has', 'name:latin'], ['!=', ['get', 'name:latin'], ['get', 'name']]], ['get', 'name'], ''], { 'font-scale': 0.78 }], 'text-font': ['Noto Sans Regular'], 'text-size': 12 }, paint: { 'text-color': '#fdf6e3', 'text-halo-color': 'rgba(14,22,34,.85)', 'text-halo-width': 1.4, 'text-halo-blur': 0.4 } },
+        { id: 'noms-sommets', type: 'symbol', source: 'osm', 'source-layer': 'mountain_peak', minzoom: 12, layout: { visibility: 'none', 'text-field': ['format', ['coalesce', ['get', 'name:latin'], ['get', 'name']], {}, ['case', ['has', 'ele'], ['concat', '  ', ['to-string', ['get', 'ele']], ' m'], ''], { 'font-scale': 0.8 }], 'text-font': ['Noto Sans Regular'], 'text-size': 12 }, paint: { 'text-color': '#fdf6e3', 'text-halo-color': 'rgba(14,22,34,.85)', 'text-halo-width': 1.4, 'text-halo-blur': 0.4 } },
+        { id: 'noms-places', type: 'symbol', source: 'osm', 'source-layer': 'place', layout: { visibility: 'none', 'text-field': ['format', ['coalesce', ['get', 'name:latin'], ['get', 'name_en'], ['get', 'name']], {}, '\\n', {}, ['case', ['all', ['has', 'name:latin'], ['!=', ['get', 'name:latin'], ['get', 'name']]], ['get', 'name'], ''], { 'font-scale': 0.78 }], 'text-font': ['Noto Sans Bold'], 'text-size': ['match', ['get', 'class'], 'island', 16, 'town', 15, 'village', 14, 12.5], 'text-max-width': 9 }, paint: { 'text-color': '#fdf6e3', 'text-halo-color': 'rgba(14,22,34,.85)', 'text-halo-width': 1.4, 'text-halo-blur': 0.4 } }
       ]
     },
     center: [127.966, 27.042], zoom: 12.1, bearing: 41, pitch: 62, maxPitch: 75,
@@ -115,11 +123,13 @@
   });
 
   // ---------- fonds ----------
-  let fond = 'photo';
+  const NOMS = ['noms-routes', 'noms-eau', 'noms-lieux-poi', 'noms-sommets', 'noms-places'];
+  let fond = 'hybride';
   const panneauFonds = document.getElementById('fonds');
   function mettreFond(f) {
     fond = f;
     for (const k in FONDS) for (const id of FONDS[k].calques) map.setLayoutProperty(id, 'visibility', FONDS[f].calques.includes(id) ? 'visible' : 'none');
+    for (const id of NOMS) map.setLayoutProperty(id, 'visibility', FONDS[f].noms ? 'visible' : 'none');
   }
   document.getElementById('bFond').onclick = e => {
     e.stopPropagation();
@@ -154,9 +164,9 @@
     },
     lagon: {
       nom: 'Lagon',
-      texte: "<b>Les couleurs du lagon</b> — la photo, avivée sur l'eau : le turquoise des fonds de sable, le brun des patates de corail, le bleu sombre du tombant.",
-      allumer() { for (const id of ['lagon', 'terres-voile', 'cote']) map.setLayoutProperty(id, 'visibility', 'visible'); },
-      eteindre() { for (const id of ['lagon', 'terres-voile', 'cote']) map.setLayoutProperty(id, 'visibility', 'none'); }
+      texte: "<b>Les couleurs du lagon</b> — la photo, avivée : le turquoise des fonds de sable, le brun des patates de corail, le bleu sombre du tombant.",
+      allumer() { for (const id of ['lagon']) map.setLayoutProperty(id, 'visibility', 'visible'); },
+      eteindre() { for (const id of ['lagon']) map.setLayoutProperty(id, 'visibility', 'none'); }
     },
     hier: {
       nom: 'Il y a 50 ans',
@@ -206,7 +216,7 @@
   document.addEventListener('keydown', e => { if (e.key === 'l' || e.key === 'L') document.body.classList.toggle('libre'); });
 
   // Ouverture en 3D : le relief est posé d'office, le bouton 3D le retire.
-  map.once('load', () => { mettreTheme('lagon'); en3d = true; b3d.setAttribute('aria-pressed', true); map.setTerrain({ source: 'mnt', exaggeration: 1.4 }); });
+  map.once('load', () => { mettreFond('hybride'); mettreTheme('lagon'); en3d = true; b3d.setAttribute('aria-pressed', true); map.setTerrain({ source: 'mnt', exaggeration: 1.4 }); });
 })();
 </script>
 </body>
