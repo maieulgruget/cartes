@@ -13,7 +13,6 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Sous la surface (îles de Lérins, golfe Juan, cap d'Antibes) | `plongee/` | profondeurs, avec le niveau de la mer que l'on fait baisser pour voir le fond à sec, couleurs qui s'éteignent avec la profondeur, poissons selon le milieu, natures de fond, sites (épaves, secs, sites à soi), parcours avec profil du fond, limites des niveaux, conditions et abri à la houle |
 | Sous la baie (baie de Saint-Brieuc, de Binic à Erquy) | `plongee-baie/` | la même carte dans une mer à marée : hauteur d'eau à l'heure choisie (maintenant, basse mer, pleine mer, baie vidée), estran qui découvre, poissons de la Manche selon le milieu, natures de fond, épaves, parcours et limites des niveaux pour la mer du moment, conditions avec la courbe de marée |
 | Mes randos (Corse, puis toute la France) | `corse/` | où je suis passé : tracés drapés sur le relief, profil, pente le long du chemin, altitude, sol et type de chemin (Komoot), survol ; lumière ; itinéraire à préparer |
-| Cartes anciennes (le monde) | `monde/` | une carte historique par pays posée sur le globe : Cassini (France) et Dufour (Suisse) en flux ; Inō (Japon), Speed (Royaume-Uni), Mitchell (États-Unis) en scans IIIF, affichés d'eux-mêmes une fois calés dans Allmaps (`monde/cartes.js` pour ajouter un pays) |
 
 Photo aérienne : la BD ORTHO courante de l'IGN (20 cm), sous la photo à très haute résolution de l'IGN là où elle existe
 (Marseille). Fond « Photo 2025 » : la même, avec l'ortho-express 2025 là où elle existe (Côtes-d'Armor, Haute-Savoie,
