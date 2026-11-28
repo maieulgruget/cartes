@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Iheya">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-180.png">
+<title>Iheya — l'île et son lagon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<style>
+  :root { --nuit:#0e1622; --texte:#e8ecf2; --doux:#9aa8bb; --or:#b8963e; --lagon:#5fd3cf; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; background:var(--nuit); color:var(--texte); font-family:"Source Sans 3", Arial, sans-serif; overflow:hidden; }
+  #carte { position:fixed; inset:0; }
+  .haut { position:fixed; top:calc(env(safe-area-inset-top) + 10px); left:12px; right:12px; display:flex; align-items:flex-start; gap:8px; z-index:3; pointer-events:none; }
+  .haut > * { pointer-events:auto; }
+  .titre { flex:1; pointer-events:none !important; text-shadow:0 1px 8px rgba(0,0,0,.6); }
+  .titre h1 { margin:0; font:600 24px/1.1 "Source Serif 4", Georgia, serif; letter-spacing:.01em; }
+  .titre p { margin:2px 0 0; font-size:14px; color:#d5dde8; }
+  .rond { width:42px; height:42px; border-radius:50%; border:none; background:rgba(14,22,34,.78); color:var(--texte); display:grid; place-items:center; font-size:19px; text-decoration:none; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); cursor:pointer; }
+  .rond[aria-pressed=true] { background:var(--or); color:var(--nuit); }
+  .droite { display:flex; flex-direction:column; gap:8px; }
+  #fonds { position:fixed; top:calc(env(safe-area-inset-top) + 62px); right:62px; z-index:4; background:rgba(14,22,34,.94); border-radius:14px; padding:6px; min-width:220px; }
+  #fonds button { display:block; width:100%; text-align:left; background:none; border:none; color:var(--texte); padding:9px 10px; border-radius:10px; font:inherit; font-size:15px; cursor:pointer; }
+  #fonds button small { display:block; color:var(--doux); font-size:12.5px; }
+  #fonds button[aria-pressed=true] { background:rgba(184,150,62,.22); }
+  /* bas : thèmes et lieux */
+  .bas { position:fixed; left:0; right:0; bottom:0; z-index:3; padding:0 12px calc(env(safe-area-inset-bottom) + 30px); display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+  .bas > * { pointer-events:auto; }
+  .reponse { align-self:flex-start; max-width:520px; background:rgba(14,22,34,.82); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border-radius:14px; padding:10px 13px; font-size:15px; line-height:1.35; }
+  .reponse b { font-family:"Source Serif 4", Georgia, serif; font-weight:600; font-size:16px; }
+  .reponse input[type=range] { width:100%; accent-color:var(--or); margin:8px 0 0; }
+  .reponse .bornes { display:flex; justify-content:space-between; font-size:12.5px; color:var(--doux); }
+  .puces { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; }
+  .puces::-webkit-scrollbar { display:none; }
+  .puces button { flex:none; border:1px solid rgba(232,236,242,.25); background:rgba(14,22,34,.78); color:var(--texte); border-radius:18px; padding:7px 13px; font:inherit; font-size:14.5px; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); cursor:pointer; }
+  .puces button[aria-pressed=true] { background:var(--texte); color:var(--nuit); border-color:var(--texte); }
+  .puces.lieux button { font-size:13.5px; color:#d5dde8; }
+  .maplibregl-ctrl-attrib { font-size:10px; }
+  body.libre .haut, body.libre .bas { opacity:0; pointer-events:none; transition:opacity .3s; }
+  body.libre .haut *, body.libre .bas * { pointer-events:none; }
+  @media (min-width:900px) { .titre h1 { font-size:30px; } .bas { padding-left:20px; } }
+</style>
+</head>
+<body>
+<div id="carte"></div>
+
+<div class="haut">
+  <a class="rond" href="../" aria-label="Retour à la page des cartes" title="Toutes les cartes">⌂</a>
+  <div class="titre"><h1>Iheya</h1><p>伊平屋島 · l'île et son lagon</p></div>
+  <div class="droite">
+    <button class="rond" id="bFond" aria-label="Fond de carte" title="Fond de carte">◐</button>
+    <button class="rond" id="b3d" aria-pressed="false" aria-label="Relief en 3D" title="Relief en 3D" style="font-size:14px;font-weight:600">3D</button>
+    <button class="rond" id="bNord" aria-label="Remettre le nord en haut" title="Nord"><svg viewBox="0 0 32 32" width="24" height="24" id="aiguille"><path d="M16 3 L21 16 L16 14 L11 16 Z" fill="#e4572e"/><path d="M16 29 L11 16 L16 18 L21 16 Z" fill="#c9d2de"/></svg></button>
+  </div>
+</div>
+<div id="fonds" hidden></div>
+
+<div class="bas">
+  <div class="reponse" id="reponse"></div>
+  <div class="puces" id="themes"></div>
+  <div class="puces lieux" id="lieux"></div>
+</div>
+
+<script>
+(function () {
+  const GSI = 'https://cyberjapandata.gsi.go.jp/xyz/';
+  const ATTR_GSI = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>';
+
+  /* Fonds : tuiles de l'Institut géographique du Japon (GSI), sans clé. Le relief vient des tuiles « terrarium »
+     publiques d'AWS (modèle mondial, à terre seulement autour d'Iheya : pas de bathymétrie fine en données ouvertes ici). */
+  const FONDS = {
+    photo: { nom: 'Photo', note: 'photographie aérienne récente du GSI', calques: ['photo'] },
+    plan: { nom: 'Plan', note: 'carte pâle du GSI', calques: ['plan'] },
+    p1977: { nom: 'Photo 1974-1978', note: 'premières photos en couleur après le retour au Japon (1972)', calques: ['p1977'] },
+    relief: { nom: 'Relief', note: 'ombrage du relief, GSI', calques: ['relief'] }
+  };
+
+  const map = new maplibregl.Map({
+    container: 'carte',
+    style: {
+      version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      sources: {
+        photo: { type: 'raster', tiles: [GSI + 'seamlessphoto/{z}/{x}/{y}.jpg'], tileSize: 256, maxzoom: 18, attribution: ATTR_GSI },
+        plan: { type: 'raster', tiles: [GSI + 'pale/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 18, attribution: ATTR_GSI },
+        p1977: { type: 'raster', tiles: [GSI + 'gazo1/{z}/{x}/{y}.jpg'], tileSize: 256, minzoom: 10, maxzoom: 17, attribution: '国土画像情報（第一期：1974～1978年撮影）' },
+        relief: { type: 'raster', tiles: [GSI + 'hillshademap/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 16, attribution: ATTR_GSI },
+        mnt: { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : Mapzen / AWS Terrain Tiles' },
+        terres: { type: 'geojson', data: 'terres.geojson' }
+      },
+      layers: [
+        { id: 'fond', type: 'background', paint: { 'background-color': '#0f3b4d' } },
+        { id: 'photo', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 150 } },
+        { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
+        { id: 'p1977', type: 'raster', source: 'p1977', layout: { visibility: 'none' } },
+        { id: 'relief', type: 'raster', source: 'relief', layout: { visibility: 'none' } },
+        // Thème « Lagon » : la photo plus vive par-dessus, et les terres assombries pour que l'eau ressorte.
+        { id: 'lagon', type: 'raster', source: 'photo', layout: { visibility: 'none' }, paint: { 'raster-saturation': 0.55, 'raster-contrast': 0.18, 'raster-brightness-min': 0.04 } },
+        { id: 'terres-voile', type: 'fill', source: 'terres', layout: { visibility: 'none' }, paint: { 'fill-color': '#0e1622', 'fill-opacity': 0.55 } },
+        // Thème « Hier » : la photo des années 1970 posée sur l'actuelle, avec un curseur.
+        { id: 'hier', type: 'raster', source: 'p1977', layout: { visibility: 'none' }, paint: { 'raster-opacity': 1 } },
+        { id: 'cote', type: 'line', source: 'terres', layout: { visibility: 'none' }, paint: { 'line-color': '#fdf3d6', 'line-width': 0.8, 'line-opacity': 0.55 } }
+      ]
+    },
+    center: [127.966, 27.042], zoom: 12.1, bearing: 41, pitch: 0, maxPitch: 75,
+    attributionControl: { compact: true }
+  });
+
+  // ---------- fonds ----------
+  let fond = 'photo';
+  const panneauFonds = document.getElementById('fonds');
+  function mettreFond(f) {
+    fond = f;
+    for (const k in FONDS) for (const id of FONDS[k].calques) map.setLayoutProperty(id, 'visibility', FONDS[f].calques.includes(id) ? 'visible' : 'none');
+  }
+  document.getElementById('bFond').onclick = e => {
+    e.stopPropagation();
+    if (!panneauFonds.hidden) { panneauFonds.hidden = true; return; }
+    panneauFonds.innerHTML = Object.keys(FONDS).map(k => `<button data-f="${k}" aria-pressed="${k === fond}">${FONDS[k].nom}<small>${FONDS[k].note}</small></button>`).join('');
+    panneauFonds.hidden = false;
+  };
+  panneauFonds.onclick = e => { const b = e.target.closest('button'); if (b) { mettreFond(b.dataset.f); panneauFonds.hidden = true; } };
+  document.addEventListener('click', e => { if (!panneauFonds.hidden && !panneauFonds.contains(e.target)) panneauFonds.hidden = true; });
+
+  // ---------- relief 3D et boussole ----------
+  const b3d = document.getElementById('b3d');
+  let en3d = false;
+  function mettre3d(oui) {
+    en3d = oui; b3d.setAttribute('aria-pressed', oui);
+    map.setTerrain(oui ? { source: 'mnt', exaggeration: 1.4 } : null);
+    map.easeTo({ pitch: oui ? 62 : 0, duration: 900 });
+  }
+  b3d.onclick = () => mettre3d(!en3d);
+  document.getElementById('bNord').onclick = () => map.easeTo({ bearing: 0, duration: 600 });
+  const aiguille = document.getElementById('aiguille');
+  map.on('rotate', () => { aiguille.style.transform = `rotate(${-map.getBearing()}deg)`; });
+  map.once('load', () => { aiguille.style.transform = `rotate(${-map.getBearing()}deg)`; });
+
+  // ---------- thèmes ----------
+  const reponse = document.getElementById('reponse');
+  const THEMES = {
+    ile: {
+      nom: "L'île",
+      texte: "<b>Iheya</b>, l'île la plus au nord de l'archipel d'Okinawa, à une heure de ferry du port d'Unten. Au sud, le pont la relie à Noho ; plus loin, Izena.",
+      allumer() {}, eteindre() {}
+    },
+    lagon: {
+      nom: 'Lagon',
+      texte: "<b>Les couleurs du lagon</b> — la photo, avivée sur l'eau : le turquoise des fonds de sable, le brun des patates de corail, le bleu sombre du tombant.",
+      allumer() { for (const id of ['lagon', 'terres-voile', 'cote']) map.setLayoutProperty(id, 'visibility', 'visible'); },
+      eteindre() { for (const id of ['lagon', 'terres-voile', 'cote']) map.setLayoutProperty(id, 'visibility', 'none'); }
+    },
+    hier: {
+      nom: 'Il y a 50 ans',
+      texte: "<b>Iheya vers 1975</b>, juste après le retour d'Okinawa au Japon — fais glisser pour revenir à aujourd'hui."
+        + '<input type="range" id="curseur" min="0" max="100" value="100" aria-label="Des années 1970 à aujourd\'hui"><div class="bornes"><span>aujourd\'hui</span><span>vers 1975</span></div>',
+      allumer() {
+        map.setLayoutProperty('hier', 'visibility', 'visible');
+        map.setPaintProperty('hier', 'raster-opacity', 1);
+        setTimeout(() => { const c = document.getElementById('curseur'); if (c) c.oninput = () => map.setPaintProperty('hier', 'raster-opacity', c.value / 100); });
+      },
+      eteindre() { map.setLayoutProperty('hier', 'visibility', 'none'); }
+    }
+  };
+  let theme = null;
+  const zoneThemes = document.getElementById('themes');
+  zoneThemes.innerHTML = Object.keys(THEMES).map(k => `<button data-t="${k}" aria-pressed="false">${THEMES[k].nom}</button>`).join('');
+  function mettreTheme(t) {
+    if (theme) THEMES[theme].eteindre();
+    theme = t;
+    for (const b of zoneThemes.children) b.setAttribute('aria-pressed', b.dataset.t === t);
+    reponse.innerHTML = THEMES[t].texte;
+    THEMES[t].allumer();
+  }
+  zoneThemes.onclick = e => { const b = e.target.closest('button'); if (b) mettreTheme(b.dataset.t); };
+
+  // ---------- lieux (vues, sans repère : le cadrage suffit) ----------
+  const LIEUX = [
+    { nom: "Toute l'île", vue: { center: [127.966, 27.042], zoom: 12.1, bearing: 41, pitch: 0 } },
+    { nom: 'Le nord, vers Tana', vue: { center: [128.002, 27.083], zoom: 13.6, bearing: 20, pitch: 55 } },
+    { nom: 'Le sud, Noho et le pont', vue: { center: [127.927, 26.995], zoom: 14.2, bearing: 30, pitch: 50 } },
+    { nom: 'Le lagon, vers Izena', vue: { center: [127.945, 26.975], zoom: 12.9, bearing: 200, pitch: 60 } },
+    { nom: 'Vu du large', vue: { center: [127.99, 27.02], zoom: 12.4, bearing: -50, pitch: 70 } }
+  ];
+  const zoneLieux = document.getElementById('lieux');
+  zoneLieux.innerHTML = LIEUX.map((l, i) => `<button data-i="${i}">${l.nom}</button>`).join('');
+  zoneLieux.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const v = LIEUX[+b.dataset.i].vue;
+    if (v.pitch > 20 && !en3d) mettre3d(true);
+    map.flyTo(Object.assign({ duration: 2200, essential: true }, v));
+  };
+
+  // ---------- carte seule par appui long ----------
+  let minuteur = null;
+  map.getCanvas().addEventListener('touchstart', e => { if (e.touches.length === 1) minuteur = setTimeout(() => document.body.classList.toggle('libre'), 650); }, { passive: true });
+  for (const ev of ['touchend', 'touchmove', 'touchcancel']) map.getCanvas().addEventListener(ev, () => clearTimeout(minuteur), { passive: true });
+  document.addEventListener('keydown', e => { if (e.key === 'l' || e.key === 'L') document.body.classList.toggle('libre'); });
+
+  map.once('load', () => mettreTheme('lagon'));
+})();
+</script>
+</body>
+</html>
