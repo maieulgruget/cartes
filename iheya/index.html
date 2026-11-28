@@ -105,8 +105,6 @@
         { id: 'photo', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 150 } },
         { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
         { id: 'p1977', type: 'raster', source: 'p1977', layout: { visibility: 'none' } },
-        // Thème « Lagon » : la photo plus vive par-dessus, sans voile sur les terres (jugé trop sombre).
-        { id: 'lagon', type: 'raster', source: 'photo', layout: { visibility: 'none' }, paint: { 'raster-saturation': 0.55, 'raster-contrast': 0.18, 'raster-brightness-min': 0.04 } },
         // Thème « Hier » : la photo des années 1970 posée sur l'actuelle, avec un curseur.
         { id: 'hier', type: 'raster', source: 'p1977', layout: { visibility: 'none' }, paint: { 'raster-opacity': 1 } },
         { id: 'cote', type: 'line', source: 'terres', layout: { visibility: 'none' }, paint: { 'line-color': '#fdf3d6', 'line-width': 0.8, 'line-opacity': 0.55 } },
@@ -165,8 +163,9 @@
     lagon: {
       nom: 'Lagon',
       texte: "<b>Les couleurs du lagon</b> — la photo, avivée : le turquoise des fonds de sable, le brun des patates de corail, le bleu sombre du tombant.",
-      allumer() { for (const id of ['lagon']) map.setLayoutProperty(id, 'visibility', 'visible'); },
-      eteindre() { for (const id of ['lagon']) map.setLayoutProperty(id, 'visibility', 'none'); }
+      // Le lagon avive les photos en place (actuelle et 1974-1978) au lieu de poser une couche par-dessus : le choix du fond reste libre.
+      allumer() { for (const id of ['photo', 'p1977']) { map.setPaintProperty(id, 'raster-saturation', 0.55); map.setPaintProperty(id, 'raster-contrast', 0.18); } },
+      eteindre() { for (const id of ['photo', 'p1977']) { map.setPaintProperty(id, 'raster-saturation', 0); map.setPaintProperty(id, 'raster-contrast', 0); } }
     },
     hier: {
       nom: 'Il y a 50 ans',
