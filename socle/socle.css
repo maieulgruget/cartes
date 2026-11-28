@@ -392,3 +392,6 @@ body.bureau .pastilletrace .p { height: 44px; }
 body.bureau.libre .pastilletrace { right: 10px; top: 42%; }
 body.ecran .pastilletrace { display: none; }
 @media print { .pastilletrace { display: none !important; } }
+
+/* Profil lié à la carte (app.suiviProfil) : le doigt s'y promène de gauche à droite, le panneau défile toujours de haut en bas. */
+svg[data-profil] { touch-action: pan-y; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }

@@ -34,6 +34,12 @@ donne un code à scanner. L'adresse d'une vue porte le cadrage, et `?theme=…&f
 réponse et sa légende, en grand, pour un écran regardé de loin ; `T` thème suivant, `R` rotation lente. Un thème qui
 cadre la carte demande ses marges à `app.marges(margesTéléphone)`.
 
+Profil lié à la carte : `app.suiviProfil(svg, { x0, x1, total, ici(s), phrase })` branche un profil en long sur son
+tracé. Le doigt (ou la souris) promené sur le profil pose un repère au même endroit sur la carte et dit ce qu'il y a là
+(distance, altitude ou fond, pente) ; le repère reste posé quand on lâche, la vue s'y recentre s'il est hors champ, et
+cela marche aussi sur la copie du profil en plein écran. Branché sur l'itinéraire commun (`socle/trace.js`), les randos,
+le parcours de plongée et la route à la voile.
+
 `socle/fonds.js` : fonds marins du Shom (modèle HOMONIM à 100 m, relu sur sa palette de couleurs), isobathes, profil
 le long d'une route. `relais/lieux.py` prépare `voile/lieux.json` (ports, caps, îles, anses, feux de la BD TOPO, avec un
 rang d'apparition) ; `relais/balises.py` prépare `voile/balises.json` (balises d'OpenStreetMap), à lancer à la main ou

@@ -41,7 +41,24 @@
         return [a, ...l, b];
       } catch (e) { return [a, b]; }
     }
-    let d = null, tour = 0;
+    let d = null, tour = 0, suivi = null;
+    // Échantillon du tracé le plus proche d'une distance (m) depuis le départ, ou d'un point de la carte.
+    const indiceA = s => { let a = 0, b = d.dist.length - 1; while (b - a > 1) { const m = (a + b) >> 1; if (d.dist[m] < s) a = m; else b = m; } return s - d.dist[a] < d.dist[b] - s ? a : b; };
+    const indicePres = ll => { const k = Math.cos(ll.lat * Math.PI / 180); let im = 0, dm = Infinity; d.xy.forEach((p, i) => { const dx = (p[0] - ll.lng) * k, dy = p[1] - ll.lat, q = dx * dx + dy * dy; if (q < dm) { dm = q; im = i; } }); return im; };
+    /* Le profil se suit du doigt : distance, altitude, pente du tracé (sur une centaine de mètres) et, là où elle compte,
+       pente du versant sous le tracé ; le repère se pose au même endroit sur la carte. */
+    function lier(app, c) {
+      const svg = c.querySelector('.profil svg'); suivi = null; if (!svg || !d) return;
+      const dd = d, n = dd.dist.length;
+      suivi = app.suiviProfil(svg, { x0: 4, x1: 316, total: dd.total, y: [6, 82], phrase: c.querySelector('.etat'), ici(s) {
+        if (dd !== d) return null;
+        const i = indiceA(s); let a = i, b = i; while (a > 0 && dd.dist[i] - dd.dist[a] < 50) a--; while (b < n - 1 && dd.dist[b] - dd.dist[i] < 50) b++;
+        const pc = dd.dist[b] > dd.dist[a] ? (dd.z[b] - dd.z[a]) / (dd.dist[b] - dd.dist[a]) * 100 : 0, v = dd.pente[i];
+        return { p: dd.xy[i], texte: `<span class="fort">${km(dd.dist[i])}</span> · <span class="fort">${Math.round(dd.z[i])} m</span> · ${pc >= 0.5 ? 'montée' : pc <= -0.5 ? 'descente' : 'plat'}${Math.abs(pc) >= 0.5 ? ' ' + Math.round(Math.abs(pc)) + ' %' : ''}${opts.seuilPente !== false && v === v ? ` · versant ${Math.round(v)}°` : ''}` };
+      } });
+    }
+    // À la souris, le sens inverse : survoler le tracé sur la carte place le trait sur le profil (au doigt, toucher la carte pose un point).
+    const surTrace = e => { if (suivi && d && e.originalEvent && e.originalEvent.buttons === 0) suivi.montrer(d.dist[indicePres(e.lngLat)]); }, horsTrace = () => { if (suivi) suivi.effacer(); };
 
     function dessinerLigne(app) {
       const fc = { type: 'FeatureCollection', features: [] };
@@ -77,6 +94,7 @@
 
     async function calculer(app, c) {
       const moi = ++tour; d = null; app.survol.maj();
+      suivi = null; app.repereProfil(null);
       if (pts.length < 2) { c.querySelector('.profil').innerHTML = ''; c.querySelector('.bilan').innerHTML = ''; c.querySelector('.etat').textContent = pts.length ? 'Départ posé. Touche la carte pour poser le point suivant.' : (opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.'); dessinerLigne(app); return; }
       // emprise du tracé, élargie pour que les calculs voient le relief alentour
       const lg = chemin();
@@ -107,7 +125,7 @@
       d = { pts, g, a, dist, z, xy, pente: pt, expo: ex, fort, raide: opts.seuilPente === false ? [] : raide, total, dplus, dmoins, zmin, zmax, imin, imax, repere: null };
       if (opts.seuilPente === false) d.fort = d.fort.map(() => false);
       c.querySelector('.etat').innerHTML = `<span class="fort">${km(total)}</span>, <span class="fort">+${Math.round(dplus)} m</span> / −${Math.round(dmoins)} m, de ${Math.round(z[0])} m à ${Math.round(z[z.length - 1])} m${zmax > Math.max(z[0], z[z.length - 1]) + 5 ? ` (point haut ${Math.round(zmax)} m)` : ''}.`;
-      c.querySelector('.profil').innerHTML = profil(d);
+      c.querySelector('.profil').innerHTML = profil(d); lier(app, c);
       let html = ''; try { html = opts.analyse ? await opts.analyse(app, d) : ''; } catch (err) { console.error(err); html = '<p class="petit">L\'analyse du tracé n\'a pas abouti.</p>'; }
       if (moi !== tour || app.active !== q) return;
       c.querySelector('.bilan').innerHTML = html; d.bilan = html; dessinerLigne(app); app.survol.maj();
@@ -163,7 +181,7 @@
     };
 
     const q = {
-      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi.' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats.'),
+      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi. Le doigt promené sur le profil montre l\'endroit sur la carte.' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats. Le doigt promené sur le profil montre l\'endroit sur la carte.'),
       async ouvrir(app) {
         appli = app; majPastille();
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
@@ -177,7 +195,7 @@
         // Le tracé est proposé au bouton « Survol » des outils de la carte, tant que le thème est ouvert.
         app.survol.proposer('trace', () => { if (!d) return null; const dd = d; return { pts: dd.xy.map((p, i) => [p[0], p[1], dd.z[i]]), suivre(i) { dd.repere = dd.xy[i]; dessinerLigne(app); }, fin() { dd.repere = null; if (app.active === q) dessinerLigne(app); } }; });
         c.querySelector('.imp').onclick = () => imprimer(app);
-        dessinerLigne(app); await calculer(app, c);
+        dessinerLigne(app); app.map.on('mousemove', 'trace-bord', surTrace); app.map.on('mouseleave', 'trace-bord', horsTrace); await calculer(app, c);
       },
       async toucher(app, ll) {
         const p = [+ll.lng.toFixed(6), +ll.lat.toFixed(6)], avant = pts[pts.length - 1];
@@ -187,7 +205,7 @@
       // Plein écran : on pose les points sur toute la carte ; le profil reste dessous, avec les gestes utiles en route.
       plein() { return { bloc: '.profil', boutons: [opts.sentiers ? '.sent' : null, '.undo', '.raz', '.garde', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
       // « Garder sur la carte » : le tracé reste dessiné sous les autres thèmes ; on revient ici pour le retirer ou l'effacer.
-      fermer(app) { tour++; app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) { setTimeout(majPastille, 0); return; } oter(app); majPastille(); }
+      fermer(app) { tour++; suivi = null; app.map.off('mousemove', 'trace-bord', surTrace); app.map.off('mouseleave', 'trace-bord', horsTrace); app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) { setTimeout(majPastille, 0); return; } oter(app); majPastille(); }
     };
     q.relancer = app => { if (app.active === q) calculer(app, q._c); };
     return q;

@@ -468,7 +468,7 @@
       try { localStorage.setItem('cartes.voile.route', JSON.stringify(route)); } catch (e) { }
       c.querySelector('.v-vit').textContent = fr(allure5) + ' nœuds';
       if (!qRoute.couleurs || qRoute.couleurs.length !== route.length - 1) qRoute.couleurs = null;
-      qRoute.dessiner(app, qRoute.couleurs);
+      qRoute.dessiner(app, qRoute.couleurs); app.repereProfil(null);
       if (route.length < 2) { c.querySelector('.etat').textContent = route.length ? 'Départ posé. Touche la carte pour le point suivant.' : 'Touche la carte pour poser le départ, puis chaque point de passage.'; for (const k of ['.bords', '.mer', '.dangers', '.departs', '.profil']) c.querySelector(k).innerHTML = ''; c.querySelector('.leg-all').hidden = true; c.querySelector('.v-hd').textContent = ''; qRoute.fleches(app, []); return; }
       const mil = route.reduce((s, p) => [s[0] + p[0] / route.length, s[1] + p[1] / route.length], [0, 0]);
       const d = await V.pointVent(app, mil[0], mil[1], F); if (moi !== qRoute.tour || app.active !== qRoute) return;
@@ -537,6 +537,11 @@
         + (tr.length ? `<p class="petit2"><span class="fort">Tronçon${tr.length > 1 ? 's' : ''} ${tr.join(', ')}</span> : la ligne droite passe sur la terre ou sur un fond qui découvre (bandes dorées). À contourner.</p>` : '')
         + (trb.length ? `<p class="petit2"><span class="fort">Tronçon${trb.length > 1 ? 's' : ''} ${trb.join(', ')}</span> : moins de ${fr(lim.toFixed(1))} m d'eau d'après le modèle (tirant d'eau de ${fr(tirant.toFixed(1))} m plus un mètre).</p>` : '')
         + (!lim ? '<p class="petit2">Règle le tirant d\'eau dans le thème Fonds pour faire ressortir les passages trop peu profonds.</p>' : '');
+      // Le doigt promené sur le profil montre l'endroit sur la route, son tronçon et le fond du modèle à cet endroit.
+      app.suiviProfil(cible.querySelector('svg'), { x0: 0, x1: W, total: pf.total, y: [0, H], phrase: c.querySelector('.etat'), ici(s) {
+        const q = pts.reduce((a, b) => Math.abs(b.d - s) < Math.abs(a.d - s) ? b : a);
+        return { p: [q.lon, q.lat], texte: `<span class="fort">${mi(q.d)}</span> du départ · tronçon ${q.troncon} · ${q.p === q.p ? `fond de <span class="fort">${fond(q.p)}</span>${lim && q.p < lim ? ' <span style="color:#e4572e">(trop peu d\'eau)</span>' : ''}` : 'pas de fond connu (terre, estran ou hors du modèle)'}` };
+      } });
     },
     fleches(app, liste) {
       const fc = { type: 'FeatureCollection', features: liste.map(v => ({ type: 'Feature', properties: { rot: (v.dir + 180) % 360, t: Math.round(v.kn) + ' nd' }, geometry: { type: 'Point', coordinates: v.p } })) };
