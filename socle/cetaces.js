@@ -310,6 +310,11 @@
           c.querySelector('.hist').innerHTML = MOIS.map((n, i) => `<button data-m="${i + 1}" aria-pressed="${mois === i + 1}" title="${n}" style="flex:1;padding:0;border-radius:3px;border:0;background:none;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;height:100%"><span style="display:block;background:${mois === i + 1 ? '#b8963e' : '#4a90c2'};border-radius:2px 2px 0 0;height:${Math.round(46 * ps[i] / mx) + 2}px"></span><small style="font-size:9px;color:${mois === i + 1 ? '#b8963e' : '#9aa8bb'};font-weight:${mois === i + 1 ? 700 : 400}">${n.charAt(0).toUpperCase()}</small></button>`).join('');
           c.querySelector('.annee').setAttribute('aria-pressed', String(!mois));
           const { pts, F } = peindre(app, d), petits = pts.filter(p => p.properties.petit).length;
+          /* Généralisation : de loin, les plages de couleur disent où ; les points, trop nombreux certains mois, n'arrivent
+             qu'en zoomant, quand une maille fait une vingtaine de pixels (mailles de 2 km avec l'effort, de 5 km sans).
+             Sans plages de couleur (trop peu de données), les points restent seuls à dire où : on les garde à toute échelle. */
+          const z0 = F ? (d.effort ? 10 : 8.8) : 0, fondu = (bas, haut) => z0 ? ['interpolate', ['linear'], ['zoom'], z0, 0, z0 + 0.9, bas, z0 + 2.5, haut] : ['interpolate', ['linear'], ['zoom'], 10, bas, 12.5, haut];
+          map.setPaintProperty('cet-obs', 'circle-opacity', fondu(0.6, 0.92)); map.setPaintProperty('cet-obs', 'circle-stroke-opacity', fondu(0.5, 1));
           const jeune = e.dessin === 'bosse' ? 'un baleineau' : 'un petit';
           let phrase = '';
           if (e.saison) {   // une espèce saisonnière (la baleine à bosse de La Réunion) : la phrase dit où en est la saison
@@ -318,7 +323,7 @@
               : p < 0.05 ? `En ${MOIS[mois - 1]}, elles sont parties. ${e.saison}.`
               : `En ${MOIS[mois - 1]}, ${p > 0.6 ? 'plein cœur de la saison' : p > 0.25 ? 'la saison bat son plein' : 'début ou fin de saison'} : ${nombre(pts.length)} observations ${duree}, dont ${nombre(petits)} avec ${jeune}.`;
           } else phrase = `${e.nom}${mois ? ` en ${MOIS[mois - 1]}` : ''} : ${nombre(pts.length)} ${d.effort ? 'observation' : 'signalement'}${pts.length > 1 ? 's' : ''} ${duree}. ${e.note || ''}`;
-          c.querySelector('.etat').innerHTML = phrase + (F ? (d.effort ? ' Les plages de couleur montrent où on les voit le plus souvent ; chaque point est une rencontre.' : ' Les plages de couleur montrent où elle domine parmi les cétacés signalés ; chaque point est un signalement.') : '');
+          c.querySelector('.etat').innerHTML = phrase + (F ? (d.effort ? ' Les plages de couleur montrent où on les voit le plus souvent ; en zoomant, chaque point est une rencontre.' : ' Les plages de couleur montrent où elle domine parmi les cétacés signalés ; en zoomant, chaque point est un signalement.') : '');
           const items = (F ? CLASSES.map((k, i) => ({ cle: 'g' + i, couleur: k[1], texte: d.effort ? k[2] : k[2] + ' signalée' })).slice(d.effort ? 0 : 1) : []).concat([{ cle: 'obs', couleur: '#ffffff', texte: d.effort ? 'point : une rencontre' : 'point : un signalement' }]).concat(petits ? [{ cle: 'petit', couleur: PETIT, texte: 'rencontre avec ' + jeune }] : []);
           app.legende(c, items, () => peindre(app, d), masques);
           animer(app, d);

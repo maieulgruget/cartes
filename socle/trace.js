@@ -5,6 +5,7 @@
   'use strict';
   const S = window.Socle, ROSE = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
   const km = m => m >= 1000 ? (m / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(m / 10) * 10 + ' m';
+  const heure = m => { m = ((Math.round(m / 5) * 5) % 1440 + 1440) % 1440; return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'); };
   const duree = h => { const m = Math.round(h * 60 / 5) * 5; return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'); };
 
   // Altitude interpolée entre les quatre mailles voisines.
@@ -22,12 +23,14 @@
     /* pts : les points posés. brins : le chemin entre deux points posés (brins[i] va de pts[i] à pts[i + 1]) : une ligne
        droite, ou, avec opts.sentiers, le chemin que le calcul d'itinéraire piéton de l'IGN trouve sur les sentiers et les
        routes de la BD TOPO. */
+    let depart = 480;        // heure de départ, en minutes depuis minuit (8 h par défaut) : elle donne l'heure de passage en chaque point
+    let profilVu = false;    // le profil du tracé gardé, en bandeau sous les autres thèmes (pastille « Tracé », « Profil »)
     let gardeTrace = true;   // le tracé reste dessiné quand on change de thème (pour rejoindre un point de vol, une cueillette…)
     let pts = [], brins = [], surSentiers = opts.sentiers === true;   // opts.sentiers : true (suivi d'office), 'choix' (bouton proposé, éteint au départ)
-    try { const v = JSON.parse(localStorage.getItem(cle)); if (Array.isArray(v)) pts = v; else if (v && v.pts) { pts = v.pts; brins = v.brins || []; surSentiers = opts.sentiers ? (v.sentiers == null ? surSentiers : !!v.sentiers) : false; gardeTrace = v.garde !== false; } } catch (e) { pts = []; }
+    try { const v = JSON.parse(localStorage.getItem(cle)); if (Array.isArray(v)) pts = v; else if (v && v.pts) { pts = v.pts; brins = v.brins || []; surSentiers = opts.sentiers ? (v.sentiers == null ? surSentiers : !!v.sentiers) : false; gardeTrace = v.garde !== false; profilVu = !!v.profil; if (v.depart >= 0 && v.depart < 1440) depart = v.depart; } } catch (e) { pts = []; }
     for (let i = 0; i < pts.length - 1; i++) if (!brins[i] || brins[i].length < 2) brins[i] = [pts[i], pts[i + 1]];
     brins.length = Math.max(0, pts.length - 1);
-    const garder = () => { try { localStorage.setItem(cle, JSON.stringify({ pts, brins, sentiers: surSentiers, garde: gardeTrace })); } catch (e) { } };
+    const garder = () => { try { localStorage.setItem(cle, JSON.stringify({ pts, brins, sentiers: surSentiers, garde: gardeTrace, profil: profilVu, depart })); } catch (e) { } };
     const chemin = () => { const l = []; brins.forEach((b, i) => { for (let k = i ? 1 : 0; k < b.length; k++) l.push(b[k]); }); return l; };
     async function brin(a, b) {
       if (!surSentiers) return [a, b];
@@ -47,14 +50,14 @@
     const indicePres = ll => { const k = Math.cos(ll.lat * Math.PI / 180); let im = 0, dm = Infinity; d.xy.forEach((p, i) => { const dx = (p[0] - ll.lng) * k, dy = p[1] - ll.lat, q = dx * dx + dy * dy; if (q < dm) { dm = q; im = i; } }); return im; };
     /* Le profil se suit du doigt : distance, altitude, pente du tracé (sur une centaine de mètres) et, là où elle compte,
        pente du versant sous le tracé ; le repère se pose au même endroit sur la carte. */
-    function lier(app, c) {
-      const svg = c.querySelector('.profil svg'); suivi = null; if (!svg || !d) return;
+    function lier(app, svg, phrase, bas, lacher) {
+      if (!svg || !d) return null;
       const dd = d, n = dd.dist.length;
-      suivi = app.suiviProfil(svg, { x0: 4, x1: 316, total: dd.total, y: [6, 82], phrase: c.querySelector('.etat'), ici(s) {
+      return app.suiviProfil(svg, { x0: 4, x1: 316, total: dd.total, y: [6, bas], phrase, lacher: lacher && (s => lacher(dd.xy[indiceA(s)])), ici(s) {
         if (dd !== d) return null;
         const i = indiceA(s); let a = i, b = i; while (a > 0 && dd.dist[i] - dd.dist[a] < 50) a--; while (b < n - 1 && dd.dist[b] - dd.dist[i] < 50) b++;
         const pc = dd.dist[b] > dd.dist[a] ? (dd.z[b] - dd.z[a]) / (dd.dist[b] - dd.dist[a]) * 100 : 0, v = dd.pente[i];
-        return { p: dd.xy[i], texte: `<span class="fort">${km(dd.dist[i])}</span> · <span class="fort">${Math.round(dd.z[i])} m</span> · ${pc >= 0.5 ? 'montée' : pc <= -0.5 ? 'descente' : 'plat'}${Math.abs(pc) >= 0.5 ? ' ' + Math.round(Math.abs(pc)) + ' %' : ''}${opts.seuilPente !== false && v === v ? ` · versant ${Math.round(v)}°` : ''}` };
+        return { p: dd.xy[i], texte: `<span class="fort">${km(dd.dist[i])}</span> · <span class="fort">${Math.round(dd.z[i])} m</span> · ${pc >= 0.5 ? 'montée' : pc <= -0.5 ? 'descente' : 'plat'}${Math.abs(pc) >= 0.5 ? ' ' + Math.round(Math.abs(pc)) + ' %' : ''}${opts.seuilPente !== false && v === v ? ` · versant ${Math.round(v)}°` : ''} · vers <span class="fort">${heure(depart + dd.temps[i] * 60)}</span>` };
       } });
     }
     // À la souris, le sens inverse : survoler le tracé sur la carte place le trait sur le profil (au doigt, toucher la carte pose un point).
@@ -65,7 +68,7 @@
       if (pts.length > 1) fc.features.push({ type: 'Feature', properties: { r: 'ligne' }, geometry: { type: 'LineString', coordinates: chemin() } });
       if (d && d.raide.length) fc.features.push({ type: 'Feature', properties: { r: 'raide' }, geometry: { type: 'MultiLineString', coordinates: d.raide } });
       pts.forEach((p, i) => fc.features.push({ type: 'Feature', properties: { r: i === 0 ? 'depart' : i === pts.length - 1 ? 'arrivee' : 'point' }, geometry: { type: 'Point', coordinates: p } }));
-      if (d && d.repere) fc.features.push({ type: 'Feature', properties: { r: 'repere' }, geometry: { type: 'Point', coordinates: d.repere } });
+      if (d && d.repere) fc.features.push({ type: 'Feature', properties: { r: 'repere', nom: d.repere === d.repereAnalyse ? (d.repereNom || '') : '' }, geometry: { type: 'Point', coordinates: d.repere } });
       const m = app.map;
       if (m.getSource('trace')) { m.getSource('trace').setData(fc); return; }
       m.addSource('trace', { type: 'geojson', data: fc });
@@ -74,6 +77,8 @@
       m.addLayer({ id: 'trace-raide', type: 'line', source: 'trace', filter: ['==', ['get', 'r'], 'raide'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#e63946', 'line-width': 4 } });
       m.addLayer({ id: 'trace-points', type: 'circle', source: 'trace', filter: ['==', ['geometry-type'], 'Point'],
         paint: { 'circle-radius': ['match', ['get', 'r'], 'point', 4, 'repere', 8, 7], 'circle-color': ['match', ['get', 'r'], 'depart', '#2a9d8f', 'arrivee', '#b8963e', 'repere', '#e63946', '#1a2e4a'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+      // Le point rouge porte son nom (ce que l'analyse de la carte y signale : la pente la plus forte, par exemple).
+      m.addLayer({ id: 'trace-repere-nom', type: 'symbol', source: 'trace', filter: ['==', ['get', 'r'], 'repere'], layout: { 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1], 'text-anchor': 'top', 'text-allow-overlap': true }, paint: { 'text-color': '#8f1d27', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
     }
 
     // Profil en long : aire sous la courbe, tronçons raides en rouge, repères d'altitude et de distance.
@@ -92,6 +97,9 @@
         <text x="${W - mg}" y="${H - 3}" font-size="9" fill="currentColor" opacity="0.75" text-anchor="end">${km(d.total)}</text></svg>`;
     }
 
+    // La phrase du tracé : longueur, dénivelé, puis l'horaire (départ choisi, arrivée estimée).
+    const resume = () => `<span class="fort">${km(d.total)}</span>, <span class="fort">+${Math.round(d.dplus)} m</span> / −${Math.round(d.dmoins)} m · départ ${heure(depart)}, arrivée vers <span class="fort">${heure(depart + d.heures * 60)}</span> (${duree(d.heures)}, pauses non comprises). De ${Math.round(d.z[0])} m à ${Math.round(d.z[d.z.length - 1])} m${d.zmax > Math.max(d.z[0], d.z[d.z.length - 1]) + 5 ? `, point haut ${Math.round(d.zmax)} m` : ''}.`;
+    const majHeure = c => { const b = c && c.querySelector('.hdep'); if (b) b.textContent = 'Départ ' + heure(depart); if (c && d && !(suivi && suivi.actif)) c.querySelector('.etat').innerHTML = resume(); if (bandeau) { bandeau._d = null; majBandeau(); } };
     async function calculer(app, c) {
       const moi = ++tour; d = null; app.survol.maj();
       suivi = null; app.repereProfil(null);
@@ -120,15 +128,20 @@
       // dénivelés : on ne compte une montée ou une descente qu'au-delà de 3 m, pour ne pas additionner le grain du relevé
       let dplus = 0, dmoins = 0, ref = z[0], zmin = Infinity, zmax = -Infinity, imin = 0, imax = 0;
       z.forEach((v, i) => { if (v - ref > 3) { dplus += v - ref; ref = v; } else if (ref - v > 3) { dmoins += ref - v; ref = v; } if (v < zmin) { zmin = v; imin = i; } if (v > zmax) { zmax = v; imax = i; } });
+      /* Temps de marche cumulé en chaque point : le plat (km/h) et le dénivelé (m/h en montée, en descente) comptés
+         chacun de leur côté, puis le plus long des deux plus la moitié de l'autre (règle des topos de randonnée).
+         Les allures sont celles de la carte (opts.allure) ; les pauses ne sont pas comptées. */
+      const al = Object.assign({ plat: 4, montee: 300, descente: 500 }, opts.allure || {}), temps = new Float32Array(z.length);
+      { let r2 = z[0], cp = 0, cm = 0; z.forEach((v, i) => { if (v - r2 > 3) { cp += v - r2; r2 = v; } else if (r2 - v > 3) { cm += r2 - v; r2 = v; } const a = dist[i] / 1000 / al.plat, b = cp / al.montee + cm / al.descente; temps[i] = Math.max(a, b) + Math.min(a, b) / 2; }); }
       const seuil = opts.seuilPente || 30, fort = pt.map(p => p >= seuil), raide = []; let cours = null;
       fort.forEach((f, i) => { if (f) { if (!cours) { cours = [xy[Math.max(0, i - 1)]]; raide.push(cours); } cours.push(xy[i]); } else cours = null; });
-      d = { pts, g, a, dist, z, xy, pente: pt, expo: ex, fort, raide: opts.seuilPente === false ? [] : raide, total, dplus, dmoins, zmin, zmax, imin, imax, repere: null };
+      d = { pts, g, a, dist, z, xy, pente: pt, expo: ex, fort, raide: opts.seuilPente === false ? [] : raide, total, dplus, dmoins, zmin, zmax, imin, imax, temps, heures: temps[temps.length - 1], allure: al, repere: null };
       if (opts.seuilPente === false) d.fort = d.fort.map(() => false);
-      c.querySelector('.etat').innerHTML = `<span class="fort">${km(total)}</span>, <span class="fort">+${Math.round(dplus)} m</span> / −${Math.round(dmoins)} m, de ${Math.round(z[0])} m à ${Math.round(z[z.length - 1])} m${zmax > Math.max(z[0], z[z.length - 1]) + 5 ? ` (point haut ${Math.round(zmax)} m)` : ''}.`;
-      c.querySelector('.profil').innerHTML = profil(d); lier(app, c);
+      c.querySelector('.etat').innerHTML = resume();
+      c.querySelector('.profil').innerHTML = profil(d); suivi = lier(app, c.querySelector('.profil svg'), c.querySelector('.etat'), 82);
       let html = ''; try { html = opts.analyse ? await opts.analyse(app, d) : ''; } catch (err) { console.error(err); html = '<p class="petit">L\'analyse du tracé n\'a pas abouti.</p>'; }
       if (moi !== tour || app.active !== q) return;
-      c.querySelector('.bilan').innerHTML = html; d.bilan = html; dessinerLigne(app); app.survol.maj();
+      c.querySelector('.bilan').innerHTML = html; d.bilan = html; d.repereAnalyse = d.repere; dessinerLigne(app); app.survol.maj();
       if (opts.apres) opts.apres(app, c, d);
     }
 
@@ -153,6 +166,7 @@
       f.innerHTML = `<h1>${app.propre(opts.nom || 'Tracé')}</h1><p class="sous">${app.propre(app.cfg.sousTitre || '')} · fiche préparée le ${new Date().toLocaleDateString('fr-FR')}</p>
         ${image ? `<img src="${image}" alt="Carte du tracé">` : ''}
         <p><b>${km(d.total)}</b> · <b>+${Math.round(d.dplus)} m</b> / −${Math.round(d.dmoins)} m · départ ${Math.round(d.z[0])} m · arrivée ${Math.round(d.z[d.z.length - 1])} m · point haut ${Math.round(d.zmax)} m</p>
+        <p>Départ à <b>${heure(depart)}</b>, arrivée vers <b>${heure(depart + d.heures * 60)}</b> : ${duree(d.heures)} sans les pauses, à ${String(d.allure.plat).replace('.', ',')} km/h sur le plat, ${d.allure.montee} m/h en montée et ${d.allure.descente} m/h en descente.</p>
         ${profil(d, 640, 170)}<div class="bilan">${d.bilan || ''}</div>
         <p class="pied">${opts.pied || ''} Altitudes : IGN. Calculs faits dans la page, à vérifier sur le terrain.</p>`;
       setTimeout(() => window.print(), 150);
@@ -160,31 +174,61 @@
 
     /* Hors du thème, un tracé gardé sur la carte porte une pastille « Tracé » : un toucher propose de le masquer, de
        l'effacer ou de le reprendre, sans avoir à revenir au thème pour s'en défaire. */
-    let pastille = null, appli = null;
-    const oter = app => { app.retirer('trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); };
+    let pastille = null, appli = null, bandeau = null, caleur = null;
+    /* « Profil » de la pastille : le profil du tracé gardé, en bandeau au-dessus des commandes du thème en cours. Le doigt
+       s'y promène comme dans le thème ; quand on le lève, le thème en cours répond pour cet endroit du tracé (l'épaisseur
+       de neige, la pente, la météo, la forêt…), comme si l'on avait touché la carte là. */
+    const majBandeau = () => {
+      const voir = profilVu && !!d && !!pastille && !pastille.hidden;
+      if (pastille) { const b = pastille.querySelector('.pr'); b.hidden = !d; b.setAttribute('aria-pressed', String(voir)); }
+      if (!voir) { if (bandeau && !bandeau.hidden) { bandeau.hidden = true; clearInterval(caleur); appli.repereProfil(null); } return; }
+      if (!bandeau) {
+        bandeau = document.createElement('div'); bandeau.className = 'bandeautrace';
+        bandeau.innerHTML = '<div class="tete"><p class="etat"></p><button class="x" aria-label="Fermer le profil">×</button></div><div class="dessin"></div>';
+        bandeau.querySelector('.x').onclick = () => { profilVu = false; garder(); majBandeau(); };
+        document.body.append(bandeau);
+      }
+      if (bandeau._d !== d) {
+        bandeau._d = d;
+        bandeau.querySelector('.etat').innerHTML = `<span class="fort">${km(d.total)}</span>, +${Math.round(d.dplus)} m / −${Math.round(d.dmoins)} m · départ ${heure(depart)}, arrivée vers ${heure(depart + d.heures * 60)}`;
+        bandeau.querySelector('.dessin').innerHTML = profil(d, 320, 74);
+        lier(appli, bandeau.querySelector('svg'), bandeau.querySelector('.etat'), 60, p => { const a = appli.active; if (a && a !== q && a.toucher && a.auTrace !== false) { try { a.toucher(appli, new maplibregl.LngLat(p[0], p[1])); } catch (e) { console.error(e); } } });
+      }
+      bandeau.hidden = false;
+      // Le bandeau se pose au-dessus de ce qui occupe le bas de l'écran : commandes du plein écran, panneau du thème, puces.
+      const caler = () => {
+        let haut = innerHeight, gauche = 0;
+        for (const e of document.querySelectorAll('.pilote.plein .p-bas, .bas, .reponse')) { const r = e.getBoundingClientRect(); if (!r.height || !r.width) continue; if (r.width < innerWidth * 0.6) { if (r.left < 40) gauche = Math.max(gauche, r.right); continue; } if (r.top > innerHeight * 0.25) haut = Math.min(haut, r.top); }
+        bandeau.style.bottom = Math.max(10, innerHeight - haut + 8) + 'px'; bandeau.style.left = gauche + 10 + 'px';
+      };
+      caler(); clearInterval(caleur); caleur = setInterval(caler, 400);
+    };
+    const oter = app => { app.retirer('trace-repere-nom', 'trace-points', 'trace-raide', 'trace-ligne', 'trace-bord'); if (app.map.getSource('trace')) app.map.removeSource('trace'); };
     const majPastille = () => {
       const voir = !!appli && appli.active !== q && gardeTrace && pts.length > 1 && !!appli.map.getSource('trace');
-      if (!voir) { if (pastille) pastille.hidden = true; return; }
+      if (!voir) { if (pastille) pastille.hidden = true; majBandeau(); return; }
       if (!pastille) {
         pastille = document.createElement('div'); pastille.className = 'pastilletrace';
         pastille.innerHTML = `<button class="p" aria-expanded="false" title="Tracé gardé sur la carte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 19c2.5-6 5-2 7.5-7S16 6 19 5"/><circle cx="5" cy="19" r="1.6" fill="currentColor"/><circle cx="19" cy="5" r="1.6" fill="currentColor"/></svg> Tracé</button>
-          <div class="choix" hidden><button class="m">Masquer le tracé</button><button class="e">Effacer le tracé</button><button class="r">Le modifier</button></div>`;
+          <div class="choix" hidden><button class="pr" aria-pressed="false">Profil</button><button class="m">Masquer le tracé</button><button class="e">Effacer le tracé</button><button class="r">Le modifier</button></div>`;
         document.body.append(pastille);
         const b = pastille.querySelector('.p'), choix = pastille.querySelector('.choix'), plier = () => { choix.hidden = true; b.setAttribute('aria-expanded', 'false'); };
         b.onclick = () => { choix.hidden = !choix.hidden; b.setAttribute('aria-expanded', String(!choix.hidden)); };
+        pastille.querySelector('.pr').onclick = () => { plier(); profilVu = !profilVu; garder(); majBandeau(); };
         pastille.querySelector('.m').onclick = () => { plier(); gardeTrace = false; garder(); oter(appli); majPastille(); };
-        pastille.querySelector('.e').onclick = () => { plier(); pts.length = 0; brins.length = 0; garder(); oter(appli); majPastille(); };
+        pastille.querySelector('.e').onclick = () => { plier(); pts.length = 0; brins.length = 0; d = null; garder(); oter(appli); majPastille(); };
         pastille.querySelector('.r').onclick = () => { plier(); appli.choisir(q); };
         document.addEventListener('pointerdown', e => { if (!pastille.contains(e.target)) plier(); });
       }
-      pastille.hidden = false;
+      pastille.hidden = false; majBandeau();
     };
 
     const q = {
-      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi. Le doigt promené sur le profil montre l\'endroit sur la carte.' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats. Le doigt promené sur le profil montre l\'endroit sur la carte.'),
+      theme: opts.theme || 'Itinéraire', libelle: opts.libelle || 'Par où passer ?', aide: opts.aide || (opts.sentiers ? 'Tracé posé au doigt : entre deux points, la carte suit les sentiers et les routes de la BD TOPO (calcul d\'itinéraire piéton de l\'IGN) ; « Suivre les sentiers » éteint, elle coupe droit, pour le hors-sentier. Elle en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Un sentier absent de la BD TOPO n\'est pas suivi. Le doigt promené sur le profil montre l\'endroit sur la carte et l\'heure de passage, pour le départ choisi (temps sans les pauses).' : 'Tracé posé au doigt : la carte en tire le profil, la distance et le dénivelé à partir du relevé de l\'IGN. Entre deux points, le tracé coupe droit : il faut en poser davantage dans les passages délicats. Le doigt promené sur le profil montre l\'endroit sur la carte.'),
       async ouvrir(app) {
         appli = app; majPastille();
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="profil"></div><div class="bilan"></div>
+          <div class="puces horaire" style="margin-top:8px"><button class="hmoins" aria-label="Partir un quart d'heure plus tôt">− 15 min</button><button class="hdep" title="Toucher pour partir maintenant">Départ ${heure(depart)}</button><button class="hplus" aria-label="Partir un quart d'heure plus tard">+ 15 min</button></div>
           <div class="puces" style="margin-top:8px">${opts.sentiers ? `<button class="sent" aria-pressed="${surSentiers}">Suivre les sentiers</button>` : ''}<button class="undo">Retirer le dernier point</button><button class="raz">Effacer le tracé</button><button class="garde" aria-pressed="${gardeTrace}" title="Le tracé reste dessiné quand on passe à un autre thème">Garder sur la carte</button><button class="gpx">GPX</button><button class="imp">Fiche à imprimer</button></div>`);
         q._c = c;
         if (opts.sentiers) c.querySelector('.sent').onclick = e => { surSentiers = !surSentiers; e.currentTarget.setAttribute('aria-pressed', surSentiers); garder(); };
@@ -192,8 +236,12 @@
         c.querySelector('.raz').onclick = () => { pts.length = 0; brins.length = 0; garder(); calculer(app, c); };
         c.querySelector('.garde').onclick = e => { gardeTrace = !gardeTrace; e.currentTarget.setAttribute('aria-pressed', gardeTrace); garder(); };
         c.querySelector('.gpx').onclick = gpx;
+        // Heure de départ : par quarts d'heure ; toucher l'heure la met à maintenant. Elle donne l'arrivée et l'heure de passage sur le profil.
+        const regler = m => { depart = ((Math.round(m / 5) * 5) % 1440 + 1440) % 1440; garder(); majHeure(c); };
+        c.querySelector('.hmoins').onclick = () => regler(depart - 15); c.querySelector('.hplus').onclick = () => regler(depart + 15);
+        c.querySelector('.hdep').onclick = () => { const t = new Date(); regler(Math.ceil((t.getHours() * 60 + t.getMinutes()) / 5) * 5); };
         // Le tracé est proposé au bouton « Survol » des outils de la carte, tant que le thème est ouvert.
-        app.survol.proposer('trace', () => { if (!d) return null; const dd = d; return { pts: dd.xy.map((p, i) => [p[0], p[1], dd.z[i]]), suivre(i) { dd.repere = dd.xy[i]; dessinerLigne(app); }, fin() { dd.repere = null; if (app.active === q) dessinerLigne(app); } }; });
+        app.survol.proposer('trace', () => { if (!d) return null; const dd = d; return { pts: dd.xy.map((p, i) => [p[0], p[1], dd.z[i]]), suivre(i) { dd.repere = dd.xy[i]; dessinerLigne(app); }, fin() { dd.repere = dd.repereAnalyse || null; if (app.active === q) dessinerLigne(app); } }; });
         c.querySelector('.imp').onclick = () => imprimer(app);
         dessinerLigne(app); app.map.on('mousemove', 'trace-bord', surTrace); app.map.on('mouseleave', 'trace-bord', horsTrace); await calculer(app, c);
       },
@@ -203,7 +251,7 @@
         pts.push(p); garder(); dessinerLigne(app); calculer(app, q._c);
       },
       // Plein écran : on pose les points sur toute la carte ; le profil reste dessous, avec les gestes utiles en route.
-      plein() { return { bloc: '.profil', boutons: [opts.sentiers ? '.sent' : null, '.undo', '.raz', '.garde', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
+      plein() { return { bloc: '.profil', boutons: ['.hmoins', '.hdep', '.hplus', opts.sentiers ? '.sent' : null, '.undo', '.raz', '.garde', '.gpx'].filter(Boolean), consigne: opts.intro || 'Touche la carte pour poser le départ, puis chaque point de passage.' }; },
       // « Garder sur la carte » : le tracé reste dessiné sous les autres thèmes ; on revient ici pour le retirer ou l'effacer.
       fermer(app) { tour++; suivi = null; app.map.off('mousemove', 'trace-bord', surTrace); app.map.off('mouseleave', 'trace-bord', horsTrace); app.survol.arreter(); app.survol.retirer('trace'); if (gardeTrace && pts.length > 1) { setTimeout(majPastille, 0); return; } oter(app); majPastille(); }
     };

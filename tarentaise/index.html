@@ -296,7 +296,7 @@
   // ---------- Itinéraire : profil, temps, pentes traversées et dominantes, soleil ----------
   const T = Socle.traceOutils, L = Socle.lumiere;
   const qTrace = Socle.trace({
-    cle: 'tarentaise', nom: 'Sortie au-dessus des Chapelles', libelle: 'Par où monter ?', sentiers: 'choix',   // à skis on coupe droit ; l'été, le bouton fait suivre les sentiers
+    cle: 'tarentaise', nom: 'Sortie au-dessus des Chapelles', libelle: 'Par où monter ?', sentiers: 'choix', allure: { montee: 400 },   // à skis on coupe droit ; l'été, le bouton fait suivre les sentiers
     aide: 'Tracé posé au doigt. La carte en tire le profil et le dénivelé, un temps de montée (dénivelé et distance combinés), la longueur passée sur des pentes de 30° ou plus et leur orientation, les pentes raides qui dominent le tracé à moins de 80 m, et l\'heure d\'arrivée du soleil. Entre deux points, le tracé coupe droit. Les pentes lointaines (couloirs, grandes faces) ne sont pas comptées, et la carte ne sait rien de la neige.',
     intro: 'Touche la carte pour poser le départ, puis chaque point de passage jusqu\'au sommet.',
     pied: 'Outil de préparation : il ne remplace ni le bulletin d\'avalanche ni l\'observation du manteau neigeux.',
@@ -316,6 +316,7 @@
       }
       const partDom = Math.round(100 * nbDom / Math.ceil(n / 2));
       d.repere = pmax >= 30 ? d.xy[imax] : (dom >= 30 ? d.xy[idom] : null);
+      d.repereNom = pmax >= 30 ? `pente la plus forte : ${Math.round(pmax)}°` : (dom >= 30 ? `sous une pente de ${Math.round(dom)}°` : '');
       // soleil : heure d'arrivée du soleil au départ, à mi-parcours et à l'arrivée, le jour choisi dans le thème Soleil
       if (!L.etat.jour) Object.assign(L.etat, L.maintenant('Europe/Paris'));
       const c0 = d.xy[n >> 1]; let gl = g; try { gl = await app.grille([c0[0] - 0.32, c0[1] - 0.22, c0[0] + 0.32, c0[1] + 0.22], 520); } catch (e) { gl = g; }
@@ -338,8 +339,8 @@
   famille('Soleil', Socle.lumiere.lumiere({ theme: 'À une heure', libelle: 'Où est le soleil à cette heure ?', fuseau: 'Europe/Paris', note: 'Neige de printemps ou versant resté à l\'ombre : l\'heure d\'arrivée du soleil décide de la qualité de la neige.' }));
   famille('Soleil', Socle.lumiere.duree({ theme: 'Sur la journée', fuseau: 'Europe/Paris', noteDuree: 'Un versant qui ne voit le soleil que deux heures en décembre garde sa neige froide : c\'est ce qui dit à quelle heure passer.' }));
   famille('Météo', qTemps);
-  famille('Météo', Socle.vent.theme({ fuseau: 'Europe/Paris', theme: 'Vent au sol', libelle: 'D\'où souffle le vent au sol ?' }));
-  famille('Météo', Socle.vent.nappes({ fuseau: 'Europe/Paris', exageration: 1, theme: 'Vent en altitude', niveaux: [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '800hPa', alt: 2000, nom: 'vers 2 000 m', coul: '#ffd166' }, { cle: '700hPa', alt: 3000, nom: 'vers 3 000 m', coul: '#ff7b9c' }] }));
+  famille('Météo', Socle.vent.theme({ fuseau: 'Europe/Paris', unite: 'kmh', theme: 'Vent au sol', libelle: 'D\'où souffle le vent au sol ?' }));
+  famille('Météo', Socle.vent.nappes({ fuseau: 'Europe/Paris', unite: 'kmh', exageration: 1, theme: 'Vent en altitude', niveaux: [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '800hPa', alt: 2000, nom: 'vers 2 000 m', coul: '#ffd166' }, { cle: '700hPa', alt: 3000, nom: 'vers 3 000 m', coul: '#ff7b9c' }] }));
   app.question(Socle.foret({ note: 'En lisière haute, les mélèzes et les aulnes verts signalent souvent les couloirs.' }));
 })();
 </script>

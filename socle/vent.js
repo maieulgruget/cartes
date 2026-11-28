@@ -38,7 +38,11 @@
   }
   const force = w => Math.hypot(w[0], w[1]);
   const provenance = w => (Math.atan2(-w[0], -w[1]) / RAD + 360) % 360;
-  const phrase = w => { const kn = force(w); return kn < 1 ? 'calme' : `<span class="fort">${Math.round(kn)} nœuds</span> de ${rose(provenance(w))} (force ${beaufort(kn)}), rafales ${Math.round(w[2])}`; };
+  /* Unité d'affichage : les nœuds en mer (par défaut), les km/h à terre (opts.unite = 'kmh'). Les calculs restent en nœuds. */
+  const KMH = 1.852, enKmh = kn => Math.round(kn * KMH), dire2 = (kn, u) => u === 'kmh' ? enKmh(kn) + ' km/h' : Math.round(kn) + ' nœuds';
+  const phrase = (w, u) => { const kn = force(w); return kn < 1 ? 'calme' : `<span class="fort">${dire2(kn, u)}</span> de ${rose(provenance(w))} (force ${beaufort(kn)}), rafales ${u === 'kmh' ? enKmh(w[2]) : Math.round(w[2])}`; };
+  // Libellés des classes de la légende, dans l'unité choisie.
+  const libelles = u => u !== 'kmh' ? CLASSES.map(k => k[2]) : CLASSES.map((k, i) => { const bas = i ? enKmh(CLASSES[i - 1][0]) : 0; return i === CLASSES.length - 1 ? bas + ' et plus' : bas + ' à ' + (enKmh(k[0]) - 1); });
 
   // Vent d'un seul point sur 24 heures (gardé vingt minutes).
   const memoPoint = new Map();
@@ -60,7 +64,7 @@
 
   function theme(opts) {
     opts = opts || {};
-    const F = opts.fuseau || 'Europe/Paris';
+    const F = opts.fuseau || 'Europe/Paris', UN = opts.unite === 'kmh' ? 'kmh' : 'nd';
     let ch = null, h = 0, toile = null, anim = null, tour = 0, vider = null, taille = null;
     const parts = [];
 
@@ -90,7 +94,7 @@
       if (!ch) return;
       const ct = app.map.getCenter(), w = vent(ch, h, ct.lng, ct.lat), i = c.querySelector('.hv');
       i.value = h; c.querySelector('.hh').textContent = (h === 0 ? 'maintenant' : hhmm(ch.heures[h]));
-      c.querySelector('.etat').innerHTML = w ? `Au centre de la carte, à ${hhmm(ch.heures[h])} : ${phrase(w)}.` : 'Déplace la carte : son centre est hors de la zone lue.';
+      c.querySelector('.etat').innerHTML = w ? `Au centre de la carte, à ${hhmm(ch.heures[h])} : ${phrase(w, UN)}.` : 'Déplace la carte : son centre est hors de la zone lue.';
     }
     function boucle(app, t) {
       /* Trente images par seconde au plus, quel que soit l'écran (un téléphone à 120 Hz en demandait quatre fois plus, et
@@ -121,8 +125,8 @@
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat">Lecture du vent…</p>
           <div class="ligne"><button class="now">Maintenant</button><input type="range" class="hv" min="0" max="23" value="${h}" style="flex:1;min-width:120px"><span class="fort hh" style="min-width:74px;text-align:right"></span></div>
-          <p class="petit2" style="margin:8px 0 0">Force du vent, en nœuds (1 nœud = 1,85 km/h) :</p>
-          <div class="legende"><span class="unite">nœuds :</span>${CLASSES.map(k => `<span><i style="background:rgb(${k[1].join()})"></i>${k[2]}</span>`).join('')}</div>
+          <p class="petit2" style="margin:8px 0 0">${UN === 'kmh' ? 'Force du vent, en km/h (les paliers sont ceux de l\'échelle de Beaufort)' : 'Force du vent, en nœuds (1 nœud = 1,85 km/h)'} :</p>
+          <div class="legende"><span class="unite">${UN === 'kmh' ? 'km/h' : 'nœuds'} :</span>${CLASSES.map((k, i) => `<span><i style="background:rgb(${k[1].join()})"></i>${libelles(UN)[i]}</span>`).join('')}</div>
           <p class="petit">Glisse pour avancer heure par heure sur 24 heures. Touche la carte pour le vent en un point.</p>`);
         q._c = c;
         toile = document.createElement('canvas'); toile.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none';
@@ -140,7 +144,7 @@
       },
       toucher(app, ll) {
         q.dernier = ll; if (!ch) return; const w = vent(ch, h, ll.lng, ll.lat);
-        app.bulle(ll, w ? `${phrase(w)}<small>à ${hhmm(ch.heures[h])}, à 10 m de hauteur</small>` : 'Hors de la zone lue : déplace la carte.');
+        app.bulle(ll, w ? `${phrase(w, UN)}<small>à ${hhmm(ch.heures[h])}, à 10 m de hauteur${UN === 'kmh' ? '' : ' · ' + enKmh(force(w)) + ' km/h'}</small>` : 'Hors de la zone lue : déplace la carte.');
       },
       fermer(app) {
         tour++; cancelAnimationFrame(anim); anim = null; if (vider) app.map.off('move', vider); removeEventListener('resize', q._caler);
@@ -169,7 +173,7 @@
   }
   function nappes(opts) {
     opts = opts || {};
-    const F = opts.fuseau || 'Europe/Paris', EX = opts.exageration || 3;
+    const F = opts.fuseau || 'Europe/Paris', EX = opts.exageration || 3, UN = opts.unite === 'kmh' ? 'kmh' : 'nd';
     const NIV = opts.niveaux || [{ cle: '10m', alt: null, nom: 'au sol', coul: '#ffffff' }, { cle: '975hPa', alt: 300, nom: 'vers 300 m', coul: '#ffd166' }, { cle: '900hPa', alt: 1000, nom: 'vers 1 000 m', coul: '#ff7b9c' }];
     let ch = null, h = 0, toile = null, anim = null, tour = 0, vider = null, dpr = 1, M = null;
     const masques = new Set(), parts = NIV.map(() => []);
@@ -192,7 +196,7 @@
       const ws = ch.couches.map(k => vent(k, h, ct.lng, ct.lat));
       if (ws.some(w => !w)) { c.querySelector('.etat').textContent = 'Déplace la carte : son centre est hors de la zone lue.'; return; }
       const ecart = Math.abs(((provenance(ws[ws.length - 1]) - provenance(ws[0]) + 540) % 360) - 180);
-      c.querySelector('.etat').innerHTML = `Au centre de la carte, à ${hhmm(ch.heures[h])} : ` + NIV.map((v, i) => `${v.nom}, <span class="fort">${Math.round(force(ws[i]))} nœuds</span> de ${rose(provenance(ws[i]))}`).join(' ; ') + `. ${ecart > 30 ? `Le vent tourne de ${Math.round(ecart)}° entre le sol et la nappe du haut.` : 'Le vent garde à peu près la même direction à toutes les hauteurs.'}`;
+      c.querySelector('.etat').innerHTML = `Au centre de la carte, à ${hhmm(ch.heures[h])} : ` + NIV.map((v, i) => `${v.nom}, <span class="fort">${dire2(force(ws[i]), UN)}</span> de ${rose(provenance(ws[i]))}`).join(' ; ') + `. ${ecart > 30 ? `Le vent tourne de ${Math.round(ecart)}° entre le sol et la nappe du haut.` : 'Le vent garde à peu près la même direction à toutes les hauteurs.'}`;
     }
     function boucle(app, t) {
       /* Trente images par seconde au plus, quel que soit l'écran (un téléphone à 120 Hz en demandait quatre fois plus, et

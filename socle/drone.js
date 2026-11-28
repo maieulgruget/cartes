@@ -442,7 +442,7 @@
     }
 
     const q = {
-      theme: opts.theme || 'Drone', libelle: opts.libelle || 'Que verra la caméra ?', plein: false,
+      theme: opts.theme || 'Drone', libelle: opts.libelle || 'Que verra la caméra ?', plein: false, auTrace: false,
       // Son propre plein écran : les commandes s'accrochent au drone. Ouvert d'office, comme les autres thèmes.
       pleinPropre(app) { pleinEcran(app, q._c); approcher(app); },
       aide: 'Le drone est posé là où l\'on touche, à la hauteur choisie au-dessus de ce point. Chaque maille du relief est projetée dans le cadre de la caméra (format 4:3, angle de champ du modèle), puis on vérifie qu\'aucune crête ne la cache. En doré, le sol que la photo montrera, plus pâle au loin ; en bleu sombre, ce qui est dans le cadre mais caché par le relief. « Vue caméra » place la vue 3D à la position du drone : le cadre du téléphone n\'a pas les proportions de la photo, c\'est un aperçu. Les angles de champ sont ceux des fiches constructeur, à vérifier ; le relief est le modèle de terrain de l\'IGN, sans arbres ni bâtiments. La carte ne dit pas où le vol est autorisé.',
@@ -574,7 +574,7 @@
         <p class="petit">Vent du modèle lu à la hauteur réglée (entre ses niveaux de 10, 80, 120 et 180 m) : il change avec le curseur de hauteur. Rafales au sol. Encadré en rouge au-delà de ${max} km/h, la résistance au vent annoncée pour les petits drones DJI (à vérifier pour le sien).</p>`;
     }
     const q = {
-      theme: opts.theme || 'Vol', plein: false, pleinPropre() { if (q._plein) q._plein(); }, libelle: opts.libelle || 'Jusqu\'où voler, et par quel vent ?',
+      theme: opts.theme || 'Vol', plein: false, auTrace: false, pleinPropre() { if (q._plein) q._plein(); }, libelle: opts.libelle || 'Jusqu\'où voler, et par quel vent ?',
       aide: 'Depuis le point de décollage touché, le drone vole à la hauteur choisie au-dessus de ce point. Pour chaque maille du relief dans un rayon de 1,5 km, la carte compare cette altitude au sol dessous : la limite légale de 120 m se compte depuis le sol le plus proche, si bien qu\'au-dessus d\'une ravine on la dépasse sans monter. Elle vérifie aussi qu\'aucune crête ne passe entre l\'œil du pilote et le drone : derrière, on perd le drone de vue et souvent la liaison radio. Vent : prévision Open-Meteo, lue à la hauteur de vol réglée. Cette carte ne dit pas où le vol est autorisé : zones d\'aéroport, cœur du Parc national et réserve marine ont leurs propres règles, à vérifier auprès des sources officielles.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, `<p class="etat"></p><div class="legende"></div>

@@ -794,10 +794,16 @@
          d'Épaisseur à Gel sans repasser par le panneau), puis « Calque », qui cache l'analyse pour voir le fond dessous. */
       enTete(cont, surPanneau) {
         const q = app.active, f = q && q.famille && familles.get(q.famille), voisins = f ? f.membres.filter(m => m !== q) : [], oeil = reponse.querySelector('h2 .oeil');
-        cont.innerHTML = `<button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(q ? q.theme || q.libelle : 'Thème')}</button>${voisins.map((m, i) => `<button class="p-voisin" data-v="${i}" title="${propre(m.libelle || '')}">${propre(m.theme || m.libelle)} ›</button>`).join('')}${oeil ? '<button class="p-oeil" aria-pressed="true">Calque</button>' : ''}`;
+        cont.innerHTML = `<button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(q ? q.theme || q.libelle : 'Thème')}</button>${voisins.map((m, i) => `<button class="p-voisin" data-v="${i}" title="${propre(m.libelle || '')}">${propre(m.theme || m.libelle)} ›</button>`).join('')}`;
         cont.querySelector('.p-theme').onclick = surPanneau;
         cont.querySelectorAll('.p-voisin').forEach(b => { b.onclick = () => app.choisir(voisins[+b.dataset.v]); });
-        const bo = cont.querySelector('.p-oeil'); if (bo) { bo.setAttribute('aria-pressed', oeil.getAttribute('aria-pressed')); bo.onclick = () => { oeil.click(); bo.setAttribute('aria-pressed', oeil.getAttribute('aria-pressed')); }; }
+        // « Calque » (voir le fond sous l'analyse) : sur le bord droit, à mi-hauteur, au-dessus de la pastille du tracé, là où le pouce le trouve.
+        const pil = cont.closest('.pilote'); pil.querySelectorAll(':scope > .p-oeil').forEach(x => x.remove());
+        if (oeil) {
+          const bo = el('button', { class: 'p-oeil', title: 'Afficher ou masquer le calque du thème, pour voir le fond dessous' }, '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/><path class="barre" d="M4 4l16 16"/></svg> Calque');
+          const maj = () => { const on = oeil.getAttribute('aria-pressed'); bo.setAttribute('aria-pressed', on); bo.setAttribute('aria-label', on === 'true' ? 'Calque affiché : toucher pour le masquer' : 'Calque masqué : toucher pour l\'afficher'); };
+          maj(); bo.onclick = () => { oeil.click(); maj(); }; pil.append(bo);
+        }
       },
       plein(o) {
         o = Object.assign({}, o || {});
@@ -927,7 +933,7 @@
       },
       /* Profil lié à la carte : le doigt (ou la souris) promené sur un profil pose un repère sur le tracé, à l'endroit
          correspondant, et un trait sur le profil. svg : le profil du panneau ; o = { x0, x1 : abscisses du départ et de
-         l'arrivée dans le repère du dessin, total : longueur du tracé, y : [haut, bas] du trait,
+         l'arrivée dans le repère du dessin, total : longueur du tracé, y : [haut, bas] du trait, lacher(s) : au doigt levé,
          ici(s) : ce qu'il y a à la distance s, { p: [lon, lat], texte } }, phrase : l'élément qui porte le texte.
          Au doigt, le repère reste posé quand on lâche ; à la souris, il s'efface en quittant le profil.
          Renvoie { montrer(s, sansCadrer), effacer() } : le thème s'en sert pour le sens inverse (un point du tracé touché sur
@@ -951,7 +957,7 @@
             const x = (o.x0 + (o.x1 - o.x0) * (o.total ? s / o.total : 0)).toFixed(1);
             tracer(svg, x, true); tracer(copie(), x, true);
             if (o.phrase && r.texte != null) { if (repos === null) repos = o.phrase.innerHTML; o.phrase.innerHTML = r.texte; }
-            app.repereProfil(r.p, sansCadrer); api.actif = true;
+            app.repereProfil(r.p, sansCadrer); api.actif = true; api.dernier = s;
           },
           effacer() {
             if (!api.actif) return; api.actif = false;
@@ -970,6 +976,8 @@
         svg.addEventListener('pointerdown', e => api.auDoigt(svg, e));
         svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons || e.pressure > 0) api.auDoigt(svg, e); });
         svg.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !app.survol.enCours) api.effacer(); });
+        // Au lâcher (ou au clic) : le thème peut répondre pour ce point (o.lacher).
+        if (o.lacher) svg.addEventListener('pointerup', () => { if (api.actif && api.dernier != null) o.lacher(api.dernier); });
         return api;
       },
       /* Le repère du profil sur la carte (null pour l'ôter). Hors de la partie visible de la carte, la vue s'y recentre. */
@@ -985,7 +993,7 @@
         if (map.getLayer('repereprofil')) { map.moveLayer('repereprofil-halo'); map.moveLayer('repereprofil'); }
         if (sansCadrer) return;
         // La partie de la carte que rien ne couvre : sous l'en-tête, au-dessus du panneau ou des commandes du plein écran.
-        const bas = document.querySelector('.pilote.plein .p-bas'), tete = document.querySelector('.pilote.plein .p-tete'), cv = map.getCanvas().getBoundingClientRect();
+        const bandeau = document.querySelector('.bandeautrace:not([hidden])'), bas = bandeau || document.querySelector('.pilote.plein .p-bas'), tete = document.querySelector('.pilote.plein .p-tete'), cv = map.getCanvas().getBoundingClientRect();
         const z = app.marges({ top: (tete ? tete.getBoundingClientRect().bottom - cv.top : 80) + 16, bottom: (bas ? cv.bottom - bas.getBoundingClientRect().top : reponse.offsetHeight ? Math.max(0, cv.bottom - reponse.getBoundingClientRect().top) : 0) + 16, left: 24, right: 24 });
         const pt = map.project([p[0], p[1]]);
         if (pt.x < z.left || pt.x > cv.width - z.right || pt.y < z.top || pt.y > cv.height - z.bottom) map.easeTo({ center: [p[0], p[1]], offset: [(z.left - z.right) / 2, (z.top - z.bottom) / 2], duration: 350 });
@@ -1164,8 +1172,16 @@
     // Point « maison » de la carte (un hameau ou un quartier, pas une adresse) : un repère fixe et un bouton pour y revenir.
     if (cfg.maison) {
       map.addSource('maison', { type: 'geojson', data: { type: 'Feature', properties: { nom: cfg.maison.nom }, geometry: { type: 'Point', coordinates: cfg.maison.centre } } });
-      map.addLayer({ id: 'maison', type: 'circle', source: 'maison', paint: { 'circle-radius': 7, 'circle-color': '#b8963e', 'circle-stroke-color': '#1a2e4a', 'circle-stroke-width': 2.5 } });
-      map.addLayer({ id: 'maison-nom', type: 'symbol', source: 'maison', layout: { 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 13, 'text-offset': [0, 1.1], 'text-anchor': 'top' }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#fff', 'text-halo-width': 2 } });
+      // Une petite maison dans une pastille, plutôt qu'un point : on la reconnaît de loin, sur tous les fonds.
+      if (!map.hasImage('maison')) {
+        const k = 3, t = 30 * k, cv = el('canvas', { width: t, height: t }), x = cv.getContext('2d'); x.scale(k, k);
+        x.beginPath(); x.arc(15, 15, 12.5, 0, 2 * Math.PI); x.fillStyle = '#1a2e4a'; x.fill(); x.lineWidth = 2; x.strokeStyle = '#ffffff'; x.stroke();
+        x.fillStyle = '#e8be5a'; x.beginPath(); x.moveTo(15, 7.2); x.lineTo(23, 14.4); x.lineTo(20.6, 14.4); x.lineTo(20.6, 21.6); x.lineTo(9.4, 21.6); x.lineTo(9.4, 14.4); x.lineTo(7, 14.4); x.closePath(); x.fill();
+        x.fillStyle = '#1a2e4a'; x.fillRect(13.3, 16.2, 3.4, 5.4);
+        map.addImage('maison', x.getImageData(0, 0, t, t), { pixelRatio: k });
+      }
+      map.addLayer({ id: 'maison', type: 'symbol', source: 'maison', layout: { 'icon-image': 'maison', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
+      map.addLayer({ id: 'maison-nom', type: 'symbol', source: 'maison', layout: { 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 13, 'text-offset': [0, 1.35], 'text-anchor': 'top' }, paint: { 'text-color': '#1a2e4a', 'text-halo-color': '#fff', 'text-halo-width': 2 } });
       bMaison.onclick = () => aller({ centre: cfg.maison.centre, zoom: cfg.maison.zoom || 14.5, pitch: relief3d ? (cfg.pitch3d || 60) : 0, bearing: map.getBearing() });
     }
     function aller(v) { retenir(); if (v.pitch > 5 && !relief3d) mettre3d(true); map.flyTo({ center: v.centre, zoom: v.zoom, pitch: v.pitch || 0, bearing: v.bearing || 0, duration: 1800 }); menu.hidden = true; }

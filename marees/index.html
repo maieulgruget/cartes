@@ -288,12 +288,12 @@
   const T = Socle.traceOutils;
   const q5 = Socle.trace({
     aide: 'Pour un trajet tracé au doigt, c\'est son point le plus bas qui fixe la fenêtre : la carte donne les heures où tout le trajet est à sec (avec 50 cm de marge) et l\'heure limite de départ à 3 km/h. La vase, les courants et le vent ne sont pas pris en compte.',
-    cle: 'marees', nom: 'Traversée de l\'estran', theme: 'Traversée', libelle: 'Quand traverser par ici ?', couche: Socle.RGEALTI, seuilPente: false,
+    cle: 'marees', nom: 'Traversée de l\'estran', theme: 'Traversée', libelle: 'Quand traverser par ici ?', couche: Socle.RGEALTI, seuilPente: false, allure: { plat: 3 },
     intro: 'Touche la carte pour poser le départ, puis chaque point du trajet sur l\'estran.',
     apres(app, c) { brancherJour(c, () => q5.relancer(app)); },
     pied: 'Hauteurs de mer issues d\'un modèle, pas de l\'annuaire du Shom : vérifier les horaires officiels et garder une large marge.',
     async analyse(app, d) {
-      d.repere = d.xy[d.imin];
+      d.repere = d.xy[d.imin]; d.repereNom = 'point le plus bas du trajet';
       const marche = d.total / 1000 / 3;   // 3 km/h sur sable mouillé et vase
       const s = await maree();
       let txt = champJour() + `<p>Point le plus bas du trajet : <span class="fort">${m(d.zmin)}</span> (point rouge), à ${T.km(d.dist[d.imin])} du départ. Compter environ <span class="fort">${T.duree(marche)}</span> de marche à 3 km/h.</p>`;
