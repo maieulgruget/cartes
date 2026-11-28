@@ -91,8 +91,9 @@
       choisi = id; dessiner(app);
       c.querySelector('.etat').innerHTML = `<span class="fort">${P(r.nom)}</span>${r.alt ? ', ' + Math.round(r.alt) + ' m' : ''}.`;
       c.querySelector('.ref-fiche').innerHTML = `<h3 class="ref-h">${P(r.nom)}</h3>${corpsFiche(r)}
-        <div class="puces"><button class="imp">Fiche à imprimer</button><button class="voir">Voir sur la carte</button>${r.pr.lien ? `<a class="lien" href="${P(r.pr.lien)}" target="_blank" rel="noopener">refuges.info ↗</a>` : ''}</div>`;
+        <div class="puces"><button class="fer">Fermer la fiche</button><button class="imp">Fiche à imprimer</button><button class="voir">Voir sur la carte</button>${r.pr.lien ? `<a class="lien" href="${P(r.pr.lien)}" target="_blank" rel="noopener">refuges.info ↗</a>` : ''}</div>`;
       c.querySelector('.ref-fiche .imp').onclick = () => imprimer(app, r);
+      c.querySelector('.ref-fiche .fer').onclick = () => { choisi = null; c.querySelector('.ref-fiche').innerHTML = ''; dessiner(app); dire(app, c); };
       const voir = () => app.map.easeTo({ center: r.p, zoom: Math.max(app.map.getZoom(), 13.5), duration: 900 });
       c.querySelector('.ref-fiche .voir').onclick = voir; if (aller) voir();
       c.querySelectorAll('.ref-liste button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.id === id)));
@@ -131,7 +132,8 @@
         const f = m.queryRenderedFeatures([[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]], { layers: ['refuges'] })[0];
         if (f) fiche(app, q._c, +f.properties.id);
       },
-      plein: () => ({ bloc: ['.ref-liste', '.ref-fiche'], consigne: 'Touche un refuge pour sa fiche.' }),
+      // La croix du bloc désélectionne le refuge : la fiche part, l'anneau sur la carte aussi, la liste reste.
+      plein: app => ({ bloc: ['.ref-liste', '.ref-fiche'], consigne: 'Touche un refuge pour sa fiche.', fermerBloc() { if (!choisi) return false; choisi = null; const c = q._c; c.querySelector('.ref-fiche').innerHTML = ''; dessiner(app); dire(app, c); return true; } }),
       fermer(app) { tour++; app.retirer('refuges-nombre', 'refuges-groupes', 'refuges-choisi', 'refuges'); }
     };
     return q;
