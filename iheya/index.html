@@ -82,8 +82,7 @@
   const FONDS = {
     photo: { nom: 'Photo', note: 'photographie aérienne récente du GSI', calques: ['photo'] },
     plan: { nom: 'Plan', note: 'carte pâle du GSI', calques: ['plan'] },
-    p1977: { nom: 'Photo 1974-1978', note: 'premières photos en couleur après le retour au Japon (1972)', calques: ['p1977'] },
-    relief: { nom: 'Relief', note: 'ombrage du relief, GSI', calques: ['relief'] }
+    p1977: { nom: 'Photo 1974-1978', note: 'premières photos en couleur après le retour au Japon (1972)', calques: ['p1977'] }
   };
 
   const map = new maplibregl.Map({
@@ -95,7 +94,6 @@
         photo: { type: 'raster', tiles: [GSI + 'seamlessphoto/{z}/{x}/{y}.jpg'], tileSize: 256, maxzoom: 18, attribution: ATTR_GSI },
         plan: { type: 'raster', tiles: [GSI + 'pale/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 18, attribution: ATTR_GSI },
         p1977: { type: 'raster', tiles: [GSI + 'gazo1/{z}/{x}/{y}.jpg'], tileSize: 256, minzoom: 10, maxzoom: 17, attribution: '国土画像情報（第一期：1974～1978年撮影）' },
-        relief: { type: 'raster', tiles: [GSI + 'hillshademap/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 16, attribution: ATTR_GSI },
         mnt: { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Relief : Mapzen / AWS Terrain Tiles' },
         terres: { type: 'geojson', data: 'terres.geojson' }
       },
@@ -104,7 +102,6 @@
         { id: 'photo', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 150 } },
         { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
         { id: 'p1977', type: 'raster', source: 'p1977', layout: { visibility: 'none' } },
-        { id: 'relief', type: 'raster', source: 'relief', layout: { visibility: 'none' } },
         // Thème « Lagon » : la photo plus vive par-dessus, et les terres assombries pour que l'eau ressorte.
         { id: 'lagon', type: 'raster', source: 'photo', layout: { visibility: 'none' }, paint: { 'raster-saturation': 0.55, 'raster-contrast': 0.18, 'raster-brightness-min': 0.04 } },
         { id: 'terres-voile', type: 'fill', source: 'terres', layout: { visibility: 'none' }, paint: { 'fill-color': '#0e1622', 'fill-opacity': 0.55 } },
