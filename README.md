@@ -13,7 +13,7 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Sous la surface (îles de Lérins, golfe Juan, cap d'Antibes) | `plongee/` | profondeurs, avec le niveau de la mer que l'on fait baisser pour voir le fond à sec, couleurs qui s'éteignent avec la profondeur, poissons selon le milieu, natures de fond, sites (épaves, secs, sites à soi), parcours avec profil du fond, limites des niveaux, conditions et abri à la houle |
 | Sous la baie (baie de Saint-Brieuc, de Binic à Erquy) | `plongee-baie/` | la même carte dans une mer à marée : hauteur d'eau à l'heure choisie (maintenant, basse mer, pleine mer, baie vidée), estran qui découvre, poissons de la Manche selon le milieu, natures de fond, épaves, parcours et limites des niveaux pour la mer du moment, conditions avec la courbe de marée |
 | Mes randos (Corse, puis toute la France) | `corse/` | où je suis passé : tracés drapés sur le relief, profil, pente le long du chemin, altitude, sol et type de chemin (Komoot), survol ; lumière ; itinéraire à préparer |
-| L'île et son lagon (Iheya, Okinawa) | `iheya/` | carte souvenir, à part du socle (sources japonaises) : photo du GSI avivée sur l'eau, l'île vers 1975 sous un curseur, relief en 3D (tuiles terrarium), vues de l'île |
+| L'île et son lagon (Iheya, Okinawa) | `iheya/` | carte souvenir, à part du socle (sources japonaises) : photo du GSI avivée sur l'eau, l'île vers 1975 sous un curseur, relief en 3D (tuiles terrarium), sans fond « Relief » (trop grossier), vues de l'île |
 
 Photo aérienne : la BD ORTHO courante de l'IGN (20 cm), sous la photo à très haute résolution de l'IGN là où elle existe
 (Marseille). Fond « Photo 2025 » : la même, avec l'ortho-express 2025 là où elle existe (Côtes-d'Armor, Haute-Savoie,
