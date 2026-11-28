@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Plongée baie">
+<meta name="theme-color" content="#0e1622">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-180.png">
+<title>Plongée — baie de Saint-Brieuc, de Binic à Erquy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="../socle/socle.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<script src="../socle/socle.js"></script>
+<script src="../socle/maree.js"></script>
+<script src="../socle/plongee.js"></script>
+</head>
+<body>
+<script>
+(async function () {
+  const F = 'Europe/Paris';
+  // Même carte que « Sous la surface » (Antibes), dans une mer à marée : le niveau de la mer est celui de l'instant.
+  const app = await Socle.creer({
+    id: 'plongee-baie', racine: '../', titre: 'Sous la baie', sousTitre: 'Baie de Saint-Brieuc, de Binic à Erquy',
+    centre: [-2.6500, 48.6200], zoom: 10.7, pitch: 0, bearing: 0, pitch3d: 38,
+    limites: [[-3.10, 48.36], [-2.15, 48.86]],
+    recherche: { centre: [-2.63, 48.60], rayonKm: 25 },
+    signets: [
+      { nom: 'Toute la baie', note: 'de Binic à Erquy', centre: [-2.6300, 48.6050], zoom: 10.6, pitch: 0, bearing: 0 },
+      { nom: 'Roches de Saint-Quay', note: 'le plateau devant le port', centre: [-2.7800, 48.6620], zoom: 13.2, pitch: 58, bearing: -20 },
+      { nom: 'Les dunes sous-marines', note: 'les ridens, au large de Saint-Quay', centre: [-2.7900, 48.6950], zoom: 12.6, pitch: 60, bearing: 20 },
+      { nom: 'Binic', centre: [-2.8150, 48.6020], zoom: 13.4, pitch: 55, bearing: -60 },
+      { nom: 'Pointe du Roselier', centre: [-2.7150, 48.5560], zoom: 13.4, pitch: 58, bearing: -30 },
+      { nom: 'Anse d\'Yffiniac', note: 'le fond de la baie, qui découvre', centre: [-2.6700, 48.5300], zoom: 12.6, pitch: 50, bearing: 0 },
+      { nom: 'Le Rohein', note: 'le plateau au milieu de la baie', centre: [-2.6300, 48.6470], zoom: 13.4, pitch: 60, bearing: 0 },
+      { nom: 'Le Verdelet', note: 'Pléneuf-Val-André', centre: [-2.5560, 48.6000], zoom: 14, pitch: 58, bearing: 30 },
+      { nom: 'Erquy', note: 'le port et le cap', centre: [-2.4750, 48.6400], zoom: 13.2, pitch: 58, bearing: 30 }
+    ],
+    sources: 'Fonds marins et estran : Litto3D® Bretagne 2018-2021 (Shom, IGN, Région Bretagne ; Licence Ouverte), lidar près des côtes et sondeur au large, modèle à 5 m ; entre deux relevés, le fond est comblé par une pente douce. À terre : Litto3D puis RGE ALTI de l\'IGN. Natures de fond : carte sédimentaire mondiale du Shom (Licence Ouverte). Épaves et obstructions : Shom (CC BY-SA 4.0). Marée : modèle de niveau de la mer d\'Open-Meteo, prolongé par un calcul d\'ondes de marée ; ce n\'est pas l\'annuaire du Shom. Vagues, houle, vent, température de l\'eau : Open-Meteo. Les animaux sont une illustration de ce qu\'on peut croiser selon le milieu, pas une observation. Carte de préparation et de découverte : elle ne remplace ni la carte marine, ni l\'annuaire des marées, ni les tables ou l\'ordinateur de plongée, ni le directeur de plongée.'
+  });
+  app.map.setMinZoom(9.6);
+  const P = await Socle.plongee.installer(app, {
+    id: 'plongee-baie', donnees: './', fuseau: F, centreMeteo: [-2.62, 48.66],
+    // Marée : points de référence au large, et niveau moyen de la mer au-dessus du zéro des cartes terrestres (les mêmes que la carte Marées).
+    maree: { refs: [{ nom: 'Saint-Quay', p: [-2.75, 48.67] }, { nom: 'baie de Saint-Brieuc', p: [-2.62, 48.62] }, { nom: 'Erquy', p: [-2.45, 48.67] }], decal: 0.45 },
+    especes: Socle.plongee.especesManche,
+    zoomMonde: 10,      // au-delà du secteur, la mer prend ses fonds dans le relief mondial du zoom 10
+    nordFerme: false,   // au nord du secteur, c'est le large (à Antibes, la terre)
+    trouble: 0.15,   // eau de la Manche côtière, chargée : un ordre de grandeur
+    textes: { releve: 'relevé Litto3D (lidar ou sondeur, 5 m)', autre: 'comblé entre deux relevés : ordre de grandeur', credit: 'Fonds : Litto3D® Shom-IGN-Région Bretagne, carte sédimentaire Shom' },
+    aide: {
+      profondeurs: 'Ici la profondeur change d\'heure en heure : la marée fait varier le niveau de plus de douze mètres en vive-eau. Les teintes donnent donc la hauteur d\'eau sous le niveau choisi : celui de maintenant, d\'une basse mer, d\'une pleine mer, ou n\'importe lequel au curseur, jusqu\'à vider la baie. Le fond est le relevé Litto3D du Shom, de l\'IGN et de la Région Bretagne (2018 à 2021) : lidar aéroporté sur l\'estran et les petits fonds, sondeur au large, ramené à 5 m. Entre deux relevés, la carte comble par une pente douce et le dit au toucher. Le niveau de la mer vient d\'un modèle (Open-Meteo), prolongé par un calcul d\'ondes de marée : fiable à 20 cm près le plus souvent, 60 au pire, et il ignore les surcotes de tempête. Les niveaux sont des altitudes des cartes terrestres (IGN 69), pas des cotes au-dessus du zéro des cartes marines. Ni carte marine, ni annuaire des marées, ni instrument de navigation.',
+      lumiere: 'L\'eau absorbe les couleurs dans l\'ordre : le rouge dès les premiers mètres, puis l\'orange et le jaune ; le vert va le plus loin dans une eau chargée. Calcul pour une eau de Manche côtière moyennement chargée : à l\'absorption de l\'eau pure (Pope et Fry 1997) s\'ajoute celle des particules et du plancton, prise ici comme un ordre de grandeur. Après un coup de vent ou par grande marée, l\'eau est bien plus trouble et tout s\'éteint plus vite ; par beau temps de morte-eau, c\'est l\'inverse. La ligne dorée suit la profondeur choisie sous la mer de maintenant. La part de lumière tient compte de la hauteur du soleil.',
+      poissons: 'Les espèces sont placées là où leur milieu existe (nature du fond, hauteur d\'eau à cette heure, pente), sur des points tous les 150 m. Personne ne cartographie les poissons : la carte montre ce qu\'on peut croiser, pas ce qui est là. Les dessins sont des pictogrammes ; tailles et vitesses sont pensées pour l\'écran. La nature du fond vient d\'une carte générale : une tête de roche isolée, une épave ou un banc de maërl n\'y figurent pas, alors qu\'ils concentrent la vie.',
+      natures: 'Natures de fond de la carte sédimentaire mondiale du Shom (Licence Ouverte), qui assemble ici des cartes anciennes à moyenne échelle : sédiment et roche généralisés. Une limite peut être décalée de plus de cent mètres, et les têtes de roche isolées, le maërl et les herbiers de zostères n\'y figurent pas. Le relief relevé au sondeur montre souvent mieux la roche que cette carte.',
+      parcours: 'Le profil lit le relief au pas de 6 m le long du tracé, avec la mer de maintenant : dans deux heures, la hauteur d\'eau aura changé de plusieurs mètres. La durée suppose un groupe de plongeurs qui palme tranquillement, autour de 10 m par minute, sans courant et sans les paliers : or le courant de marée est ici la première contrainte, et l\'on plonge autour de l\'étale. Ni la carte ni ce calcul ne remplacent le directeur de plongée, les tables ou l\'ordinateur.',
+      niveaux: 'Repères de profondeur maximale de la Fédération française d\'études et de sports sous-marins : baptême 6 m ; niveau 1 jusqu\'à 20 m encadré ; niveau 2 jusqu\'à 40 m encadré (20 m en autonomie) ; niveau 3 jusqu\'à 60 m en autonomie. La limite est tracée pour la mer de maintenant : elle se déplace avec la marée, de plusieurs centaines de mètres par endroits. Les conditions du jour, l\'expérience et le directeur de plongée décident.',
+      conditions: 'Marée : modèle de niveau de la mer d\'Open-Meteo, prolongé par un calcul d\'ondes de marée (20 cm près le plus souvent ; pour l\'heure exacte d\'une étale, l\'annuaire du Shom fait foi). L\'étale de courant ne tombe pas toujours à l\'heure de la pleine ou de la basse mer : elle peut s\'en écarter d\'une heure selon l\'endroit. Vagues, houle, température de l\'eau, courant et vent : prévision Open-Meteo. L\'abri compare, pour chaque endroit de la mer, la longueur d\'eau libre dans la direction d\'où viennent les vagues ; les crêtes dessinées avancent comme elles et s\'effacent à l\'abri ; la diffraction autour des pointes et le ressac ne sont pas calculés. La visibilité sous l\'eau n\'est prévue par personne.'
+    }
+  });
+  const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
+  famille('Mer', P.themes.profondeurs);
+  famille('Mer', P.themes.lumiere);
+  famille('Vie', P.themes.poissons);
+  famille('Vie', P.themes.natures);
+  famille('Plonger', P.themes.sites);
+  famille('Plonger', P.themes.parcours);
+  famille('Plonger', P.themes.niveaux);
+  famille('Plonger', P.themes.conditions);
+  // Bascule en 3D ; une vue reçue par un lien garde son inclinaison.
+  const incl = app.map.getPitch();
+  setTimeout(() => { app.mettre3d(true); if (incl > 5) setTimeout(() => app.map.easeTo({ pitch: incl, duration: 300 }), 750); }, 400);
+})();
+</script>
+</body>
+</html>

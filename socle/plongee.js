@@ -24,7 +24,8 @@
   const TERRARIUM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/';
   function dansIndex(z, x, y) { const t = D.index.tuiles[z]; return !!t && x >= t[0] && x <= t[1] && y >= t[2] && y <= t[3]; }
   /* Hors du secteur : le relief mondial (tuiles « terrarium » de 256 points). Une seule tuile mondiale, au zoom 12 au
-     plus, sert toutes les tuiles de la carte qu'elle recouvre : elle est décodée une fois, puis relue en douceur pour
+     plus (et, quand la carte le demande, celle du zoom 10 pour la mer : c'est à ces zooms que ce relief porte les fonds
+     marins, et la mer garde alors sa teinte au-delà du secteur), sert toutes les tuiles de la carte qu'elle recouvre : elle est décodée une fois, puis relue en douceur pour
      chaque tuile de 512 points demandée. Loin du secteur le détail n'apporte rien, et l'horizon d'une vue inclinée ne
      coûte plus qu'une poignée de requêtes. */
   const cacheMonde = new Map();
@@ -43,17 +44,25 @@
     }
     return cacheMonde.get(cle);
   }
-  async function monde512(z, x, y) {
-    const zz = Math.min(z, 12), f = 1 << (z - zz), a = await mondeDecode(zz, Math.floor(x / f), Math.floor(y / f));
-    const c = document.createElement('canvas'); c.width = c.height = 512; const ctx = c.getContext('2d'), im = ctx.createImageData(512, 512), d = im.data;
+  // Lecture adoucie d'une tuile mondiale de zoom zz pour la tuile (z, x, y) : renvoie une fonction (i, j) -> altitude.
+  async function lecteurMonde(zz, z, x, y) {
+    const f = 1 << (z - zz), a = await mondeDecode(zz, Math.floor(x / f), Math.floor(y / f));
+    if (!a) return null;
     const ox = (x % f) * 256 / f, oy = (y % f) * 256 / f, pas = 256 / f / 512;
-    for (let j = 0; j < 512; j++) {
+    return (i, j) => {
       const sy = Math.min(254.999, Math.max(0, oy + (j + 0.5) * pas - 0.5)), j0 = sy | 0, v = sy - j0;
-      for (let i = 0; i < 512; i++) {
-        const sx = Math.min(254.999, Math.max(0, ox + (i + 0.5) * pas - 0.5)), i0 = sx | 0, u = sx - i0, k = j0 * 256 + i0;
-        const alt = a ? (a[k] * (1 - u) + a[k + 1] * u) * (1 - v) + (a[k + 256] * (1 - u) + a[k + 257] * u) * v : 0;
-        const t = alt + 32768, q = 4 * (j * 512 + i); d[q] = Math.floor(t / 256); d[q + 1] = Math.floor(t) % 256; d[q + 2] = Math.floor((t - Math.floor(t)) * 256); d[q + 3] = 255;
-      }
+      const sx = Math.min(254.999, Math.max(0, ox + (i + 0.5) * pas - 0.5)), i0 = sx | 0, u = sx - i0, k = j0 * 256 + i0;
+      return (a[k] * (1 - u) + a[k + 1] * u) * (1 - v) + (a[k + 256] * (1 - u) + a[k + 257] * u) * v;
+    };
+  }
+  async function monde512(z, x, y) {
+    // Dans une mer à marée (zMonde 10), la mer vient du petit zoom, qui porte les fonds ; la terre garde le zoom 12.
+    const fin = await lecteurMonde(Math.min(z, 12), z, x, y), gros = D.zMonde < 12 && z > D.zMonde ? await lecteurMonde(D.zMonde, z, x, y) : null;
+    const c = document.createElement('canvas'); c.width = c.height = 512; const ctx = c.getContext('2d'), im = ctx.createImageData(512, 512), d = im.data;
+    for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
+      let alt = fin ? fin(i, j) : 0;
+      if (gros && alt === 0) alt = Math.min(0, gros(i, j));
+      const t = alt + 32768, q = 4 * (j * 512 + i); d[q] = Math.floor(t / 256); d[q + 1] = Math.floor(t) % 256; d[q + 2] = Math.floor((t - Math.floor(t)) * 256); d[q + 3] = 255;
     }
     ctx.putImageData(im, 0, 0);
     return (await new Promise(res => c.toBlob(res, 'image/png'))).arrayBuffer();
@@ -68,6 +77,7 @@
         const [z, x, y] = cle.replace('plongee://', '').split('/').map(Number);
         cacheRelief.set(cle, (async () => {
           if (dansIndex(z, x, y)) { const r = await fetch(`${D.racine}relief/${z}/${x}/${y}.png`); if (r.ok) return r.arrayBuffer(); }
+          if (z > ZT() && dansIndex(ZT(), x >> (z - ZT()), y >> (z - ZT()))) { const b = await fine512(z, x, y); if (b) return b; }
           return monde512(z, x, y);
         })());
         if (cacheRelief.size > 120) cacheRelief.delete(cacheRelief.keys().next().value);
@@ -75,14 +85,16 @@
       return { data: (await cacheRelief.get(cle)).slice(0) };
     });
   }
-  // Altitude d'un point (m, négative sous l'eau), lue dans les tuiles du secteur au zoom 14 (3,5 m). NaN hors secteur.
+  // Zoom le plus fin des tuiles du secteur (14 à Antibes : 3,5 m ; 13 en baie de Saint-Brieuc : 6 m).
+  const ZT = () => D.zt;
+  // Altitudes d'une tuile du secteur à son zoom le plus fin (512 × 512), décodées une fois et gardées un moment.
   const cacheAlti = new Map();
   function tuileAlti(x, y) {
     const cle = x + '/' + y;
     if (!cacheAlti.has(cle)) {
       cacheAlti.set(cle, (async () => {
-        if (!dansIndex(14, x, y)) return null;
-        const r = await fetch(`${D.racine}relief/14/${x}/${y}.png`); if (!r.ok) return null;
+        if (!dansIndex(ZT(), x, y)) return null;
+        const r = await fetch(`${D.racine}relief/${ZT()}/${x}/${y}.png`); if (!r.ok) return null;
         const c = document.createElement('canvas'); c.width = c.height = 512; const ctx = c.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(await createImageBitmap(await r.blob()), 0, 0);
         const d = ctx.getImageData(0, 0, 512, 512).data, a = new Float32Array(512 * 512);
@@ -93,10 +105,32 @@
     }
     return cacheAlti.get(cle);
   }
-  async function altitude(lon, lat) {
-    const [fx, fy] = tuileDe(lon, lat, 14), x = Math.floor(fx), y = Math.floor(fy), a = await tuileAlti(x, y); if (!a) return NaN;
+  // Altitude d'un point (m, zéro des cartes terrestres), lue dans les tuiles du secteur. NaN hors secteur.
+  async function altitudeAbs(lon, lat) {
+    const [fx, fy] = tuileDe(lon, lat, ZT()), x = Math.floor(fx), y = Math.floor(fy), a = await tuileAlti(x, y); if (!a) return NaN;
     const px = Math.min(510.999, Math.max(0, (fx - x) * 512 - 0.5)), py = Math.min(510.999, Math.max(0, (fy - y) * 512 - 0.5)), i = px | 0, j = py | 0, u = px - i, v = py - j, k = j * 512 + i;
     return (a[k] * (1 - u) + a[k + 1] * u) * (1 - v) + (a[k + 512] * (1 - u) + a[k + 513] * u) * v;
+  }
+  /* Niveau de la mer à l'instant considéré (altitude). Zéro en Méditerranée ; en Manche, la marée du moment. Tout le
+     module raisonne par rapport à lui : « altitude » rend la hauteur au-dessus de la mer (négative sous l'eau), si bien
+     qu'une profondeur est toujours une hauteur d'eau à cet instant. */
+  let MER = 0;
+  const altitude = async (lon, lat) => (await altitudeAbs(lon, lat)) - MER;
+  // Tuile demandée plus fine que celles du secteur : relue dans la tuile du secteur qui la contient, puis recodée.
+  async function fine512(z, x, y) {
+    const f = 1 << (z - ZT()), a = await tuileAlti(Math.floor(x / f), Math.floor(y / f)); if (!a) return null;
+    const c = document.createElement('canvas'); c.width = c.height = 512; const ctx = c.getContext('2d'), im = ctx.createImageData(512, 512), d = im.data;
+    const ox = (x % f) * 512 / f, oy = (y % f) * 512 / f, pas = 1 / f;
+    for (let j = 0; j < 512; j++) {
+      const sy = Math.min(510.999, Math.max(0, oy + (j + 0.5) * pas - 0.5)), j0 = sy | 0, v = sy - j0;
+      for (let i = 0; i < 512; i++) {
+        const sx = Math.min(510.999, Math.max(0, ox + (i + 0.5) * pas - 0.5)), i0 = sx | 0, u = sx - i0, k = j0 * 512 + i0;
+        const t = (a[k] * (1 - u) + a[k + 1] * u) * (1 - v) + (a[k + 512] * (1 - u) + a[k + 513] * u) * v + 32768, q = 4 * (j * 512 + i);
+        d[q] = Math.floor(t / 256); d[q + 1] = Math.floor(t) % 256; d[q + 2] = Math.floor((t - Math.floor(t)) * 256); d[q + 3] = 255;
+      }
+    }
+    ctx.putImageData(im, 0, 0);
+    return (await new Promise(res => c.toBlob(res, 'image/png'))).arrayBuffer();
   }
   const dansSecteur = (lon, lat) => { const e = D.index.emprise; return lon > e[0] && lon < e[2] && lat > e[1] && lat < e[3]; };
   const dansLidar = (lon, lat) => D.lidar.some(pg => dansPoly(pg, lon, lat));
@@ -128,6 +162,10 @@
     st.push(N - 0.9, rgba(EAU[1], 0.12), N - 0.4, 'rgba(236,248,250,0.62)', N - 0.05, 'rgba(236,248,250,0.62)', N, 'rgba(236,248,250,0)', 9000, 'rgba(236,248,250,0)');
     return ['interpolate', ['linear'], ['elevation'], -12000, rgba(EAU[EAU.length - 1]), ...st];
   }
+  // Une mer unie, sans le fond : pour les thèmes qui posent leurs propres couleurs sur l'eau.
+  const regleUnie = M => ['interpolate', ['linear'], ['elevation'], -12000, 'rgb(208,224,232)', M - 0.4, 'rgb(208,224,232)', M - 0.05, 'rgb(236,244,247)', M, 'rgba(236,244,247,0)', 9000, 'rgba(236,244,247,0)'];
+  // Une règle écrite pour une mer à zéro, décalée au niveau M : seuls les repères d'altitude bougent.
+  const decaler = (r, M) => M ? r.map((v, i) => i >= 3 && (i - 3) % 2 === 0 ? v + M : v) : r;
   // Teinte de l'eau pour une épaisseur h, par interpolation entre les repères.
   function eauA(h) {
     for (let i = 1; i < EAU.length; i++) if (h <= EAU[i][0]) { const a = EAU[i - 1], b = EAU[i], t = (h - a[0]) / (b[0] - a[0]), v = k => a[k] + t * (b[k] - a[k]); return `rgba(${Math.round(v(1))},${Math.round(v(2))},${Math.round(v(3))},${v(4).toFixed(3)})`; }
@@ -190,7 +228,7 @@
   /* Espèces que l'on croise souvent en plongée sur ces côtes, avec le milieu (1 roche, 2 sable, 3 vase, h herbier) et la
      tranche de profondeur où on les voit le plus. C'est une aide à reconnaître, pas un inventaire : la carte ne sait pas
      où sont les poissons, elle les place là où leur milieu existe. */
-  const ESPECES = [
+  let ESPECES = [
     { id: 'castagnole', nom: 'Castagnole', latin: 'Chromis chromis', mil: [1, 'h'], p: [3, 35], banc: [8, 14], cm: 12, nage: 'banc', forme: 'fuseau', c: ['#3a3f4a', '#4b5260'], f: 'Petit poisson brun-noir à la queue fourchue, en bancs serrés au-dessus des roches. Les jeunes sont d\'un bleu électrique.' },
     { id: 'girelle', nom: 'Girelle', latin: 'Coris julis', mil: [1, 'h'], p: [0, 40], banc: [1, 3], cm: 18, nage: 'vif', forme: 'long', c: ['#4f8a63', '#e3d7a8'], raie: '#e07a2e', f: 'Fine et vive, elle vient voir le plongeur. Le mâle porte une bande orange en zigzag sur le flanc.' },
     { id: 'sar', nom: 'Sar commun', latin: 'Diplodus sargus', mil: [1], p: [1, 40], banc: [3, 7], cm: 30, nage: 'banc', forme: 'haut', c: ['#b9c2c9', '#e6ebee'], bandes: '#4a5560', tache: true, f: 'Argenté, rayé de bandes sombres, avec une tache noire avant la queue. En petits groupes le long des tombants.' },
@@ -209,6 +247,24 @@
     { id: 'barracuda', nom: 'Barracuda', latin: 'Sphyraena viridensis', mil: [1, 2, 'h'], p: [5, 30], banc: [6, 12], cm: 70, nage: 'banc', forme: 'fleche', c: ['#7d8b93', '#d8dee0'], bandes: '#4e5a61', f: 'En bancs immobiles en pleine eau, surtout en été et en fin de saison. Impressionnant, sans danger.' },
     { id: 'oblade', nom: 'Oblade', latin: 'Oblada melanura', mil: [1], p: [0, 25], banc: [6, 10], cm: 25, nage: 'banc', forme: 'fuseau', c: ['#9fa9ae', '#e3e8ea'], tache: true, f: 'Argentée, une tache noire cerclée de blanc avant la queue. En bancs près de la surface, le long des roches.' }
   ];
+  /* La même chose pour la Manche (côte nord de la Bretagne) : les espèces qu'un plongeur y croise le plus, sur la roche,
+     les épaves et les fonds de sable. */
+  const ESPECES_MANCHE = [
+    { id: 'bar', nom: 'Bar', latin: 'Dicentrarchus labrax', mil: [1, 2], p: [1, 30], banc: [2, 6], cm: 60, nage: 'banc', forme: 'fuseau', c: ['#7f8c93', '#e3e8ea'], f: 'Argenté, élancé, il chasse dans le courant autour des roches et des épaves, souvent en petits groupes.' },
+    { id: 'lieu', nom: 'Lieu jaune', latin: 'Pollachius pollachius', mil: [1], p: [5, 45], banc: [3, 8], cm: 60, nage: 'banc', forme: 'fuseau', c: ['#6f6a3e', '#d9cf9a'], f: 'Brun doré, la mâchoire du bas en avant. En pleine eau au-dessus des têtes de roche et des épaves.' },
+    { id: 'vieille', nom: 'Vieille', latin: 'Labrus bergylta', mil: [1], p: [2, 30], banc: [1, 2], cm: 45, nage: 'lent', forme: 'gros', c: ['#8a4f3a', '#c98a5e'], taches: '#e6c9a0', f: 'Trapue, aux lèvres épaisses, verte, brune ou rouge marbrée de clair. Curieuse, elle accompagne le plongeur entre les laminaires.' },
+    { id: 'tacaud', nom: 'Tacaud', latin: 'Trisopterus luscus', mil: [1], p: [5, 45], banc: [8, 14], cm: 30, nage: 'banc', forme: 'haut', c: ['#a58566', '#e4d3bd'], bandes: '#6e5540', f: 'Cuivré, rayé de bandes sombres, un barbillon au menton. En bancs serrés dans les épaves et sous les surplombs.' },
+    { id: 'congre', nom: 'Congre', latin: 'Conger conger', mil: [1], p: [3, 45], banc: [1, 1], cm: 150, nage: 'pose', forme: 'serpent', c: ['#4c5560', '#aab3ba'], taches: '#cfd6db', f: 'Gris bleuté, long comme un homme parfois. Le jour, seule sa tête dépasse d\'un trou ou d\'une tôle d\'épave.' },
+    { id: 'griset', nom: 'Dorade grise', latin: 'Spondyliosoma cantharus', mil: [1, 2], p: [5, 40], banc: [4, 9], cm: 35, nage: 'banc', forme: 'haut', c: ['#8e979d', '#dfe4e6'], lignes: '#c9b46a', f: 'Le griset : gris argenté, finement ligné de doré, en bancs au-dessus des fonds mêlés de roche et de sable.' },
+    { id: 'mulet', nom: 'Mulet', latin: 'Chelon labrosus', mil: [1, 2, 3], p: [1, 10], banc: [5, 10], cm: 50, nage: 'banc', forme: 'fuseau', c: ['#7c8a92', '#dfe5e8'], lignes: '#6b7880', f: 'Gris, rayé en long, la tête large et plate. En bancs tout près du bord, dans les ports et les anses.' },
+    { id: 'rouget', nom: 'Rouget barbet', latin: 'Mullus surmuletus', mil: [2, 1], p: [3, 40], banc: [2, 5], cm: 25, nage: 'fouille', forme: 'fuseau', c: ['#d27f6b', '#f2d6c4'], lignes: '#e9c449', f: 'Il fouille le sable de ses deux barbillons, souvent suivi d\'autres poissons qui profitent de ce qu\'il soulève.' },
+    { id: 'lancon', nom: 'Lançon', latin: 'Ammodytes tobianus', mil: [2], p: [1, 30], banc: [10, 14], cm: 20, nage: 'banc', forme: 'long', c: ['#9aa9a4', '#e6ecea'], f: 'Fin comme un crayon, en bancs argentés au-dessus des dunes de sable, où il s\'enfouit d\'un coup à la moindre alerte.' },
+    { id: 'plie', nom: 'Plie', latin: 'Pleuronectes platessa', mil: [2, 3], p: [2, 45], banc: [1, 1], cm: 40, nage: 'pose', forme: 'plat', c: ['#8a7a58', '#b9a882'], taches: '#e07a2e', f: 'Le carrelet : un poisson plat brun, semé de taches orange, posé sur le sable dont il prend la teinte.' },
+    { id: 'roussette', nom: 'Petite roussette', latin: 'Scyliorhinus canicula', mil: [2, 1, 3], p: [5, 45], banc: [1, 1], cm: 70, nage: 'lent', forme: 'long', c: ['#a08a66', '#e0d2b4'], taches: '#5e4a30', f: 'Un petit requin sans danger, beige tacheté de brun, posé sur le fond le jour.' },
+    { id: 'seiche', nom: 'Seiche', latin: 'Sepia officinalis', mil: [2, 3, 1], p: [1, 45], banc: [1, 2], cm: 30, nage: 'lent', forme: 'seiche', c: ['#a1896a', '#d8c6a6'], f: 'Elle change de couleur en un instant et ondule de sa nageoire en collerette. Au printemps, elle vient pondre près du bord.' },
+    { id: 'araignee', nom: 'Araignée de mer', latin: 'Maja brachydactyla', mil: [1, 2], p: [2, 40], banc: [1, 3], cm: 20, nage: 'pose', forme: 'crabe', c: ['#a8573a', '#d99a6c'], f: 'Carapace en poire hérissée de pointes, longues pattes. Au printemps, elles se rassemblent par dizaines près du bord.' },
+    { id: 'coquille', nom: 'Coquille Saint-Jacques', latin: 'Pecten maximus', mil: [2], p: [8, 45], banc: [2, 5], cm: 12, nage: 'pose', forme: 'coquille', c: ['#b5633f', '#e9c9a8'], f: 'Posée dans le sable, la valve plate vers le haut. La baie de Saint-Brieuc en porte l\'un des grands gisements français, à la pêche très encadrée.' }
+  ];
   const espece = id => ESPECES.find(e => e.id === id);
   // Dessin d'une espèce, de profil, tournée vers la droite (d) ou la gauche : un pictogramme, pas un portrait.
   function dessinPoisson(e, gauche, vignette) {
@@ -219,6 +275,30 @@
     const degrade = (hh) => { const g = x.createLinearGradient(0, cy - hh, 0, cy + hh); g.addColorStop(0, e.c[0]); g.addColorStop(0.55, e.c[0]); g.addColorStop(1, e.c[1]); return g; };
     const queue = (hh, fourche) => { x.beginPath(); x.moveTo(cx - L * 0.92, cy); x.lineTo(cx - L * 1.35, cy - hh); x.lineTo(cx - L * (fourche ? 1.18 : 1.3), cy); x.lineTo(cx - L * 1.35, cy + hh); x.closePath(); x.fillStyle = e.c[0]; x.fill(); };
     x.lineJoin = 'round';
+    if (e.forme === 'plat') {          // poisson plat, vu de dessus : un ovale frangé de nageoires, les deux yeux du même côté
+      x.fillStyle = e.c[1]; x.beginPath(); x.ellipse(cx - L * 0.05, cy, L * 0.98, H * 0.4, 0, 0, 7); x.fill();
+      x.fillStyle = e.c[0]; x.beginPath(); x.ellipse(cx - L * 0.05, cy, L * 0.8, H * 0.28, 0, 0, 7); x.fill();
+      x.beginPath(); x.moveTo(cx - L * 0.8, cy); x.lineTo(cx - L * 1.3, cy - H * 0.16); x.lineTo(cx - L * 1.3, cy + H * 0.16); x.closePath(); x.fill();
+      if (e.taches) { x.fillStyle = e.taches; for (let i = 0; i < 9; i++) { x.beginPath(); x.arc(cx - L * 0.6 + (i * 37 % 100) / 100 * L * 1.1, cy - H * 0.16 + (i * 53 % 100) / 100 * H * 0.32, 1.9, 0, 7); x.fill(); } }
+      x.fillStyle = '#f4f1ea'; for (const dy of [-3, 3]) { x.beginPath(); x.arc(cx + L * 0.55, cy + dy, 2.2, 0, 7); x.fill(); }
+      x.fillStyle = '#111'; for (const dy of [-3, 3]) { x.beginPath(); x.arc(cx + L * 0.57, cy + dy, 1.1, 0, 7); x.fill(); }
+      return x.getImageData(0, 0, W, H);
+    }
+    if (e.forme === 'coquille') {      // coquille en éventail, côtes rayonnantes
+      const r = H * 0.42, ox = cx, oy = cy + r * 0.75;
+      x.fillStyle = e.c[0]; x.beginPath(); x.moveTo(ox, oy); x.arc(ox, oy, r * 1.75, Math.PI * 1.2, Math.PI * 1.8); x.closePath(); x.fill();
+      x.fillRect(ox - r * 0.5, oy - r * 0.16, r, r * 0.3);
+      x.strokeStyle = e.c[1]; x.lineWidth = 1.5; for (let i = 0; i <= 7; i++) { const a = Math.PI * (1.22 + i * 0.08); x.beginPath(); x.moveTo(ox, oy); x.lineTo(ox + Math.cos(a) * r * 1.72, oy + Math.sin(a) * r * 1.72); x.stroke(); }
+      return x.getImageData(0, 0, W, H);
+    }
+    if (e.forme === 'crabe') {         // araignée de mer : une carapace en poire, de longues pattes
+      x.strokeStyle = e.c[0]; x.lineWidth = 2; x.lineCap = 'round';
+      for (const cote of [-1, 1]) for (let i = 0; i < 4; i++) { const a = (-0.9 + i * 0.6) * 1; x.beginPath(); x.moveTo(cx + cote * H * 0.14, cy + Math.sin(a) * H * 0.12); x.quadraticCurveTo(cx + cote * H * 0.5, cy + Math.sin(a) * H * 0.55 - 3, cx + cote * H * (0.72 + (i % 2) * 0.1), cy + Math.sin(a) * H * 0.62); x.stroke(); }
+      const g = x.createRadialGradient(cx, cy - 2, 2, cx, cy, H * 0.3); g.addColorStop(0, e.c[1]); g.addColorStop(1, e.c[0]);
+      x.fillStyle = g; x.beginPath(); x.ellipse(cx, cy, H * 0.24, H * 0.29, 0, 0, 7); x.fill();
+      x.fillStyle = '#111'; for (const dx of [-3, 3]) { x.beginPath(); x.arc(cx + dx, cy - H * 0.26, 1.2, 0, 7); x.fill(); }
+      return x.getImageData(0, 0, W, H);
+    }
     if (e.forme === 'poulpe') {
       x.fillStyle = e.c[0]; x.beginPath(); x.ellipse(cx + L * 0.35, cy - H * 0.08, L * 0.42, H * 0.3, -0.3, 0, 2 * Math.PI); x.fill();
       x.strokeStyle = e.c[0]; x.lineCap = 'round';
@@ -270,7 +350,7 @@
     const map = app.map; let filtre = null, actif = false, etages = null, etagesDe = undefined;
     const src = () => map.getSource('pl-poissons');
     const hacher = (i, sel) => { let h = Math.imul(i + 1, 2654435761) ^ Math.imul(sel + 7, 40503); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
-    const candidats = h => ESPECES.filter(e => (!filtre || filtre === e.id) && e.mil.includes(h[3] === 4 ? 'h' : (h[3] || 2)) && h[2] >= e.p[0] && h[2] <= e.p[1] && (e.forme !== 'gros' || h[3] === 1 || h[4] > 12));
+    const candidats = h => ESPECES.filter(e => (!filtre || filtre === e.id) && e.mil.includes(h[3] === 4 ? 'h' : (h[3] || 2)) && h[2] + MER >= Math.max(1.2, e.p[0]) && h[2] + MER <= e.p[1] && (e.forme !== 'gros' || h[3] === 1 || h[4] > 12));
     // Étage de chaque point : le plus grand n pour lequel il est le point retenu de son carré de 70 m × 2ⁿ.
     function trier() {
       if (etagesDe === filtre && etages) return; etagesDe = filtre;
@@ -303,8 +383,10 @@
       g = { e, h, membres, ph: hacher(i, 3) * 6.28, r: 9 + hacher(i, 4) * 12, w: 0.1 + hacher(i, 5) * 0.14 };
       if (bancs.size > 400) bancs.clear(); bancs.set(i, g); return g;
     }
-    let visibles = [];
+    let visibles = [], merVue = MER;
     function choisir() {
+      // La marée a bougé : les profondeurs ont changé, donc les espèces possibles et l'eau autour de chaque point.
+      if (Math.abs(MER - merVue) > 0.4) { merVue = MER; large.clear(); bancs.clear(); etagesDe = undefined; }
       trier();
       const z = map.getZoom(); visibles = []; if (z < 14.6) return;
       const b = map.getBounds(), o = b.getWest(), e = b.getEast(), su = b.getSouth(), no = b.getNorth(), c = map.getCenter();
@@ -408,7 +490,7 @@
     return (masque = { w: q.w, h: q.h, b: q.bornes, terre });
   }
   /* Abri : pour chaque maille de mer, la distance d'eau libre dans la direction d'où vient la houle (le « fetch »),
-     plafonnée à 12 km ; une sortie du secteur vers le large compte comme de l'eau libre. Ne tient compte ni de la
+     plafonnée à 12 km ; une sortie du secteur compte comme de l'eau libre (sauf par le nord quand la carte dit que c'est la terre). Ne tient compte ni de la
      diffraction autour des caps, ni du ressac le long des falaises : un ordre de grandeur, pas une prévision. */
   function abri(dirDeg) {
     const M = lireMasque(), { w, h, b, terre } = M;
@@ -418,18 +500,29 @@
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const k = j * w + i; if (terre[k]) continue;
       let d = 0, x = i + 0.5, y = j + 0.5, libre = true;
-      while (d < max) { x += dx; y += dy; d += pasM; const ii = x | 0, jj = y | 0; if (ii < 0 || jj < 0 || ii >= w || jj >= h) { libre = !(jj < 0); break; } if (terre[jj * w + ii]) { libre = false; break; } }
+      while (d < max) { x += dx; y += dy; d += pasM; const ii = x | 0, jj = y | 0; if (ii < 0 || jj < 0 || ii >= w || jj >= h) { libre = !(jj < 0 && D.nordFerme); break; } if (terre[jj * w + ii]) { libre = false; break; } }
       out[k] = libre ? max : Math.min(max, d);
     }
     return { w, h, b, fetch: out, yM };
   }
   function peindreAbri(r, hauteur) {
     const c = document.createElement('canvas'); c.width = r.w; c.height = r.h; const x = c.getContext('2d'), im = x.createImageData(r.w, r.h), d = im.data;
-    for (let k = 0; k < r.w * r.h; k++) {
-      const f = r.fetch[k]; if (f !== f) continue;
-      const e = Math.min(1, Math.sqrt(f / 12000)) * Math.min(1, hauteur / 1.2);   // exposition de 0 (abri) à 1
-      const col = e < 0.2 ? [70, 170, 150] : e < 0.45 ? [190, 200, 110] : e < 0.7 ? [232, 160, 70] : [222, 104, 66];
-      d[4 * k] = col[0]; d[4 * k + 1] = col[1]; d[4 * k + 2] = col[2]; d[4 * k + 3] = e < 0.2 ? 165 : e < 0.45 ? 140 : e < 0.7 ? 110 : 80;   // l'abri ressort, le large reste la mer
+    // Exposition de 0 (abri) à 1, adoucie sur cinq mailles : l'ombre d'un caillou isolé ne tire plus un trait de plusieurs kilomètres.
+    const w = r.w, h = r.h, e0 = new Float32Array(w * h), e1 = new Float32Array(w * h);
+    for (let k = 0; k < w * h; k++) { const f = r.fetch[k]; e0[k] = f !== f ? NaN : Math.min(1, Math.sqrt(f / 12000)); }
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const k = j * w + i; if (e0[k] !== e0[k]) { e1[k] = NaN; continue; }
+      let s = 0, n = 0;
+      for (let dj = -2; dj <= 2; dj++) { const jj = j + dj; if (jj < 0 || jj >= h) continue; for (let di = -2; di <= 2; di++) { const ii = i + di; if (ii < 0 || ii >= w) continue; const v = e0[jj * w + ii]; if (v === v) { s += v; n++; } } }
+      e1[k] = s / n;
+    }
+    for (let k = 0; k < w * h; k++) {
+      if (e1[k] !== e1[k]) continue;
+      const e = e1[k] * Math.min(1, hauteur / 1.2), i = k % w, j = (k / w) | 0, bord = Math.min(1, Math.min(i, w - 1 - i, j, h - 1 - j) / 10);
+      const col = e < 0.2 ? [58, 178, 150] : e < 0.45 ? [158, 204, 112] : e < 0.7 ? [240, 176, 84] : [226, 106, 68];
+      // Posé sur une mer claire et unie : quatre teintes franches, comme sur une carte de classes ; les crêtes disent le mouvement.
+      // Vers le bord du secteur, la teinte s'efface : la carte ne sait rien dire au-delà.
+      d[4 * k] = col[0]; d[4 * k + 1] = col[1]; d[4 * k + 2] = col[2]; d[4 * k + 3] = (e < 0.2 ? 215 : e < 0.45 ? 195 : e < 0.7 ? 170 : 150) * bord;
     }
     x.putImageData(im, 0, 0);
     // Grossi trois fois et adouci : les limites d'abri ne dessinent plus de marches.
@@ -437,6 +530,8 @@
     y.filter = 'blur(2.5px)'; y.imageSmoothingEnabled = true; y.drawImage(c, 0, 0, g.width, g.height);
     return g.toDataURL();
   }
+  // Case du masque terre-mer sous un point (ou -1).
+  function caseMasque(lon, lat) { const mm = lireMasque(), yM = l => Math.log(Math.tan((90 + l) * RAD / 2)), i = Math.floor((lon - mm.b[0]) / (mm.b[2] - mm.b[0]) * mm.w), j = Math.floor((yM(mm.b[3]) - yM(lat)) / (yM(mm.b[3]) - yM(mm.b[1])) * mm.h); return i >= 0 && j >= 0 && i < mm.w && j < mm.h ? j * mm.w + i : -1; }
   const exposition = (f, hauteur) => { const e = Math.min(1, Math.sqrt(f / 12000)) * Math.min(1, hauteur / 1.2); return e < 0.2 ? 'à l\'abri' : e < 0.45 ? 'peu exposé' : e < 0.7 ? 'exposé' : 'très exposé'; };
   const POINTS = ['nord', 'nord-nord-est', 'nord-est', 'est-nord-est', 'est', 'est-sud-est', 'sud-est', 'sud-sud-est', 'sud', 'sud-sud-ouest', 'sud-ouest', 'ouest-sud-ouest', 'ouest', 'ouest-nord-ouest', 'nord-ouest', 'nord-nord-ouest'];
   const cardinal = deg => POINTS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
@@ -502,7 +597,10 @@
       fetch(racine + 'habitats.json').then(r => r.json())]);
     // Les herbiers n'existent que si le script de préparation les a trouvés (fonds.herbiers) : pas de requête perdue sinon.
     const herbiers = fonds.herbiers ? await fetch(racine + 'herbiers.json').then(r => r.ok ? r.json() : null).catch(() => null) : null;
-    D = { racine, index, fonds, habitats, herbiers };
+    D = { racine, index, fonds, habitats, herbiers, zt: Math.max(...Object.keys(index.tuiles).map(Number)), zMonde: opts.zoomMonde || 12, nordFerme: opts.nordFerme !== false };
+    const NV = fonds.niveaux || { haut: 0, moyen: 0, bas: 0 }, TX = Object.assign({ releve: 'relevé au lidar (1 m)', autre: 'modèle à 100 m : ordre de grandeur', credit: 'Fonds : Litto3D® Shom-IGN, HOMONIM Shom, natures de fond Shom' }, opts.textes || {});
+    if (opts.especes) ESPECES = opts.especes;
+    MER = NV.moyen;
     const de = k => fonds.features.filter(f => f.properties.k === k);
     D.natures = de('nature'); D.lidar = de('lidar').map(f => f.geometry);
     brancher();
@@ -510,7 +608,7 @@
     app.forcerSolNu(true);
     map.getSource('relief').setTiles(['plongee://{z}/{x}/{y}']);
     const e = index.emprise;
-    map.addSource('pl-fond', { type: 'raster', tiles: [racine + 'fond/{z}/{x}/{y}.webp'], tileSize: 512, minzoom: 10, maxzoom: 14, bounds: e, attribution: 'Fonds : Litto3D® Shom-IGN, HOMONIM Shom, natures de fond Shom' });
+    map.addSource('pl-fond', { type: 'raster', tiles: [racine + 'fond/{z}/{x}/{y}.webp'], tileSize: 512, minzoom: 10, maxzoom: D.zt, bounds: e, attribution: TX.credit });
     map.addLayer({ id: 'pl-fond', type: 'raster', source: 'pl-fond', paint: { 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, 'analyses');
     map.addSource('pl-vect', { type: 'geojson', data: fonds });
     if (herbiers) {
@@ -521,13 +619,14 @@
     if (herbiers) for (let k = 0; k < NIMG; k++) map.addImage('pl-herb' + k, motifHerbier(k), { pixelRatio: 2 });
     if (herbiers) {
       map.addLayer({ id: 'pl-herbiers', type: 'fill', source: 'pl-herbiers', filter: ['==', ['get', 'k'], 'herbier'], minzoom: 15.6, paint: { 'fill-pattern': 'pl-herb0', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15.6, 0, 16.4, 0.8] } }, 'analyses');
-      map.addLayer({ id: 'pl-herbiers-aplat', type: 'fill', source: 'pl-herbiers', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'k'], 'herbier', '#3f8a4c', '#a39672'], 'fill-opacity': 0.62 } }, 'analyses');
+      map.addLayer({ id: 'pl-herbiers-aplat', type: 'fill', source: 'pl-herbiers', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'k'], 'herbier', '#2f9a4a', '#b98a5e'], 'fill-opacity': 0.8, 'fill-outline-color': 'rgba(20,50,25,0.5)' } }, 'analyses');
     }
-    map.addLayer({ id: 'pl-nature', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'nature'], layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'm'], 'roche', '#7d6650', 'sable', '#f0d78e', 'vase', '#8f9a6a', '#cccccc'], 'fill-opacity': 0.5, 'fill-outline-color': 'rgba(255,255,255,0.35)' } }, 'analyses');
+    map.addLayer({ id: 'pl-nature', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'nature'], layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'm'], 'roche', '#6b4a3a', 'sable', '#f2d27a', 'vase', '#8fa3b5', '#cccccc'], 'fill-opacity': 0.72, 'fill-outline-color': 'rgba(40,30,20,0.45)' } }, 'analyses');
     // L'eau lit le relief dans sa propre source (les mêmes tuiles, déjà en mémoire du navigateur) : la carte dessine mieux
     // une teinte et un relief 3D qui ne partagent pas la même source.
-    map.addSource('pl-relief', { type: 'raster-dem', tiles: ['plongee://{z}/{x}/{y}'], tileSize: 512, maxzoom: 14, encoding: 'terrarium' });
-    map.addLayer({ id: 'pl-eau', type: 'color-relief', source: 'pl-relief', paint: { 'color-relief-color': regleEau(0), 'color-relief-opacity': 1 } }, 'analyses');
+    map.addSource('pl-relief', { type: 'raster-dem', tiles: ['plongee://{z}/{x}/{y}'], tileSize: 512, maxzoom: D.zt, encoding: 'terrarium' });
+    map.addLayer({ id: 'pl-eau', type: 'color-relief', source: 'pl-relief', paint: { 'color-relief-color': regleEau(MER), 'color-relief-opacity': 1 } }, 'analyses');
+    if (herbiers) map.moveLayer('pl-herbiers-aplat', 'pl-eau');   // l'herbier se lit par-dessus le sédiment
     map.addLayer({ id: 'pl-iso', type: 'line', source: 'pl-vect', filter: ['==', ['get', 'k'], 'iso'], layout: { 'line-join': 'round', visibility: 'none' }, paint: { 'line-color': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 'rgba(240,250,255,0.75)', 'rgba(230,245,255,0.4)'], 'line-width': ['case', ['in', ['get', 'p'], ['literal', [10, 20, 40, 60]]], 1.3, 0.7] } }, 'analyses');
     map.addLayer({ id: 'pl-lidar', type: 'line', source: 'pl-vect', filter: ['==', ['get', 'k'], 'lidar'], layout: { visibility: 'none' }, paint: { 'line-color': '#e8be5a', 'line-width': 1.2, 'line-dasharray': [3, 3], 'line-opacity': 0.8 } }, 'analyses');
     map.addLayer({ id: 'pl-iso-txt', type: 'symbol', source: 'pl-vect', filter: ['all', ['==', ['get', 'k'], 'iso'], ['<=', ['get', 'p'], 100]], minzoom: 13, layout: { visibility: 'none', 'symbol-placement': 'line', 'symbol-spacing': 280, 'text-field': ['concat', ['to-string', ['get', 'p']], ' m'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-max-angle': 30 }, paint: { 'text-color': '#0f2a44', 'text-halo-color': 'rgba(255,255,255,0.85)', 'text-halo-width': 1.4 } });
@@ -551,7 +650,7 @@
     map.addLayer({ id: 'pl-poissons', type: 'symbol', source: 'pl-poissons', layout: { 'icon-image': ['get', 'i'], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-pitch-alignment': 'viewport', 'icon-size': ['get', 's'], 'icon-offset': ['get', 'o'] } });
 
     // Animation des herbiers (quand la donnée existe) : une image sur trois de l'horloge, de près seulement.
-    let niveau = 0, image = 0;
+    let niveau = MER, image = 0;
     const animer = n => {
       if (!herbiers || map.getZoom() < 15.6) return false;
       if (n % 3 === 0) { image = (image + 1) % NIMG; map.setPaintProperty('pl-herbiers', 'fill-pattern', 'pl-herb' + image); }
@@ -563,7 +662,7 @@
     const sim = simulation(app);
 
     // ----- Sites -----
-    const SITES_CLE = 'cartes.plongee.sites';
+    const SITES_CLE = 'cartes.' + (opts.id || 'plongee') + '.sites';
     let mesSites = garde.lire(SITES_CLE, []);
     // Un lien partagé (?sites=…) apporte les sites d'un autre : ils s'ajoutent aux siens, sans doublon.
     try {
@@ -576,7 +675,7 @@
       for (const f of de('epave')) { const p = f.properties; l.push({ id: 'e' + p.id, type: 'epave', nom: nomEpave(p), c: f.geometry.coordinates, p, rang: 1 }); }
       const statues = de('obstruction').filter(f => /statue/i.test(f.properties.note || ''));
       if (statues.length) { const c = statues.reduce((a, f) => [a[0] + f.geometry.coordinates[0] / statues.length, a[1] + f.geometry.coordinates[1] / statues.length], [0, 0]); l.push({ id: 'statues', type: 'statue', nom: 'Écomusée sous-marin', c, p: { n: statues.length, noms: statues.map(f => (/"([^"]+)"/.exec(f.properties.note) || [])[1]).filter(Boolean) }, rang: 0 }); }
-      de('sec').slice(0, 30).forEach((f, i) => l.push({ id: 's' + i, type: 'sec', nom: 'Sec à ' + m(f.properties.p), c: f.geometry.coordinates, p: f.properties, rang: 3 }));
+      de('sec').slice(0, 30).forEach((f, i) => l.push({ id: 's' + i, type: 'sec', nom: 'Sec à ' + m(Math.max(0, f.properties.p + MER)), c: f.geometry.coordinates, p: f.properties, rang: 3 }));
       mesSites.forEach((s, i) => l.push({ id: 'm' + i, type: 'moi', nom: s.nom, c: s.c, p: s, rang: -1 }));
       return l;
     }
@@ -618,51 +717,96 @@
       sites: 'Épaves et obstructions : base du Shom (CC BY-SA 4.0), avec la précision de position annoncée. Secs : sommets sous-marins repérés par la carte dans le relief du lidar, qui dominent leurs alentours d\'au moins 4 m. Les sites que tu ajoutes restent dans ce téléphone ; « Partager » les envoie par un lien. Aucun site n\'est une autorisation : zones protégées, chenaux et mouillages réglementés restent à vérifier.',
       parcours: 'Le profil lit le relief au pas de 3,5 m (lidar) le long du tracé. La durée suppose un groupe de plongeurs qui palme tranquillement, autour de 10 m par minute, sans les paliers : elle donne un ordre de grandeur pour choisir un parcours, pas un temps de plongée. Ni la carte ni ce calcul ne remplacent le directeur de plongée, les tables ou l\'ordinateur.',
       niveaux: 'Repères de profondeur maximale de la Fédération française d\'études et de sports sous-marins : baptême 6 m ; niveau 1 jusqu\'à 20 m encadré ; niveau 2 jusqu\'à 40 m encadré (20 m en autonomie) ; niveau 3 jusqu\'à 60 m en autonomie. Les conditions du jour, l\'expérience et le directeur de plongée décident : ces lignes servent à lire le relief autour d\'un site.',
-      conditions: 'Prévision Open-Meteo : vagues, houle, température de l\'eau et courant (modèles de vagues et d\'océan, maille de plusieurs kilomètres), vent (modèles de Météo-France). L\'abri compare, pour chaque endroit de la mer, la longueur d\'eau libre dans la direction d\'où viennent les vagues (le fetch) : un cap ou une île devant soi abrite. La diffraction autour des pointes et le ressac le long des falaises ne sont pas calculés. La visibilité sous l\'eau n\'est prévue par personne : elle dépend du plancton, des pluies et des derniers coups de vent.'
+      conditions: 'Prévision Open-Meteo : vagues, houle, température de l\'eau et courant (modèles de vagues et d\'océan, maille de plusieurs kilomètres), vent (modèles de Météo-France). L\'abri compare, pour chaque endroit de la mer, la longueur d\'eau libre dans la direction d\'où viennent les vagues (le fetch) : un cap ou une île devant soi abrite. Les crêtes dessinées avancent dans le sens des vagues, plus serrées quand la période est courte, plus marquées quand la mer est haute ; elles s\'effacent à l\'abri. La diffraction autour des pointes et le ressac le long des falaises ne sont pas calculés. La visibilité sous l\'eau n\'est prévue par personne : elle dépend du plancton, des pluies et des derniers coups de vent.'
     };
-    const ouvrir3d = () => { if (!app.relief3d) app.mettre3d(true); };
     const poserEau = (N, k) => map.setPaintProperty('pl-eau', 'color-relief-color', regleEau(N, k));
+    Object.assign(aide, opts.aide || {});
+    const ouvrir3d = () => { if (!app.relief3d) app.mettre3d(true); };
+    /* Marée (cartes de la Manche et de l'Atlantique) : le niveau de la mer est celui de l'instant. Il est relu à
+       l'ouverture de chaque thème ; si le modèle ne répond pas, la carte se tient au niveau moyen et le dit. */
+    const T = opts.maree && S.maree ? S.maree.creer(app, opts.maree) : null;
+    let serie = null, marePanne = false;
+    const hhmm = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: opts.fuseau }).replace(':', ' h ');
+    const cote = v => (v >= 0 ? '+' : '−') + fr(Math.abs(v), 1) + ' m';
+    async function majMer(t) {
+      if (!T) return;
+      if (!serie) { try { serie = await T.lire(); } catch (e) { serie = null; } }
+      const v = serie ? T.niveau(serie, t || Date.now()) : NaN;
+      marePanne = !(v === v); MER = marePanne ? NV.moyen : v; niveau = MER; poserEau(MER);
+    }
+    // La marée en une phrase : niveau, sens, prochaine étale.
+    function phraseMaree(t) {
+      if (!T) return '';
+      if (!serie || marePanne) return 'Le modèle de marée ne répond pas : la carte montre la mer à son niveau moyen.';
+      t = t || Date.now(); const monte = T.niveau(serie, t + 6e5) > T.niveau(serie, t), ex = T.extremes(serie, t, t + 14 * 36e5)[0];
+      return `Mer à ${cote(T.niveau(serie, t))}, elle ${monte ? 'monte' : 'descend'}` + (ex ? ` ; ${ex.pm ? 'pleine' : 'basse'} mer vers ${hhmm(ex.t)} (${cote(ex.h)}).` : '.');
+    }
+    // Ce qui dépasse de l'eau : la terre ferme, ou l'estran que la marée découvre.
+    const horsEau = z => T && z + MER < NV.haut ? 'Estran, découvert à cette heure' : 'À terre';
     const montrer = (ids, oui) => ids.forEach(id => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', oui ? 'visible' : 'none'); });
-    const aireDecouverte = N => D.fonds.aires.slice(0, Math.min(100, Math.round(-N))).reduce((a, b) => a + b, 0);
+    const aireDecouverte = N => D.fonds.aires.slice(0, Math.max(0, Math.min(100, Math.round(NV.haut - N)))).reduce((a, b) => a + b, 0);
     const lidarTotal = D.fonds.aires.reduce((a, b) => a + b, 0);
 
-    // --- Profondeurs, et le niveau de la mer que l'on fait baisser ---
+    // --- Profondeurs, et le niveau de la mer que l'on fait varier ---
+    /* Sans marée : les teintes gardent leur profondeur vraie, et le curseur fait baisser la mer jusqu'à la vider.
+       Avec la marée : les teintes donnent la hauteur d'eau sous le niveau choisi (celui de maintenant, d'une basse ou
+       d'une pleine mer), et le curseur va de la mer vidée à la plus haute mer. */
+    const FOND_MIN = T ? -45 : -100;
     themes.profondeurs = (() => {
-      let anim = null;
+      let anim = null, etales = [];
       const q = { theme: 'Profondeurs', libelle: 'Quelle profondeur ?', aide: aide.profondeurs };
       const maj = c => {
-        map.setPaintProperty('pl-eau', 'color-relief-color', regleBandes(niveau));
-        for (const id of ['pl-iso', 'pl-iso-txt']) map.setFilter(id, ['all', ['==', ['get', 'k'], 'iso'], ['>', ['get', 'p'], -niveau], ...(id === 'pl-iso-txt' ? [['<=', ['get', 'p'], 100]] : [])]);
-        c.querySelector('.v-n').textContent = niveau === 0 ? 'mer pleine' : '−' + Math.round(-niveau) + ' m';
-        c.querySelector('.etat').innerHTML = niveau === 0 ? 'Touche la mer pour lire la profondeur. Fais baisser le niveau pour voir le fond à sec.' : niveau <= -100 ? 'Mer vidée : tout le plateau relevé au lidar est à sec, le large reste en eau.' : `Mer baissée de <span class="fort">${Math.round(-niveau)} m</span> : ${fr(aireDecouverte(niveau), 1)} km² de fond à sec, sur les ${fr(lidarTotal, 0)} km² relevés au lidar.`;
+        map.setPaintProperty('pl-eau', 'color-relief-color', T ? decaler(regleBandes(0), niveau) : regleBandes(niveau));
+        if (!T) for (const id of ['pl-iso', 'pl-iso-txt']) map.setFilter(id, ['all', ['==', ['get', 'k'], 'iso'], ['>', ['get', 'p'], -niveau], ...(id === 'pl-iso-txt' ? [['<=', ['get', 'p'], 100]] : [])]);
+        const sec = fr(aireDecouverte(niveau), 1);
+        if (T) {
+          c.querySelector('.v-n').textContent = cote(niveau);
+          const ici = Math.abs(niveau - MER) < 0.05;
+          c.querySelector('.etat').innerHTML = niveau <= FOND_MIN + 0.5 ? 'Mer vidée : toute la baie est à sec.' : ici ? `${phraseMaree()} Les teintes donnent la hauteur d'eau à cette heure ; touche la mer pour la lire.` : `Mer à <span class="fort">${cote(niveau)}</span> : ${sec} km² d'estran et de fonds à sec. Les teintes donnent la hauteur d'eau sous ce niveau.`;
+        } else {
+          c.querySelector('.v-n').textContent = niveau === 0 ? 'mer pleine' : '−' + Math.round(-niveau) + ' m';
+          c.querySelector('.etat').innerHTML = niveau === 0 ? 'Touche la mer pour lire la profondeur. Fais baisser le niveau pour voir le fond à sec.' : niveau <= -100 ? 'Mer vidée : tout le plateau relevé au lidar est à sec, le large reste en eau.' : `Mer baissée de <span class="fort">${Math.round(-niveau)} m</span> : ${sec} km² de fond à sec, sur les ${fr(lidarTotal, 0)} km² relevés au lidar.`;
+        }
       };
       q.ouvrir = async (app) => {
-        ouvrir3d(); map.setPaintProperty('pl-eau', 'color-relief-opacity', 0.82); montrer(['pl-iso', 'pl-iso-txt', 'pl-lidar'], true);
+        ouvrir3d(); map.setPaintProperty('pl-eau', 'color-relief-opacity', 0.82); montrer(T ? ['pl-lidar'] : ['pl-iso', 'pl-iso-txt', 'pl-lidar'], true);
+        if (T && serie && !marePanne) etales = T.extremes(serie, Date.now(), Date.now() + 26 * 36e5);
+        const bm = etales.find(e => !e.pm), pm = etales.find(e => e.pm);
+        const boutons = T ? `<button class="pl-now">Maintenant</button>${bm ? `<button class="pl-bm">Basse mer ${hhmm(bm.t)}</button>` : ''}${pm ? `<button class="pl-pm">Pleine mer ${hhmm(pm.t)}</button>` : ''}<button class="pl-vide">Vidée</button>`
+          : '<button class="pl-plein">Mer pleine</button><button class="pl-m20">−20 m</button><button class="pl-vide">Vidée</button><button class="pl-anim">▶ Vider doucement</button>';
         const c = q._c = app.repondre(q.libelle, `<p class="etat"></p>
-          <div class="ligne"><label style="min-width:84px">Niveau</label><input type="range" class="n" min="-100" max="0" step="1" value="${niveau}" style="flex:1"><span class="fort v-n" style="min-width:84px;text-align:right"></span></div>
-          <div class="puces"><button class="pl-plein">Mer pleine</button><button class="pl-m20">−20 m</button><button class="pl-vide">Vidée</button><button class="pl-anim">▶ Vider doucement</button></div>
-          <div class="legende">${BANDES.map((b, i) => `<span><i style="background:${b[1]}"></i>${BANDES[i + 1] ? b[0] + '–' + BANDES[i + 1][0] + ' m' : 'plus de ' + b[0] + ' m'}</span>`).join('')}<span><i style="background:transparent;border:1.5px dashed #e8be5a"></i>limite du lidar</span></div>`);
+          <div class="ligne"><label style="min-width:84px">Niveau</label><input type="range" class="n" min="${FOND_MIN}" max="${T ? NV.haut : 0}" step="${T ? 0.1 : 1}" value="${niveau}" style="flex:1"><span class="fort v-n" style="min-width:84px;text-align:right"></span></div>
+          <div class="puces">${boutons}</div>
+          <div class="legende">${BANDES.filter(b => !T || b[0] < 60).map((b, i) => `<span><i style="background:${b[1]}"></i>${BANDES[i + 1] && (!T || BANDES[i + 1][0] <= 60) ? b[0] + '–' + BANDES[i + 1][0] + ' m' : 'plus de ' + b[0] + ' m'}</span>`).join('')}${T ? '' : '<span><i style="background:transparent;border:1.5px dashed #e8be5a"></i>limite du lidar</span>'}</div>`);
         const r = c.querySelector('.n');
         const aller = v => { niveau = v; r.value = v; maj(c); };
         r.oninput = () => { if (anim) { cancelAnimationFrame(anim); anim = null; } aller(+r.value); };
-        c.querySelector('.pl-plein').onclick = () => aller(0); c.querySelector('.pl-m20').onclick = () => aller(-20); c.querySelector('.pl-vide').onclick = () => aller(-100);
-        c.querySelector('.pl-anim').onclick = () => {
+        const clic = (sel, f) => { const b = c.querySelector(sel); if (b) b.onclick = f; };
+        clic('.pl-plein', () => aller(0)); clic('.pl-m20', () => aller(-20)); clic('.pl-vide', () => aller(FOND_MIN));
+        clic('.pl-now', () => aller(MER)); clic('.pl-bm', () => aller(bm.h)); clic('.pl-pm', () => aller(pm.h));
+        clic('.pl-anim', () => {
           if (anim) { cancelAnimationFrame(anim); anim = null; return; }
           const t0 = performance.now(), de = niveau < -95 ? 0 : niveau, a = -100, duree = 9000 * (de - a) / 100 + 500;
           if (de === 0) aller(0);
           const pas = t => { const u = Math.min(1, (t - t0) / duree), v = de + (a - de) * (u * u * (3 - 2 * u)); aller(Math.round(v)); if (u < 1 && app.active === q) anim = requestAnimationFrame(pas); else anim = null; };
           anim = requestAnimationFrame(pas);
-        };
+        });
         maj(c);
       };
       q.toucher = async (app, ll) => {
-        const z = await altitude(ll.lng, ll.lat), n = natureEn(ll.lng, ll.lat), lid = dansLidar(ll.lng, ll.lat);
-        if (z !== z) { app.bulle(ll, 'Hors du secteur relevé'); return; }
-        if (z >= 0) { app.bulle(ll, `À terre<small>${m(z)} d'altitude</small>`); return; }
-        app.bulle(ll, `<span class="fort">${m(-z)}</span> de fond${z > niveau ? ', à sec ici' : ''}<small>${n ? n.t.toLowerCase() + ' · ' : ''}${lid ? 'relevé au lidar (1 m)' : 'modèle à 100 m : ordre de grandeur'}</small>`);
+        const abs = await altitudeAbs(ll.lng, ll.lat), n = natureEn(ll.lng, ll.lat), lid = dansLidar(ll.lng, ll.lat);
+        if (abs !== abs) { app.bulle(ll, 'Hors du secteur relevé'); return; }
+        const detail = `${n ? n.t.toLowerCase() + ' · ' : ''}${lid ? TX.releve : TX.autre}`;
+        if (T) {
+          if (abs >= NV.haut) { app.bulle(ll, 'À terre'); return; }
+          app.bulle(ll, abs < niveau ? `<span class="fort">${m(niveau - abs)}</span> d'eau<small>${detail}</small>` : `À sec, ${m(abs - niveau)} au-dessus de l'eau<small>${detail}</small>`);
+          return;
+        }
+        if (abs >= 0) { app.bulle(ll, `À terre<small>${m(abs)} d'altitude</small>`); return; }
+        app.bulle(ll, `<span class="fort">${m(-abs)}</span> de fond${abs > niveau ? ', à sec ici' : ''}<small>${detail}</small>`);
       };
-      // La mer revient à son niveau en quittant le thème : les autres thèmes se lisent mer pleine.
-      q.fermer = () => { if (anim) cancelAnimationFrame(anim); anim = null; niveau = 0; poserEau(0); map.setPaintProperty('pl-eau', 'color-relief-opacity', 1); montrer(['pl-iso', 'pl-iso-txt', 'pl-lidar'], false); };
+      // La mer revient à son niveau en quittant le thème : les autres thèmes se lisent à la mer du moment.
+      q.fermer = () => { if (anim) cancelAnimationFrame(anim); anim = null; niveau = MER; poserEau(MER); map.setPaintProperty('pl-eau', 'color-relief-opacity', 1); montrer(['pl-iso', 'pl-iso-txt', 'pl-lidar'], false); };
       return q;
     })();
 
@@ -672,18 +816,19 @@
       const BANDE = [['rouge', 650, 0.35, [210, 40, 40]], ['orange', 600, 0.23, [240, 140, 30]], ['jaune', 575, 0.09, [240, 210, 40]], ['vert', 525, 0.05, [60, 170, 80]], ['bleu', 470, 0.02, [40, 110, 210]]];
       let prof = 10;
       const q = { theme: 'Lumière', libelle: 'Quelles couleurs au fond ?', aide: aide.lumiere };
-      const reste = (k, d) => Math.exp(-(k + 0.012) * d);
+      // « trouble » : ce que l'eau ajoute à l'absorption de l'eau pure (particules, plancton), le même pour toutes les couleurs.
+      const trouble = opts.trouble == null ? 0.012 : opts.trouble, reste = (k, d) => Math.exp(-(k + trouble) * d);
       const maj = c => {
         const d = prof, sol = app.soleil(new Date(), opts.centreMeteo[1], opts.centreMeteo[0]), h = sol.hauteur != null ? sol.hauteur : sol.alt;
         const vu = BANDE.map(b => [b[0], reste(b[2], d * 1.15), b[3]]);
         c.querySelector('.v-p').textContent = d + ' m';
         c.querySelector('.pl-nuancier').innerHTML = vu.map(v => { const f = Math.max(0.04, v[1]), col = v[2].map((x, i) => Math.round(x * f + [8, 30, 60][i] * (1 - f) * 0.6)); return `<div><i style="background:rgb(${col})"></i><b>${v[0]}</b><span>${Math.round(v[1] * 100)} %</span></div>`; }).join('');
         const perdue = vu.filter(v => v[1] < 0.1).map(v => v[0]);
-        const totale = Math.exp(-0.06 * d) * Math.max(0, Math.sin((h || 0) * RAD));
+        const totale = Math.exp(-(0.048 + trouble) * d) * Math.max(0, Math.sin((h || 0) * RAD));
         c.querySelector('.etat').innerHTML = d === 0 ? 'En surface, toutes les couleurs sont là.' : `À <span class="fort">${d} m</span>, ${perdue.length ? 'il ne reste presque plus ' + perdue.map(n => /^[aeiou]/.test(n) ? 'd\'' + n : 'de ' + n).join(' ni ') : 'toutes les couleurs restent visibles, déjà ternies'} : un objet rouge paraît ${vu[0][1] < 0.1 ? 'brun ou noir' : 'sombre'}.`;
         c.querySelector('.pl-soleil').textContent = h > 0 ? `Soleil à ${Math.round(h)}° maintenant : au fond, environ ${Math.max(1, Math.round(totale * 100))} % de la lumière d'un plein soleil au zénith en surface.` : 'Soleil couché : sous l\'eau, seule la lampe rend les couleurs.';
         // Sur la carte : la mer à son niveau, et une ligne d'or le long de la profondeur choisie.
-        map.setPaintProperty('pl-eau', 'color-relief-color', regleLigne(d));
+        map.setPaintProperty('pl-eau', 'color-relief-color', decaler(regleLigne(d), MER));
       };
       q.ouvrir = async (app) => {
         const c = q._c = app.repondre(q.libelle, `<p class="etat"></p>
@@ -717,7 +862,7 @@
         const p = map.project(ll), f = map.queryRenderedFeatures([[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]], { layers: ['pl-poissons'] })[0];
         const c = q._c; if (!c) return;
         if (f) { const e = espece(f.properties.e); c.querySelector('.pl-detail').innerHTML = fiche(e); app.bulle(ll, `<span class="fort">${e.nom}</span><small>${e.latin}</small>`); return; }
-        const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, z >= 0 ? 'À terre' : 'Hors du secteur'); return; }
+        const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, z >= 0 ? horsEau(z) : 'Hors du secteur'); return; }
         const n = natureEn(ll.lng, ll.lat), mil = n ? { roche: 1, sable: 2, vase: 3, herbier: 'h', matte: 2 }[n.m] : 2, l = liste(-z, mil);
         app.bulle(ll, `<span class="fort">${m(-z)}</span>, ${n ? n.t.toLowerCase() : 'fond mal connu'}<small>${l.length} espèces qu'on peut y croiser</small>`);
         c.querySelector('.pl-detail').innerHTML = `<p class="petit2" style="margin-top:8px">Ici, sur ${n ? n.t.toLowerCase() : 'ce fond'} à ${m(-z)} :</p>` + l.map(fiche).join('');
@@ -731,10 +876,11 @@
     themes.natures = {
       theme: 'Fonds', libelle: 'Sur quel fond ?', aide: aide.natures,
       async ouvrir(app) {
-        montrer(['pl-nature', 'pl-herbiers-aplat'], true);
-        const masques = new Set(), c = app.repondre(this.libelle, `<p class="etat">Touche le fond pour sa nature.${D.herbiers ? ' En vert, les herbiers de posidonie.' : ''}</p><div class="legende"></div>`);
-        const postes = [{ cle: 'roche', couleur: '#7d6650', texte: 'roche, cailloutis' }, { cle: 'sable', couleur: '#f0d78e', texte: 'sable, graviers' }, { cle: 'vase', couleur: '#8f9a6a', texte: 'vase' }];
-        if (D.herbiers) postes.unshift({ cle: 'herbier', couleur: '#3f8a4c', texte: 'herbier de posidonie' }, { cle: 'matte', couleur: '#a39672', texte: 'matte morte' });
+        // La mer est retirée le temps de ce thème : sous l'eau, les aplats se confondaient avec la teinte de la mer.
+        montrer(['pl-nature', 'pl-herbiers-aplat'], true); map.setPaintProperty('pl-eau', 'color-relief-opacity', 0);
+        const masques = new Set(), c = app.repondre(this.libelle, `<p class="etat">La mer est retirée pour lire le fond. Touche-le pour sa nature.</p><div class="legende"></div>`);
+        const postes = [{ cle: 'roche', couleur: '#6b4a3a', texte: 'roche, cailloutis' }, { cle: 'sable', couleur: '#f2d27a', texte: 'sable, graviers' }, { cle: 'vase', couleur: '#8fa3b5', texte: 'vase' }];
+        if (D.herbiers) postes.unshift({ cle: 'herbier', couleur: '#2f9a4a', texte: 'herbier de posidonie' }, { cle: 'matte', couleur: '#b98a5e', texte: 'matte morte' });
         app.legende(c, postes, ms => {
           map.setFilter('pl-nature', ['all', ['==', ['get', 'k'], 'nature'], ['!', ['in', ['get', 'm'], ['literal', [...ms]]]]]);
           if (D.herbiers) map.setFilter('pl-herbiers-aplat', ['!', ['in', ['get', 'k'], ['literal', [...ms]]]]);
@@ -744,7 +890,7 @@
         const n = natureEn(ll.lng, ll.lat), z = await altitude(ll.lng, ll.lat);
         app.bulle(ll, n ? `<span class="fort">${n.t}</span><small>${z === z && z < 0 ? m(-z) + ' de fond' : ''}${HERBIER[n.m] ? '' : (z === z && z < 0 ? ' · ' : '') + NOMS_MILIEU[n.m].toLowerCase() + ' pour la carte'}</small>` : (z >= 0 ? 'À terre' : 'Nature du fond inconnue ici'));
       },
-      fermer() { montrer(['pl-nature', 'pl-herbiers-aplat'], false); map.setFilter('pl-nature', ['==', ['get', 'k'], 'nature']); if (D.herbiers) map.setFilter('pl-herbiers-aplat', null); }
+      fermer() { map.setPaintProperty('pl-eau', 'color-relief-opacity', 1); montrer(['pl-nature', 'pl-herbiers-aplat'], false); map.setFilter('pl-nature', ['==', ['get', 'k'], 'nature']); if (D.herbiers) map.setFilter('pl-herbiers-aplat', null); }
     };
 
     // --- Sites : où plonger ? ---
@@ -759,11 +905,12 @@
         for (let a = 0; a < 16; a++) for (const r of [40, 90, 150]) { const v = await altitude(lon + r * Math.cos(a * Math.PI / 8) / (111200 * Math.cos(lat * RAD)), lat + r * Math.sin(a * Math.PI / 8) / 111200); if (v === v) { hmin = Math.min(hmin, v); hmax = Math.max(hmax, v); } }
         if (app.active !== q || choisi !== s) return;
         const p = s.p || {}, lignes = [];
-        if (z === z) lignes.push(`<b>${z < 0 ? m(-z) : 'à terre'}</b> au point${hmin < Infinity ? `, de ${hmax >= 0 ? 'la surface' : m(-hmax)} à ${m(-hmin)} dans un rayon de 150 m` : ''}${lid ? '' : ' (modèle à 100 m)'}.`);
+        if (z === z) lignes.push(`<b>${z < 0 ? m(-z) : horsEau(z).toLowerCase()}</b> au point${hmin < Infinity ? `, de ${hmax >= 0 ? 'la surface' : m(-hmax)} à ${m(-hmin)} dans un rayon de 150 m` : ''}${lid ? '' : ' (hors relevé fin)'}.`);
         if (n) lignes.push(`Fond : ${n.t.toLowerCase()}.`);
         if (s.type === 'epave') { if (p.type) lignes.push(`${p.type}${p.brassiage != null ? ', brassiage ' + fr(p.brassiage) + ' m (hauteur d\'eau sur l\'épave)' : ''}.`); if (p.note) lignes.push(`<span class="petit2">${propre(p.note)}</span>`); if (p.precis) lignes.push(`Position à ${Math.round(p.precis)} m près.`); }
         if (s.type === 'statue') lignes.push(`${p.n} statues immergées${p.noms && p.noms.length ? ' (' + p.noms.join(', ') + ')' : ''}, au large de l'île Sainte-Marguerite. Peu profond : accessible en randonnée palmée.`);
-        if (s.type === 'sec') lignes.push(`Sommet à ${m(s.p.p)}, qui domine ses abords de ${m(s.p.h)}.`);
+        if (s.type === 'sec') lignes.push(`Sommet à ${m(Math.max(0, s.p.p + MER))}, qui domine ses abords de ${m(s.p.h)}.`);
+        if (T) lignes.push(`<span class="petit2">${phraseMaree()} Ces hauteurs d'eau sont celles de cette heure.</span>`);
         const niv = z < 0 ? (-hmin <= 6 ? 'accessible dès le baptême' : -hmin <= 20 ? 'dans la limite du niveau 1' : -hmin <= 40 ? 'jusqu\'au niveau 2' : 'descend au-delà de 40 m') : '';
         if (niv) lignes.push(`Profondeur la plus forte alentour : ${niv}.`);
         const M = await conditions(); let cond = '';
@@ -802,8 +949,8 @@
       q.toucher = async (app, ll) => {
         const p = map.project(ll), f = map.queryRenderedFeatures([[p.x - 16, p.y - 16], [p.x + 16, p.y + 16]], { layers: ['pl-sites'] })[0];
         if (f) { const s = tousSites().find(t => t.id === f.properties.id); if (s) { app.bulle({ lng: s.c[0], lat: s.c[1] }, `<span class="fort">${propre(s.nom)}</span>`); decrire(s); } return; }
-        const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, 'À terre ou hors du secteur'); return; }
-        app.bulle(ll, `<span class="fort">${m(-z)}</span> de fond<small><button class="pl-ajout" style="margin-top:6px">Ajouter un site ici</button></small>`);
+        const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, z >= 0 ? horsEau(z) : 'Hors du secteur'); return; }
+        app.bulle(ll, `<span class="fort">${m(-z)}</span> ${T ? 'd\'eau' : 'de fond'}<small><button class="pl-ajout" style="margin-top:6px">Ajouter un site ici</button></small>`);
         setTimeout(() => { const b = document.querySelector('.bulle .pl-ajout'); if (b) b.onclick = () => { const nom = (prompt('Nom du site', 'Site à ' + m(-z)) || '').trim(); if (!nom) return; const s = { nom, c: [+ll.lng.toFixed(6), +ll.lat.toFixed(6)] }; mesSites.push(s); garde.ecrire(SITES_CLE, mesSites); dessinerSites(); lister(); app.sansBulle(); q._c.querySelector('.pl-partager').textContent = `Partager mes sites (${mesSites.length})`; decrire(tousSites().find(t => t.p === s)); }; }, 0);
       };
       q.plein = () => ({ bloc: ['.pl-liste', '.pl-detail'], consigne: 'Touche un site pour sa fiche, ou la mer pour en ajouter un.' });
@@ -813,7 +960,7 @@
 
     // --- Parcours : par où passer ? ---
     themes.parcours = (() => {
-      const CLE = 'cartes.plongee.parcours';
+      const CLE = 'cartes.' + (opts.id || 'plongee') + '.parcours';
       let pts = garde.lire(CLE, []), tour = 0;
       const q = { theme: 'Parcours', libelle: 'Par où passer ?', aide: aide.parcours, depart: null };
       const niv = () => garde.lire('cartes.plongee.niveau', 20);
@@ -836,7 +983,7 @@
         const p = await profil(pts, 140); if (moi !== tour) return;
         const zs = p.points.map(x => x.z).filter(z => z === z), prof = Math.max(0, ...zs.map(z => -z)), L = niv(), trop = zs.filter(z => -z > L).length / Math.max(1, zs.length);
         const min = Math.round(p.total / 10);
-        c.querySelector('.etat').innerHTML = `<span class="fort">${p.total < 1000 ? Math.round(p.total) + ' m' : fr(p.total / 1000, 2) + ' km'}</span>, fond le plus bas à <span class="fort">${m(prof)}</span> ; environ ${min} min de palmage tranquille${min > 45 ? ' : long pour une seule plongée' : ''}.${trop > 0 ? ` <span style="color:#e8be5a">${Math.round(trop * 100)} % du parcours passe sous ${L} m.</span>` : ''}`;
+        c.querySelector('.etat').innerHTML = `<span class="fort">${p.total < 1000 ? Math.round(p.total) + ' m' : fr(p.total / 1000, 2) + ' km'}</span>, fond le plus bas à <span class="fort">${m(prof)}</span> ; environ ${min} min de palmage tranquille${min > 45 ? ' : long pour une seule plongée' : ''}.${trop > 0 ? ` <span style="color:#e8be5a">${Math.round(trop * 100)} % du parcours passe sous ${L} m.</span>` : ''}${T ? ` Hauteurs d'eau de maintenant (mer à ${cote(MER)}).` : ''}`;
         bloc.innerHTML = svgProfil(p, L);
         app.survol.proposer('plongee', () => pts.length > 1 ? { pts: pts.slice() } : null);
       }
@@ -872,9 +1019,9 @@
       const q = { theme: 'Niveaux', libelle: 'Jusqu\'où descendre ?', aide: aide.niveaux };
       const maj = c => {
         const L = garde.lire('cartes.plongee.niveau', 20), n = NIV.find(x => x[0] === L) || NIV[1];
-        map.setPaintProperty('pl-eau', 'color-relief-color', regleNiveau(L));
+        map.setPaintProperty('pl-eau', 'color-relief-color', decaler(regleNiveau(L), MER));
         c.querySelectorAll('.pl-niv button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.n === L)));
-        c.querySelector('.etat').innerHTML = `${n[1]} : jusqu'à <span class="fort">${L} m</span>. En orangé, ce qui est plus profond ; la ligne d'or suit les ${L} m.`;
+        c.querySelector('.etat').innerHTML = `${n[1]} : jusqu'à <span class="fort">${L} m</span>. En orangé, ce qui est plus profond ; la ligne d'or suit les ${L} m.${T ? ` Limite tracée pour la mer de maintenant (${cote(MER)}) : elle se déplace avec la marée.` : ''}`;
       };
       q.ouvrir = async (app) => {
         ouvrir3d();
@@ -883,7 +1030,7 @@
         c.querySelector('.pl-niv').onclick = e => { const b = e.target.closest('button[data-n]'); if (!b) return; garde.ecrire('cartes.plongee.niveau', +b.dataset.n); maj(c); };
         maj(c);
       };
-      q.toucher = async (app, ll) => { const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, 'À terre ou hors du secteur'); return; } const L = garde.lire('cartes.plongee.niveau', 20); app.bulle(ll, `<span class="fort">${m(-z)}</span> de fond<small>${-z <= L ? 'dans la limite de ' + L + ' m' : 'au-delà de ' + L + ' m'}</small>`); };
+      q.toucher = async (app, ll) => { const z = await altitude(ll.lng, ll.lat); if (z !== z || z >= 0) { app.bulle(ll, z >= 0 ? horsEau(z) : 'Hors du secteur'); return; } const L = garde.lire('cartes.plongee.niveau', 20); app.bulle(ll, `<span class="fort">${m(-z)}</span> de fond<small>${-z <= L ? 'dans la limite de ' + L + ' m' : 'au-delà de ' + L + ' m'}</small>`); };
       q.fermer = () => poserEau(niveau);
       return q;
     })();
@@ -896,44 +1043,109 @@
       const dateDe = k => new Date(maintenant().getTime() + k * 3600000);
       const jour = d => d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', timeZone: opts.fuseau });
       const heure = d => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: opts.fuseau });
+      /* Les vagues se voient : un semis de crêtes posé sur la mer (jamais à terre), à densité constante à l'écran. Elles
+         avancent dans le sens des vagues, à la cadence de leur période ; leur largeur dit leur hauteur, et elles
+         s'effacent dans les eaux abritées. Même dessin que sur la carte de voile. */
+      const crete = { cv: null, raf: 0, semis: [], dir: 0, h: 0, per: 5 };
+      function semer() {
+        const ab = q._ab; crete.semis = []; if (!ab) return;
+        const zr = Math.round(map.getZoom()), pas = 54 / (512 * Math.pow(2, zr)), bd = map.getBounds();
+        const mx = lon => (lon + 180) / 360, my = lat => (1 - Math.asinh(Math.tan(lat * RAD)) / Math.PI) / 2;
+        const i0 = Math.floor(mx(bd.getWest()) / pas) - 1, i1 = Math.ceil(mx(bd.getEast()) / pas) + 1, j0 = Math.floor(my(bd.getNorth()) / pas) - 1, j1 = Math.ceil(my(bd.getSouth()) / pas) + 1;
+        if ((i1 - i0) * (j1 - j0) > 5000) return;
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          // Un tirage fixe par case : le semis ne bouge pas quand on déplace la carte.
+          const g = Math.sin(i * 127.1 + j * 311.7) * 43758.5453, r1 = g - Math.floor(g), g2 = Math.sin(i * 269.5 + j * 183.3) * 24634.6345, r2 = g2 - Math.floor(g2);
+          const x = (i + 0.5 + (r1 - 0.5) * 0.7) * pas, y = (j + 0.5 + (r2 - 0.5) * 0.7) * pas, lon = x * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) / RAD;
+          const k = caseMasque(lon, lat), f = k >= 0 ? ab.fetch[k] : NaN; if (f !== f) continue;
+          const e = Math.min(1, Math.sqrt(f / 12000)); if (e < 0.12) continue;
+          crete.semis.push({ lon, lat, e, ph: r1 });
+        }
+      }
+      function toile(oui) {
+        if (!oui) { cancelAnimationFrame(crete.raf); map.off('moveend', semer); if (crete.cv) crete.cv.remove(); crete.cv = null; return; }
+        if (crete.cv) return;
+        const cv = crete.cv = document.createElement('canvas'); cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none'; document.body.append(cv);
+        const caler = () => { const dpr = Math.min(2, window.devicePixelRatio || 1); cv._dpr = dpr; cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr); };
+        caler(); addEventListener('resize', caler); map.on('moveend', semer);
+        let avant = 0;
+        const image = t => {
+          crete.raf = requestAnimationFrame(image); if (t - avant < 45 || document.hidden || Date.now() - horloge.geste > 60000) return; avant = t;
+          const x = cv.getContext('2d'), dpr = cv._dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, innerWidth, innerHeight);
+          const W = innerWidth, H = innerHeight, cap = (crete.dir + 180) * RAD, T = Math.max(2.4, Math.min(7, crete.per * 0.55)) * 1000; x.lineCap = 'round';
+          for (const p of crete.semis) {
+            const a = map.project([p.lon, p.lat]); if (a.x < -30 || a.y < -30 || a.x > W + 30 || a.y > H + 30) continue;
+            const b = map.project([p.lon + 0.002 * Math.sin(cap) / Math.cos(p.lat * RAD), p.lat + 0.002 * Math.cos(cap)]);
+            let vx = b.x - a.x, vy = b.y - a.y; const n = Math.hypot(vx, vy) || 1; vx /= n; vy /= n;
+            const larg = (8 + 9 * Math.min(3, crete.h)) * (0.45 + 0.55 * p.e), course = 30;
+            for (let k = 0; k < 2; k++) {
+              const f = ((t / T + p.ph + k * 0.5) % 1), cx = a.x + vx * (f - 0.5) * course, cy = a.y + vy * (f - 0.5) * course, al = Math.sin(Math.PI * f) * (0.35 + 0.65 * p.e);
+              const ex = -vy * larg / 2, ey = vx * larg / 2;
+              x.beginPath(); x.moveTo(cx - ex, cy - ey); x.quadraticCurveTo(cx + vx * larg * 0.42, cy + vy * larg * 0.42, cx + ex, cy + ey);
+              x.strokeStyle = `rgba(255,255,255,${0.55 * al})`; x.lineWidth = 3.6; x.stroke();
+              x.strokeStyle = `rgba(22,48,84,${0.9 * al})`; x.lineWidth = 1.6; x.stroke();
+            }
+          }
+        };
+        crete.raf = requestAnimationFrame(image);
+      }
+      // La marée de l'heure choisie : la mer est posée à ce niveau sur la carte, et les étales suivantes sont données.
+      function majMaree(c, t) {
+        const bloc = c.querySelector('.pl-maree'); if (!T || !bloc) return;
+        if (!serie || marePanne) { bloc.innerHTML = '<p class="petit2">Le modèle de marée ne répond pas pour l\'instant.</p>'; return; }
+        MER = T.niveau(serie, t); niveau = MER; map.setPaintProperty('pl-eau', 'color-relief-color', regleUnie(MER));
+        const ex = T.extremes(serie, t, t + 26 * 36e5).slice(0, 4), W = 320, H = 64, n = 78, pts = [];
+        for (let k = 0; k <= n; k++) pts.push(T.niveau(serie, t + k / n * 26 * 36e5));
+        const lo = Math.min(...pts) - 0.4, hi = Math.max(...pts) + 0.4, X = k => 4 + k / n * (W - 8), Y = v => 4 + (hi - v) / (hi - lo) * (H - 18);
+        bloc.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Marée des 26 heures qui suivent" style="display:block;margin:6px 0 2px">
+          <path d="${pts.map((v, k) => (k ? 'L' : 'M') + X(k).toFixed(1) + ',' + Y(v).toFixed(1)).join('')}L${X(n)},${H - 12}L${X(0)},${H - 12}Z" fill="rgba(70,150,190,0.38)"/>
+          <path d="${pts.map((v, k) => (k ? 'L' : 'M') + X(k).toFixed(1) + ',' + Y(v).toFixed(1)).join('')}" fill="none" stroke="#9ad0d8" stroke-width="1.4"/>
+          <circle cx="${X(0)}" cy="${Y(pts[0])}" r="3.5" fill="#e8be5a"/>
+          ${ex.map(e => { const k = (e.t - t) / (26 * 36e5) * n; return `<line x1="${X(k)}" x2="${X(k)}" y1="${Y(e.h)}" y2="${H - 12}" stroke="currentColor" opacity="0.3"/><text x="${Math.min(W - 22, Math.max(22, X(k)))}" y="${H - 2}" font-size="9" fill="currentColor" opacity="0.8" text-anchor="middle">${hhmm(e.t).replace(' h ', 'h')}</text>`; }).join('')}</svg>
+          <p class="petit2">${phraseMaree(t)} Ensuite : ${ex.slice(1, 3).map(e => `${e.pm ? 'pleine' : 'basse'} mer ${hhmm(e.t)}`).join(', ')}.${T.calculee(serie, t) ? ' Marée calculée pour cette date : compter ±20 cm.' : ''}</p>`;
+      }
       async function maj(c) {
         const moi = ++tour, d = dateDe(h);
         c.querySelector('.v-h').textContent = (h === 0 ? 'maintenant' : jour(d) + ' ' + heure(d));
         if (!M) { c.querySelector('.etat').textContent = 'Lecture des prévisions…'; M = await conditions(); if (moi !== tour) return; }
-        if (!M) { c.querySelector('.etat').textContent = 'Les prévisions ne répondent pas pour l\'instant.'; return; }
+        if (!M) { c.querySelector('.etat').textContent = 'Les prévisions ne répondent pas pour l\'instant.'; majMaree(c, d.getTime()); return; }
         const r = lireHeure(M, isoHeure(d)); derniere = r; if (r.vague == null && r.vent == null) { c.querySelector('.etat').textContent = 'Pas de prévision pour cette heure.'; return; }
         const dir = dirMer(r), calme = r.vague != null && r.vague < 0.5 && (r.vent == null || r.vent < 12), agite = (r.vague != null && r.vague >= 1.2) || (r.vent != null && r.vent >= 20);
-        c.querySelector('.etat').innerHTML = `${calme ? 'Mer calme' : agite ? 'Mer agitée' : 'Mer peu agitée'} : vagues <span class="fort">${r.vague != null ? fr(r.vague, 1) + ' m' : '?'}</span>${dir != null ? ' ' + duCap(dir) : ''}${r.vent != null ? `, vent <span class="fort">${Math.round(r.vent)} nœuds</span> ${duCap(r.dirVent)}` : ''}. En vert, les eaux abritées.`;
+        c.querySelector('.etat').innerHTML = `${calme ? 'Mer calme' : agite ? 'Mer agitée' : 'Mer peu agitée'} : vagues <span class="fort">${r.vague != null ? fr(r.vague, 1) + ' m' : '?'}</span>${dir != null ? ' ' + duCap(dir) : ''}${r.vent != null ? `, vent <span class="fort">${Math.round(r.vent)} nœuds</span> ${duCap(r.dirVent)}` : ''}. En vert, les eaux abritées ; les crêtes avancent comme les vagues.`;
         c.querySelector('.pl-cond').innerHTML = `<div class="jours">${[
           ['Vagues', r.vague != null ? fr(r.vague, 1) + ' m' : '—', r.periode ? Math.round(r.periode) + ' s' : ''],
           ['Houle', r.houle != null ? fr(r.houle, 1) + ' m' : '—', r.dirHoule != null ? cardinal(r.dirHoule) : ''],
           ['Vent', r.vent != null ? Math.round(r.vent) + ' nd' : '—', r.rafales != null ? 'rafales ' + Math.round(r.rafales) : ''],
           ['Eau', r.eau != null ? Math.round(r.eau) + ' °C' : '—', r.courant != null ? 'courant ' + fr(r.courant / 1.852, 1) + ' nd' : '']].map(x => `<div><b>${x[0]}</b>${x[1]}<small style="display:block;color:var(--muted)">${x[2] || '&nbsp;'}</small></div>`).join('')}</div>`;
-        if (dir != null && r.vague != null) { const ab = abri(dir); app.poser('pl-abri', { x0: S.versMerc(ab.b[0], ab.b[1])[0], y0: S.versMerc(ab.b[0], ab.b[1])[1], x1: S.versMerc(ab.b[2], ab.b[3])[0], y1: S.versMerc(ab.b[2], ab.b[3])[1] }, peindreAbri(ab, r.vague), 0.75); q._ab = ab; }
+        majMaree(c, d.getTime());
+        if (dir != null && r.vague != null) { const ab = abri(dir); app.poser('pl-abri', { x0: S.versMerc(ab.b[0], ab.b[1])[0], y0: S.versMerc(ab.b[0], ab.b[1])[1], x1: S.versMerc(ab.b[2], ab.b[3])[0], y1: S.versMerc(ab.b[2], ab.b[3])[1] }, peindreAbri(ab, r.vague), 0.8); q._ab = ab; crete.dir = dir; crete.h = r.vague; crete.per = r.periode || 5; semer(); toile(true); horloge.geste = Date.now(); }
       }
       q.ouvrir = async (app) => {
         const c = q._c = app.repondre(q.libelle, `<p class="etat">Lecture des prévisions…</p>
           <div class="ligne"><label style="min-width:60px">Quand</label><input type="range" class="hh" min="0" max="84" step="1" value="${h}" style="flex:1"><span class="fort v-h" style="min-width:96px;text-align:right"></span></div>
-          <div class="pl-cond"></div>
-          <div class="legende"><span><i style="background:rgb(70,170,150)"></i>à l'abri</span><span><i style="background:rgb(190,200,110)"></i>peu exposé</span><span><i style="background:rgb(232,160,70)"></i>exposé</span><span><i style="background:rgb(222,104,66)"></i>très exposé</span></div>`);
+          <div class="pl-cond"></div><div class="pl-maree"></div>
+          <div class="legende"><span><i style="background:rgb(58,178,150)"></i>à l'abri</span><span><i style="background:rgb(158,204,112)"></i>peu exposé</span><span><i style="background:rgb(240,176,84)"></i>exposé</span><span><i style="background:rgb(226,106,68)"></i>très exposé</span></div>`);
         c.querySelector('.hh').oninput = e => { h = +e.target.value; maj(c); };
-        map.setPaintProperty('pl-eau', 'color-relief-opacity', 0.8);
+        map.setPaintProperty('pl-eau', 'color-relief-color', regleUnie(MER));
         await maj(c);
       };
       q.toucher = async (app, ll) => {
         const ab = q._ab, r = derniere; if (!ab || !r) return;
-        const mm = lireMasque(), i = Math.floor((ll.lng - mm.b[0]) / (mm.b[2] - mm.b[0]) * mm.w), yM = l => Math.log(Math.tan((90 + l) * RAD / 2)), j = Math.floor((yM(mm.b[3]) - yM(ll.lat)) / (yM(mm.b[3]) - yM(mm.b[1])) * mm.h);
-        const f = i >= 0 && j >= 0 && i < mm.w && j < mm.h ? ab.fetch[j * mm.w + i] : NaN;
+        const k = caseMasque(ll.lng, ll.lat), f = k >= 0 ? ab.fetch[k] : NaN;
         if (f !== f) { app.bulle(ll, 'À terre ou hors du secteur'); return; }
         app.bulle(ll, `<span class="fort">${exposition(f, r.vague)}</span><small>${f >= 12000 ? 'mer libre sur plus de 12 km' : 'eau libre sur ' + (f < 1000 ? Math.round(f / 10) * 10 + ' m' : fr(f / 1000, 1) + ' km')} ${versCap(dirMer(r))}</small>`);
       };
-      q.plein = () => ({ bloc: '.pl-cond' });
-      q.fermer = (app) => { tour++; app.retirer('pl-abri'); map.setPaintProperty('pl-eau', 'color-relief-opacity', 1); };
+      q.plein = () => ({ bloc: T ? ['.pl-cond', '.pl-maree'] : '.pl-cond' });
+      q.fermer = (app) => { tour++; toile(false); app.retirer('pl-abri'); poserEau(MER); if (T) majMer(); };
       return q;
     })();
 
+    if (T) {
+      for (const k in themes) { const q = themes[k], o = q.ouvrir; q.ouvrir = async function (a) { await majMer(); return o.call(q, a); }; }
+      majMer();   // sans attendre : la carte s'ouvre au niveau moyen, puis prend la marée du moment
+    }
     return { themes, altitude, especes: ESPECES };
   }
 
-  window.Socle.plongee = { installer, especes: ESPECES };
+  window.Socle.plongee = { installer, especes: ESPECES, especesManche: ESPECES_MANCHE };
 })();

@@ -33,16 +33,37 @@ from PIL import Image
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 DEPOT = os.path.dirname(ICI)
-DONNEES = next((a for a in sys.argv[1:] if not a.startswith('--')), None) or os.path.join(os.path.dirname(DEPOT), 'donnees')
-SORTIE = os.path.join(DEPOT, 'plongee')
 
-# Emprise du secteur (degrés) : de la pointe de la Croisette au cap d'Antibes, Lérins et le large jusqu'au canyon.
-OUEST, SUD, EST, NORD = 6.905, 43.455, 7.165, 43.598
-ZMAX, ZMIN = 15, 10
+# Secteurs. Les niveaux sont des altitudes (IGN 69) : « haut », le plus haut que monte la mer (jusque-là, le fond est
+# dessiné) ; « moyen », le niveau moyen ; « bas », le plus bas qu'elle descend (dessous, le fond ne découvre jamais).
+# En Méditerranée les trois valent zéro ; en Manche la marée les écarte de plus de douze mètres.
+SECTEURS = {
+    'antibes': dict(sortie='plongee', donnees='', emprise=(6.905, 43.455, 7.165, 43.598), zmax=15, litto='paca', herbiers=True,
+                    packs=['1015_6275', '1015_6280', '1015_6285', '1020_6275', '1020_6280', '1020_6285', '1025_6275', '1025_6280',
+                           '1025_6285', '1025_6290', '1030_6280', '1030_6285', '1030_6290', '1035_6285'],
+                    sedim='NDF_BDD_WLD_WGS84G_WFS:natures_fond_50000', haut=0.0, moyen=0.0, bas=0.0,
+                    isos=[3, 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000]),
+    # Baie de Saint-Brieuc, de Binic à Erquy : Litto3D Bretagne 2018-2021 (lidar et sondeur), dalles MNT à 5 m déjà
+    # extraites dans <donnees>/bzh/asc (voir relais/plongee_litto3d_bzh.py).
+    'baie': dict(sortie='plongee-baie', donnees='baie', emprise=(-2.86, 48.49, -2.40, 48.72), zmax=14, litto='bzh', herbiers=False, packs=[],
+                 sedim='SEDIM_MONDIALE_BDD_4326_WFS:cartesedimmonde_3857', haut=7.0, moyen=0.45, bas=-6.5, pas_habitat=150, zmonde=10, fondu=260,
+                 isos=[]),
+}
+NOM_SECTEUR = next((a.split('=')[1] for a in sys.argv[1:] if a.startswith('--secteur=')), 'antibes')
+SEC = SECTEURS[NOM_SECTEUR]
+RACINE_DONNEES = next((a for a in sys.argv[1:] if not a.startswith('--')), None) or os.path.join(os.path.dirname(DEPOT), 'donnees')
+DONNEES = os.path.join(RACINE_DONNEES, SEC['donnees']) if SEC['donnees'] else RACINE_DONNEES
+os.makedirs(DONNEES, exist_ok=True)
+SORTIE = os.path.join(DEPOT, SEC['sortie'])
+os.makedirs(SORTIE, exist_ok=True)
+
+OUEST, SUD, EST, NORD = SEC['emprise']
+ZMAX, ZMIN = SEC['zmax'], 10
+HAUT, MOYEN, BAS = SEC['haut'], SEC['moyen'], SEC['bas']
+COSLAT = math.cos(math.radians((SUD + NORD) / 2))
 R = 20037508.342789244
-TAILLE = 2 * R / (256 << ZMAX)          # pas de la grille au zoom 15, en mètres Mercator
-PACKS = ['1015_6275', '1015_6280', '1015_6285', '1020_6275', '1020_6280', '1020_6285', '1025_6275', '1025_6280',
-         '1025_6285', '1025_6290', '1030_6280', '1030_6285', '1030_6290', '1035_6285']
+TAILLE = 2 * R / (256 << ZMAX)          # pas de la grille (zoom ZMAX en tuiles de 256), en mètres Mercator
+PACKS = SEC['packs']
 URL_PACK = 'https://services.data.shom.fr/INSPIRE/telechargement/prepackageGroup/LITTO3D_PACA_2015_PACK_DL/prepackage/{0}/file/{0}.7z'
 SHOM_WMS = 'https://services.data.shom.fr/INSPIRE/wms/r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&STYLES=&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857'
 SHOM_WFS = 'https://services.data.shom.fr/INSPIRE/wfs?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&OUTPUTFORMAT=application/json'
@@ -74,7 +95,7 @@ TX0, TY0 = int((x0 + R) // (TAILLE * 256)), int((R - y1) // (TAILLE * 256))
 TX1, TY1 = int((x1 + R) // (TAILLE * 256)), int((R - y0) // (TAILLE * 256))
 GX0, GY1 = -R + TX0 * 256 * TAILLE, R - TY0 * 256 * TAILLE      # coin nord-ouest de la grille
 W, H = (TX1 - TX0 + 1) * 256, (TY1 - TY0 + 1) * 256
-print(f'Grille : {W} × {H} points, tuiles z15 x {TX0}-{TX1}, y {TY0}-{TY1}')
+print(f'Secteur {NOM_SECTEUR} : grille {W} × {H} points, tuiles z{ZMAX} x {TX0}-{TX1}, y {TY0}-{TY1}')
 XS = GX0 + (np.arange(W) + 0.5) * TAILLE
 YS = GY1 - (np.arange(H) + 0.5) * TAILLE
 
@@ -92,7 +113,7 @@ def sediments():
     """Épaves, obstructions et natures de fond au 1/50 000 du Shom sur l'emprise, lues une fois par le WFS."""
     bx0, by0 = merc(OUEST, SUD)
     bx1, by1 = merc(EST, NORD)
-    for couche, nom in [('EPAVES_BDD_WFS:wrecks', 'epaves.json'), ('EPAVES_BDD_WFS:obstrn', 'obstructions.json'), ('NDF_BDD_WLD_WGS84G_WFS:natures_fond_50000', 'ndf.json')]:
+    for couche, nom in [('EPAVES_BDD_WFS:wrecks', 'epaves.json'), ('EPAVES_BDD_WFS:obstrn', 'obstructions.json'), (SEC['sedim'], 'ndf.json')]:
         f = os.path.join(DONNEES, nom)
         if not os.path.exists(f):
             open(f, 'wb').write(lire_url(f'{SHOM_WFS}&SRSNAME=EPSG:4326&TYPENAMES={couche}&BBOX={bx0},{by0},{bx1},{by1},EPSG:3857'))
@@ -322,7 +343,96 @@ def rgealti():
     return out
 
 
+def litto3d_bzh():
+    """Litto3D Bretagne : mosaïque Lambert-93 des dalles MNT à 5 m (fichiers .asc extraits), relue sur la grille."""
+    cache = os.path.join(DONNEES, 'l3d_merc.npy')
+    if os.path.exists(cache):
+        return np.load(cache)
+    from pyproj import Transformer
+    vers = Transformer.from_crs(4326, 2154, always_xy=True)
+    coins = [vers.transform(a, b) for a in (OUEST, EST) for b in (SUD, NORD)]
+    PAS = 5.0
+    LX0 = math.floor(min(c[0] for c in coins) / 1000) * 1000 - 1000
+    LY1 = math.ceil(max(c[1] for c in coins) / 1000) * 1000 + 1000
+    LW = int((math.ceil(max(c[0] for c in coins) / 1000) * 1000 + 1000 - LX0) / PAS)
+    LH = int((LY1 - (math.floor(min(c[1] for c in coins) / 1000) * 1000 - 1000)) / PAS)
+    mos = np.full((LH, LW), np.nan, np.float32)
+    fichiers = glob.glob(os.path.join(RACINE_DONNEES, 'bzh', 'asc', '**', '*MNT5M*.asc'), recursive=True)
+    n = 0
+    for f in fichiers:
+        with open(f, 'rb') as h:
+            tete = {}
+            for _ in range(6):
+                k, v = h.readline().split()
+                tete[k.decode().lower()] = float(v)
+            a = np.fromstring(h.read(), dtype=np.float32, sep=' ')
+        nc, nr = int(tete['ncols']), int(tete['nrows'])
+        if a.size != nc * nr:
+            continue
+        a = a.reshape(nr, nc)
+        a[a < -9000] = np.nan
+        i0 = int(round((tete['xllcenter'] - PAS / 2 - LX0) / PAS))
+        j0 = int(round((LY1 - (tete['yllcenter'] - PAS / 2 + nr * PAS)) / PAS))
+        if i0 < 0 or j0 < 0 or i0 + nc > LW or j0 + nr > LH:
+            continue
+        bloc = mos[j0:j0 + nr, i0:i0 + nc]
+        mos[j0:j0 + nr, i0:i0 + nc] = np.where(np.isfinite(a), a, bloc)
+        n += 1
+    print(f'  Litto3D Bretagne : {n} dalles sur {len(fichiers)}, {np.isfinite(mos).mean():.0%} de la mosaïque')
+    t = Transformer.from_crs(3857, 2154, always_xy=True)
+    out = np.full((H, W), np.nan, np.float32)
+    for j in range(0, H, 256):
+        xx, yy = np.meshgrid(XS, YS[j:j + 256])
+        lx, ly = t.transform(xx, yy)
+        fi, fj = (lx - LX0) / PAS - 0.5, (LY1 - ly) / PAS - 0.5
+        i, jj = np.floor(fi).astype(int), np.floor(fj).astype(int)
+        u, v = fi - i, fj - jj
+        ok = (i >= 0) & (jj >= 0) & (i < LW - 1) & (jj < LH - 1)
+        i, jj = np.clip(i, 0, LW - 2), np.clip(jj, 0, LH - 2)
+        a, b, c, d = mos[jj, i], mos[jj, i + 1], mos[jj + 1, i], mos[jj + 1, i + 1]
+        val = (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v
+        proche = np.where(u < 0.5, np.where(v < 0.5, a, c), np.where(v < 0.5, b, d))
+        out[j:j + 256] = np.where(ok, np.where(np.isnan(val), proche, val), np.nan)
+    np.save(cache, out)
+    return out
+
+
+def assembler_bzh():
+    """Bretagne : le Litto3D couvre presque tout (lidar près des côtes, sondeur au large, avec des manques entre les
+    fauchées). Les manques en mer sont comblés depuis le relevé voisin, adouci ; ils sont notés « source 2 » au-delà de
+    40 m d'un point relevé. À terre hors Litto3D : RGE ALTI. Enfin les terres basses que la mer n'atteint pas (derrière une
+    digue, un cordon) sont relevées juste au-dessus de la plus haute mer : sans cela la carte les noierait à pleine mer."""
+    from scipy.ndimage import distance_transform_edt, gaussian_filter, label
+    l3d = litto3d_bzh()
+    rge = rgealti()
+    releve = np.isfinite(l3d)
+    print('  Litto3D valide :', f'{releve.mean():.0%}')
+    d, idx = distance_transform_edt(~releve, return_indices=True)
+    d = d * TAILLE * COSLAT
+    proche = l3d[tuple(idx)]
+    # Tout près d'un point relevé on garde sa valeur ; plus loin une version adoucie, puis très adoucie : loin de toute
+    # mesure, le fond comblé n'est qu'une pente douce entre les relevés voisins, sans les facettes du plus proche voisin.
+    doux, large = gaussian_filter(proche, 5), gaussian_filter(gaussian_filter(proche, 30), 30)
+    w, w2 = np.clip((d - 10) / 60, 0, 1), np.clip((d - 120) / 500, 0, 1)
+    comble = (proche * (1 - w) + doux * w) * (1 - w2) + large * w2
+    terre = np.isfinite(rge) & (rge > -20)                    # le RGE ALTI n'a pas de valeur en mer
+    z = np.where(releve, l3d, np.where(terre, rge, comble)).astype(np.float32)
+    source = np.where(releve | (d <= 40), 1, 2).astype(np.uint8)
+    source[~releve & terre] = 3
+    # Ce que la plus haute mer peut atteindre : les points sous HAUT reliés au large.
+    basse = z < HAUT
+    comp, n = label(basse)
+    large = np.unique(comp[(z < BAS - 2)])
+    relie = np.isin(comp, large[large > 0])
+    isole = basse & ~relie
+    print(f'  terres basses hors d\'atteinte de la mer : {isole.mean():.1%} de la grille, relevées à {HAUT + 0.3} m')
+    z[isole] = HAUT + 0.3
+    return z, source
+
+
 def assembler():
+    if SEC['litto'] == 'bzh':
+        return assembler_bzh()
     from scipy.ndimage import distance_transform_edt, gaussian_filter, binary_opening
     l3d = litto3d()
     hom = homonim()
@@ -332,7 +442,7 @@ def assembler():
     lidar = np.isfinite(l3d)
     lidar = binary_opening(lidar, iterations=2)
     terre = np.isfinite(rge) & (rge > 0.3)
-    d = distance_transform_edt(~lidar) * TAILLE * 0.725          # distance au sol, en mètres
+    d = distance_transform_edt(~lidar) * TAILLE * COSLAT         # distance au sol, en mètres
     idx = distance_transform_edt(~lidar, return_distances=False, return_indices=True)
     bord = l3d[tuple(idx)]                                       # valeur du lidar la plus proche
     # Écart entre le bord du lidar et HOMONIM, étalé en douceur : il s'efface en 400 m.
@@ -398,8 +508,30 @@ def pyramide(grille, dossier, ecrire, taille=512, combler=None):
     return liste
 
 
-def monde(z, x, y, taille):
-    """Relief mondial (tuiles « terrarium » d'AWS, zoom 15 au plus) recomposé en une tuile de `taille` points."""
+_monde = {}
+
+
+def monde(z, x, y, taille, fin=False):
+    """Relief mondial (tuiles « terrarium » d'AWS) recomposé en une tuile de `taille` points.
+
+    Ce relief ne porte les fonds marins qu'aux petits zooms (au-delà du zoom 10, la mer y vaut 0). Dans une mer à marée,
+    un fond à 0 deviendrait une flaque de quelques mètres autour du secteur : le secteur qui fixe `zmonde` lit donc en mer
+    la tuile mondiale de ce zoom, agrandie en douceur."""
+    zm = SEC.get('zmonde')
+    if zm and z + int(math.log2(taille // 256)) > zm and not fin:
+        f = 1 << (z - zm); cle = (zm, x // f, y // f)
+        if cle not in _monde:
+            m = np.asarray(Image.open(io.BytesIO(lire_url(f'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{cle[0]}/{cle[1]}/{cle[2]}.png'))).convert('RGB')).astype(np.float32)
+            _monde[cle] = m[..., 0] * 256 + m[..., 1] + m[..., 2] / 256 - 32768
+        m = _monde[cle]
+        pas = 256 / f / taille
+        sx = np.clip((x % f) * 256 / f + (np.arange(taille) + 0.5) * pas - 0.5, 0, 254.999); sy = np.clip((y % f) * 256 / f + (np.arange(taille) + 0.5) * pas - 0.5, 0, 254.999)
+        i0 = sx.astype(int); j0 = sy.astype(int); u = (sx - i0)[None, :]; v = (sy - j0)[:, None]
+        J, I = np.meshgrid(j0, i0, indexing='ij')
+        gros = ((m[J, I] * (1 - u) + m[J, I + 1] * u) * (1 - v) + (m[J + 1, I] * (1 - u) + m[J + 1, I + 1] * u) * v).astype(np.float32)
+        # À terre, le relief fin reste le meilleur ; en mer (où il vaut 0), le fond vient de la tuile du petit zoom.
+        detail = monde(z, x, y, taille, True)
+        return np.where(detail != 0, detail, np.minimum(gros, 0))
     k = taille // 256
     out = np.zeros((taille, taille), np.float32)
     for dj in range(k):
@@ -420,6 +552,25 @@ def tuiles(z):
         except Exception:
             idx = distance_transform_edt(vide, return_distances=False, return_indices=True)
             return bloc[tuple(idx)]
+    if SEC.get('fondu') and SEC.get('zmonde'):
+        # Raccord au large : sur la dernière bande du secteur, le fond relevé rejoint peu à peu le relief mondial, pour
+        # que la teinte de l'eau ne marque pas de marche au bord (les deux sources diffèrent de quelques mètres).
+        n, zm = SEC['fondu'], SEC['zmonde']; f = 2 ** (ZMAX - zm); H, W = z.shape
+        gx = (TX0 * 256 + np.arange(W) + 0.5) / f - 0.5; gy = (TY0 * 256 + np.arange(H) + 0.5) / f - 0.5
+        tx0, ty0 = int(gx.min() // 256), int(gy.min() // 256); nx, ny = int((gx.max() + 1) // 256) - tx0 + 1, int((gy.max() + 1) // 256) - ty0 + 1
+        mos = np.zeros((ny * 256, nx * 256), np.float32)
+        for j in range(ny):
+            for i in range(nx):
+                m = np.asarray(Image.open(io.BytesIO(lire_url(f'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{zm}/{tx0 + i}/{ty0 + j}.png'))).convert('RGB')).astype(np.float32)
+                mos[j * 256:(j + 1) * 256, i * 256:(i + 1) * 256] = m[..., 0] * 256 + m[..., 1] + m[..., 2] / 256 - 32768
+        sx = np.clip(gx - tx0 * 256, 0, nx * 256 - 1.001); sy = np.clip(gy - ty0 * 256, 0, ny * 256 - 1.001)
+        i0 = sx.astype(int); j0 = sy.astype(int); u = (sx - i0)[None, :].astype(np.float32)
+        z = z.copy(); p = np.clip(distance_transform_edt(np.pad(np.isfinite(z), 1, constant_values=False))[1:-1, 1:-1] / n, 0, 1).astype(np.float32); p = p * p * (3 - 2 * p)
+        for a0 in range(0, H, 512):
+            jj = j0[a0:a0 + 512]; v = (sy[a0:a0 + 512] - jj)[:, None].astype(np.float32)
+            large = (mos[jj][:, i0] * (1 - u) + mos[jj][:, i0 + 1] * u) * (1 - v) + (mos[jj + 1][:, i0] * (1 - u) + mos[jj + 1][:, i0 + 1] * u) * v
+            zz = z[a0:a0 + 512]; pp = p[a0:a0 + 512]; mer = np.isfinite(zz) & (zz < BAS) & (large < BAS) & (pp < 1)
+            zz[mer] = (pp * zz + (1 - pp) * large)[mer]
     pyramide(z, 'relief', lambda b, f: Image.fromarray(terrarium(b)).save(f + '.png', optimize=True), 512, combler)
 
 
@@ -441,7 +592,7 @@ def vecteurs(z, source):
     from skimage.measure import find_contours
     from shapely.geometry import LineString, Polygon, shape, mapping
     from shapely.ops import unary_union
-    PAS_SOL = TAILLE * 0.7253                      # mètres au sol par point de grille (cos 43,5°)
+    PAS_SOL = TAILLE * COSLAT                      # mètres au sol par point de grille
     ronde = lambda v: round(v, 5)
 
     def versgeo(lignes, f):
@@ -456,7 +607,7 @@ def vecteurs(z, source):
     f = 2
     zr = z[: z.shape[0] // f * f, : z.shape[1] // f * f].reshape(z.shape[0] // f, f, z.shape[1] // f, f).mean(axis=(1, 3))
     zl = gaussian_filter(zr, 1.2)
-    for p in [3, 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000]:
+    for p in SEC['isos']:
         for c in find_contours(zl, -p):
             if len(c) < 8:
                 continue
@@ -470,9 +621,9 @@ def vecteurs(z, source):
     # --- Secs : sommets sous l'eau qui dominent leurs alentours d'au moins 4 m, entre 2 et 60 m de fond. ---
     zs = gaussian_filter(zr, 1.5)
     rayon = int(round(60 / (PAS_SOL * f)))
-    loc = (zs == maximum_filter(zs, size=2 * rayon + 1)) & (zs < -2) & (zs > -60)
+    loc = (zs == maximum_filter(zs, size=2 * rayon + 1)) & (zs < BAS - 2) & (zs > -60)
     bas = minimum_filter(zs, size=4 * rayon + 1)
-    terre = zr > 0
+    terre = zr > MOYEN
     dist_terre = distance_transform_edt(~terre) * PAS_SOL * f
     secs = []
     js, is_ = np.nonzero(loc)
@@ -485,7 +636,7 @@ def vecteurs(z, source):
     secs.sort(reverse=True)
     garde = []
     for d, lon, lat, prof in secs:
-        if all(math.hypot((lon - a) * 0.725, lat - b) * 111200 > 250 for _, a, b, _ in garde):
+        if all(math.hypot((lon - a) * COSLAT, lat - b) * 111200 > 250 for _, a, b, _ in garde):
             garde.append((d, lon, lat, prof))
     for d, lon, lat, prof in garde[:80]:
         feats.append({'type': 'Feature', 'properties': {'k': 'sec', 'p': round(prof, 1), 'h': round(float(d), 1)}, 'geometry': {'type': 'Point', 'coordinates': [ronde(lon), ronde(lat)]}})
@@ -495,7 +646,7 @@ def vecteurs(z, source):
     gy, gx = np.gradient(gaussian_filter(zr, 0.8), PAS_SOL * f)
     pente = np.degrees(np.arctan(np.hypot(gx, gy)))
     lid = source[: z.shape[0] // f * f: f, : z.shape[1] // f * f: f] == 1
-    raide = (pente > 30) & (zr < -3) & lid
+    raide = (pente > 30) & (zr < BAS - 3) & lid
     raide = binary_opening(binary_closing(raide, iterations=2), iterations=1)
     lab, n = label(raide)
     nb_t = 0
@@ -565,23 +716,23 @@ def vecteurs(z, source):
     fm = int(round(60 / PAS_SOL))
     hm, wm = z.shape[0] // fm, z.shape[1] // fm
     zm = z[: hm * fm, : wm * fm].reshape(hm, fm, wm, fm).mean(axis=(1, 3))
-    bits = np.packbits((zm > 0).astype(np.uint8).ravel())
+    bits = np.packbits((zm > MOYEN).astype(np.uint8).ravel())
     mo, mn = geo(GX0, GY1)
     me, ms = geo(GX0 + wm * fm * TAILLE, GY1 - hm * fm * TAILLE)
     masque = {'w': wm, 'h': hm, 'bornes': [round(mo, 6), round(ms, 6), round(me, 6), round(mn, 6)], 'bits': base64.b64encode(bits.tobytes()).decode()}
     # --- Aire du fond par mètre de profondeur (zone du lidar) : ce que découvre la mer qui baisse. ---
     zl_ = z[source == 1]
-    aires = np.histogram(-zl_[(zl_ < 0) & (zl_ > -100)], bins=100, range=(0, 100))[0] * (PAS_SOL ** 2) / 1e6
-    out = {'type': 'FeatureCollection', 'emprise': [OUEST, SUD, EST, NORD], 'herbiers': os.path.exists(os.path.join(SORTIE, 'herbiers.json')), 'masque': masque, 'aires': [round(float(a), 4) for a in aires], 'features': feats}
+    aires = np.histogram(HAUT - zl_[(zl_ < HAUT) & (zl_ > HAUT - 100)], bins=100, range=(0, 100))[0] * (PAS_SOL ** 2) / 1e6
+    out = {'type': 'FeatureCollection', 'emprise': [OUEST, SUD, EST, NORD], 'niveaux': {'haut': HAUT, 'moyen': MOYEN, 'bas': BAS}, 'herbiers': os.path.exists(os.path.join(SORTIE, 'herbiers.json')), 'masque': masque, 'aires': [round(float(a), 4) for a in aires], 'features': feats}
     json.dump(out, open(os.path.join(SORTIE, 'fonds.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
     print('  fonds.json :', os.path.getsize(os.path.join(SORTIE, 'fonds.json')) // 1024, 'ko')
 
-    # --- Points d'habitat pour les poissons : tous les 70 m, profondeur, milieu, pente (fichier compact). ---
+    # --- Points d'habitat pour les poissons : tous les 70 m (150 m sur un grand secteur), profondeur, milieu, pente. ---
     from matplotlib.path import Path as Chemin
-    pas = int(round(70 / PAS_SOL))
+    pas = int(round(SEC.get('pas_habitat', 70) / PAS_SOL))
     jj, ii = np.mgrid[pas // 2: H: pas, pas // 2: W: pas]
     zz = z[jj, ii]
-    ok = (zz < -1) & (zz > -70) & (source[jj, ii] == 1)
+    ok = (zz < MOYEN - 1) & (zz > -70) & (source[jj, ii] == 1)
     jj, ii, zz = jj[ok], ii[ok], zz[ok]
     lon = np.array([geo(GX0 + (i + 0.5) * TAILLE, 0)[0] for i in ii])
     lat = np.array([geo(0, GY1 - (j + 0.5) * TAILLE)[1] for j in jj])
@@ -596,7 +747,7 @@ def vecteurs(z, source):
             for trou in pl[1:]:
                 dedans &= ~Chemin(trou).contains_points(np.c_[lon, lat])
             mil[dedans] = code
-    pte = np.degrees(np.arctan(np.hypot(*np.gradient(gaussian_filter(z, 2), TAILLE * 0.7253))))[jj, ii]
+    pte = np.degrees(np.arctan(np.hypot(*np.gradient(gaussian_filter(z, 2), TAILLE * COSLAT))))[jj, ii]
     hg = herbiers_grille()
     if hg is not None:
         mil[hg[jj, ii] == 1] = 4          # herbier vivant : un milieu à part, celui de beaucoup d'espèces
@@ -632,7 +783,7 @@ def texture(z, source):
     """Le fond « vidé » : teinte du sédiment (sable, roche, vase), ombrage multidirectionnel, creux assombris, fonds
     lointains assombris. Transparent à terre. Calcul par bandes (la grille entière ne tient pas en mémoire d'un coup)."""
     from scipy.ndimage import gaussian_filter, zoom as agrandir
-    PAS = TAILLE * 0.7253
+    PAS = TAILLE * COSLAT
     mil = milieux_grille()
     rng = np.random.default_rng(7)
     bruit = np.zeros(z.shape, np.float32)
@@ -682,13 +833,13 @@ def texture(z, source):
             wh, wm = poids_h[0][a0:a1, :, None], poids_h[1][a0:a1, :, None] * 0.85
             tf = touffes[a0:a1, :, None]
             base = base * (1 - wh - wm * (1 - wh)) + vert * (1 + 0.11 * tf) * wh + terne * (1 + 0.05 * tf) * wm * (1 - wh)
-        prof = np.clip(-zb, 0, None)
+        prof = np.clip(MOYEN - zb, 0, None)
         lointain = 1 - 0.42 * np.clip(np.log1p(prof) / np.log1p(400), 0, 1)
         lum = (0.66 + 0.75 * (fin - 0.55) + 0.3 * (large - 0.55) * (1 - hors_tout[a0:a1])) * (1 + 0.25 * occl)
         rgb = base * (lum * lointain)[..., None]
         hors = 0.6 * hors_tout[a0:a1, :, None]
         rgb = rgb * (1 - hors) + rgb * np.array([0.82, 0.9, 1.0], np.float32) * hors
-        alpha = np.clip((0.15 - zb) / 0.3, 0, 1) * 255
+        alpha = np.clip((HAUT + 0.15 - zb) / 0.3, 0, 1) * 255
         bloc = np.dstack([np.clip(rgb, 0, 255), alpha]).astype(np.float32)
         k0, k1 = j0 - a0, j0 - a0 + min(BANDE, H - j0)
         out[j0:j0 + (k1 - k0)] = bloc[k0:k1]
@@ -701,6 +852,11 @@ def tuiles_texture(z, source):
     """Tuiles WebP de 512 points, avec transparence. La teinte est prémultipliée par l'alpha avant la pyramide, pour
     que la moyenne 2 × 2 n'assombrisse pas le bord des terres, puis rétablie à l'écriture."""
     t = texture(z, source)
+    if SEC.get('fondu'):
+        # Le dessin du fond s'efface en douceur vers le bord du secteur : au large, la carte ne montre pas d'arête.
+        n = SEC['fondu']; H, W = t.shape[:2]
+        bx = np.clip(np.minimum(np.arange(W), W - 1 - np.arange(W)) / n, 0, 1); by = np.clip(np.minimum(np.arange(H), H - 1 - np.arange(H)) / n, 0, 1)
+        t[..., 3] *= (by[:, None] * bx[None, :]).astype(np.float32)
     t[..., :3] *= t[..., 3:4] / 255
 
     def ecrire(bloc, f):
@@ -716,7 +872,8 @@ def tuiles_texture(z, source):
 
 
 if __name__ == '__main__':
-    telecharger()
+    if SEC['litto'] == 'paca':
+        telecharger()
     sediments()
     fz, fs = os.path.join(DONNEES, 'plongee_z.npy'), os.path.join(DONNEES, 'plongee_source.npy')
     if os.path.exists(fz) and '--refaire' not in sys.argv:
@@ -732,7 +889,7 @@ if __name__ == '__main__':
     tout = not any(a in sys.argv for a in ['--tuiles', '--vecteurs', '--texture', '--herbiers'])
     if tout or '--tuiles' in sys.argv:
         tuiles(z)
-    if tout or '--herbiers' in sys.argv or not os.path.exists(os.path.join(SORTIE, 'herbiers.json')):
+    if SEC['herbiers'] and (tout or '--herbiers' in sys.argv or not os.path.exists(os.path.join(SORTIE, 'herbiers.json'))):
         herbiers()
     if tout or '--vecteurs' in sys.argv:
         vecteurs(z, source)
