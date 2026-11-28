@@ -411,3 +411,19 @@ body.ecran .pastilletrace { display: none; }
 
 /* Profil lié à la carte (app.suiviProfil) : le doigt s'y promène de gauche à droite, le panneau défile toujours de haut en bas. */
 svg[data-profil] { touch-action: pan-y; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+
+/* Thème « Refuges » (socle/refuges.js) : la liste des refuges de la vue, puis la fiche de celui qu'on a touché. */
+.ref-liste { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.ref-liste::-webkit-scrollbar { display: none; }
+.ref-liste:empty, .ref-fiche:empty { display: none; }
+.ref-liste button { flex: none; border-radius: 12px; padding: 6px 10px; font-size: 12.5px; text-align: left; line-height: 1.2; background: #16233a; }
+.ref-liste button small { display: block; color: var(--muted); font-size: 11px; }
+.ref-liste button[aria-pressed="true"] { background: #23344f; color: var(--ink); border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; font-weight: 600; }
+.ref-h { font: 600 17px "Source Serif 4", Georgia, serif; margin: 8px 0 2px; color: var(--ink); }
+.ref-fiche p { margin: 4px 0; font-size: 13.5px; line-height: 1.4; }
+.ref-fiche .lien { align-self: center; color: var(--gold); font-size: 13.5px; padding: 6px 4px; }
+.pilote .ref-fiche { max-height: 34vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* Tracés enregistrés (thème Itinéraire) : une rangée qui défile. */
+.puces.gardes:empty { display: none; }
+.puces.gardes button small { color: var(--muted); font-size: 11.5px; margin-left: 5px; }
+
