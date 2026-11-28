@@ -147,38 +147,40 @@
     let alt = null, nom = null;
     try { const g = await app.grille([lon - 0.0006, lat - 0.0004, lon + 0.0006, lat + 0.0004], 16); alt = g.z[app.indice(g, lon, lat)]; if (!(alt === alt)) alt = g.zmin; } catch (e) { alt = null; }
     try { const r = await fetch(`${Socle.GEOPF}/geocodage/reverse?index=poi&lon=${lon}&lat=${lat}&limit=5`); const f = (await r.json()).features.find(f => f.properties.distance < 1500 && !/epci|département|région/.test((f.properties.category || []).join())); if (f) nom = f.properties.toponym; } catch (e) { nom = null; }
-    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}${alt != null && isFinite(alt) ? '&elevation=' + Math.round(alt) : ''}&timezone=Europe%2FParis&forecast_days=6&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m&hourly=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,snowfall,freezing_level_height`);
+    const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}${alt != null && isFinite(alt) ? '&elevation=' + Math.round(alt) : ''}&timezone=Europe%2FParis&forecast_days=3&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m&hourly=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,snowfall,freezing_level_height`);
     return j && j.daily ? { d: j.daily, h: j.hourly || null, c: j.current || null, alt, nom } : null;
   }
   const qTemps = {
     plein: () => ({ bloc: ['.jours', '.detail'] }),
     theme: 'Prévisions', libelle: 'Quel temps ici ?',
-    aide: 'La bulle sur la carte donne le temps qu\'il fait maintenant au point touché ; le panneau, les jours qui viennent, et un jour touché se déplie par tranches de trois heures, avec l\'altitude du 0 °C. Prévisions du modèle Open-Meteo au point touché, ramenées à son altitude réelle : la température est corrigée de l\'écart entre l\'altitude du modèle et celle du terrain. Le vent est celui du modèle à 10 m du sol, à prendre comme un ordre de grandeur, surtout sur les crêtes. La neige annoncée est un cumul sur la journée. Au-delà de trois jours, la prévision donne une tendance, pas un horaire.',
+    aide: 'La bulle sur la carte donne le temps qu\'il fait maintenant au point touché. Le panneau donne trois jours, et le jour choisi heure par heure, avec l\'altitude du 0 °C. Prévisions du modèle Open-Meteo au point touché, ramenées à son altitude réelle : la température est corrigée de l\'écart entre l\'altitude du modèle et celle du terrain. Le vent est celui du modèle à 10 m du sol, à prendre comme un ordre de grandeur, surtout sur les crêtes. La neige annoncée est un cumul, sur la journée ou sur l\'heure.',
     async montrer(app, lon, lat) {
       app.occupe(true, 'Prévisions…'); const p = await previsA(lon, lat); app.occupe(false); if (app.active !== qTemps) return;
       const d0 = { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] } };
       if (map.getSource('pointmeteo')) map.getSource('pointmeteo').setData(d0);
       else { map.addSource('pointmeteo', { type: 'geojson', data: d0 }); map.addLayer({ id: 'pointmeteo', type: 'circle', source: 'pointmeteo', paint: { 'circle-radius': 7, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
       if (!p) { app.repondre(qTemps.libelle, '<p>Les prévisions ne répondent pas pour l\'instant. Réessaie dans un moment.</p>'); return; }
-      const d = p.d, jour = i => `<div><b>${JOURS[new Date(d.time[i] + 'T12:00').getDay()]} ${d.time[i].slice(8)}</b><span class="picto">${PICTO(d.weather_code[i])}</span>${TEMPS(d.weather_code[i])}<br>${Math.round(d.temperature_2m_min[i])}° / ${Math.round(d.temperature_2m_max[i])}°<br>${d.snowfall_sum[i] > 0 ? '<span class="fort">' + d.snowfall_sum[i].toFixed(0) + ' cm de neige</span>' : d.precipitation_sum[i] > 0.2 ? d.precipitation_sum[i].toFixed(0) + ' mm de pluie' : 'sec'}<br>vent ${ROSE[Math.round(d.wind_direction_10m_dominant[i] / 45) % 8]} ${Math.round(d.wind_speed_10m_max[i])}, rafales ${Math.round(d.wind_gusts_10m_max[i])} km/h<br>${Math.round((d.sunshine_duration[i] || 0) / 3600)} h de soleil</div>`;
-      const c = app.repondre(qTemps.libelle, `<p><span class="fort">${app.propre(p.nom || 'Point touché')}</span>${p.alt != null && isFinite(p.alt) ? ', ' + Math.round(p.alt) + ' m' : ''} — touche un jour pour le détail par tranches de trois heures, ou un autre endroit de la carte.</p>
-        <div class="jours" style="grid-template-columns:repeat(3,1fr)">${d.time.map((t, i) => jour(i)).join('')}</div><div class="detail"></div>`);
-      // Bulle au point touché : le temps qu'il fait maintenant, en trois valeurs. Le panneau, lui, donne les jours qui viennent.
+      // Trois jours, en trois cases courtes ; le jour choisi se lit heure par heure dans une bande qui défile.
+      const d = p.d, N = Math.min(3, d.time.length), nomJour = i => i === 0 ? 'auj.' : JOURS[new Date(d.time[i] + 'T12:00').getDay()] + ' ' + d.time[i].slice(8);
+      const eau = (neige, pluie) => neige > 0.1 ? '<span class="fort">' + (neige < 1 ? neige.toFixed(1).replace('.', ',') : Math.round(neige)) + ' cm</span>' : pluie > 0.1 ? (pluie < 1 ? pluie.toFixed(1).replace('.', ',') : Math.round(pluie)) + ' mm' : '–';
+      const jour = i => `<div><b>${nomJour(i)}</b><span class="picto">${PICTO(d.weather_code[i])}</span>${Math.round(d.temperature_2m_min[i])}° / ${Math.round(d.temperature_2m_max[i])}°<br>${eau(d.snowfall_sum[i], d.precipitation_sum[i])}<br>${ROSE[Math.round(d.wind_direction_10m_dominant[i] / 45) % 8]} ${Math.round(d.wind_gusts_10m_max[i])} km/h</div>`;
+      const c = app.repondre(qTemps.libelle, `<p class="etat"><span class="fort">${app.propre(p.nom || 'Point touché')}</span>${p.alt != null && isFinite(p.alt) ? ', ' + Math.round(p.alt) + ' m' : ''}</p>
+        <div class="jours" style="grid-template-columns:repeat(${N},1fr)">${d.time.slice(0, N).map((t, i) => jour(i)).join('')}</div><div class="heures"></div>
+        <p class="petit">Dans chaque case : température, pluie (mm) ou neige (cm), direction du vent et rafales (km/h) ; dans la bande horaire, l'altitude du 0 °C en plus. Touche un jour pour ses heures, ou un autre endroit de la carte.</p>`);
+      // Bulle au point touché : le temps qu'il fait maintenant, en trois valeurs.
       if (p.c) app.bulle({ lng: lon, lat }, `<span style="font-size:17px">${PICTO(p.c.weather_code)}</span> <span class="fort">${Math.round(p.c.temperature_2m)} °C</span> · vent ${ROSE[Math.round(p.c.wind_direction_10m / 45) % 8]} ${Math.round(p.c.wind_speed_10m)} km/h<small>maintenant, ${TEMPS(p.c.weather_code)} · rafales ${Math.round(p.c.wind_gusts_10m)} km/h</small>`);
-      // Un jour touché se déplie par tranches de trois heures : en randonnée, c'est l'heure qui compte.
-      const hh = p.h, cases = [...c.querySelectorAll('.jours > div')];
+      const hh = p.h, cases = [...c.querySelectorAll('.jours > div')], bande = c.querySelector('.heures'), maintenant = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Paris' }).slice(0, 13).replace(' ', 'T');
       const deplier = i => {
         cases.forEach((x, n) => x.setAttribute('aria-pressed', String(n === i)));
-        if (!hh) { c.querySelector('.detail').innerHTML = ''; return; }
-        const idx = hh.time.map((t, k) => t.startsWith(d.time[i]) ? k : -1).filter(k => k >= 0), tr = [];
-        for (let a = 0; a + 2 < idx.length; a += 3) {
-          const ks = idx.slice(a, a + 3), k = ks[1], som = v => ks.reduce((s, x) => s + (v[x] || 0), 0), max = v => Math.max(...ks.map(x => v[x] || 0));
-          const neige = som(hh.snowfall), pluie = som(hh.precipitation), iso = hh.freezing_level_height ? hh.freezing_level_height[k] : null;
-          tr.push(`<div><b>${+hh.time[ks[0]].slice(11, 13)} h–${(+hh.time[ks[0]].slice(11, 13) + 3)} h</b><span style="font-size:16px">${PICTO(hh.weather_code[k])}</span><br>${Math.round(hh.temperature_2m[k])} °C<br>${ROSE[Math.round(hh.wind_direction_10m[k] / 45) % 8]} ${Math.round(max(hh.wind_speed_10m))}, raf. ${Math.round(max(hh.wind_gusts_10m))}<br>${neige > 0.1 ? '<span class="fort">' + (neige < 1 ? neige.toFixed(1).replace('.', ',') : Math.round(neige)) + ' cm</span>' : pluie > 0.1 ? pluie.toFixed(1).replace('.', ',') + ' mm' : 'sec'}${iso != null ? '<br><small>0 °C à ' + Math.round(iso / 50) * 50 + ' m</small>' : ''}</div>`);
-        }
-        c.querySelector('.detail').innerHTML = `<p class="petit2" style="margin:8px 0 0">${JOURS[new Date(d.time[i] + 'T12:00').getDay()]} ${d.time[i].slice(8)} — température, vent et rafales (km/h), neige ou pluie, altitude du 0 °C :</p><div class="tranches">${tr.join('')}</div>`;
+        if (!hh) { bande.innerHTML = ''; return; }
+        // Aujourd'hui : à partir de l'heure qu'il est. Les autres jours : de 6 h à 21 h d'abord visibles, la nuit reste en défilant.
+        const idx = hh.time.map((t, k) => t.startsWith(d.time[i]) && (i > 0 || t.slice(0, 13) >= maintenant) ? k : -1).filter(k => k >= 0);
+        bande.innerHTML = idx.map(k => { const h = +hh.time[k].slice(11, 13), iso = hh.freezing_level_height ? hh.freezing_level_height[k] : null;
+          return `<div class="${h < 7 || h > 20 ? 'nuit' : ''}" data-h="${h}"><b>${h} h</b><span style="font-size:16px">${PICTO(hh.weather_code[k])}</span><br>${Math.round(hh.temperature_2m[k])}°<br>${eau(hh.snowfall[k], hh.precipitation[k])}<br>${ROSE[Math.round(hh.wind_direction_10m[k] / 45) % 8]} ${Math.round(hh.wind_gusts_10m[k])}${iso != null ? '<br><small>0° ' + Math.round(iso / 50) * 50 + '</small>' : ''}</div>`; }).join('');
+        const six = i > 0 ? bande.querySelector('[data-h="6"]') : null; bande.scrollLeft = six ? six.offsetLeft - bande.offsetLeft : 0;
       };
-      cases.forEach((x, i) => { x.setAttribute('role', 'button'); x.setAttribute('aria-pressed', 'false'); x.onclick = () => deplier(i); });
+      cases.forEach((x, i) => { x.setAttribute('role', 'button'); x.onclick = () => deplier(i); });
+      deplier(0);
     },
     async ouvrir(app) { await qTemps.montrer(app, PT.lon, PT.lat); },
     toucher(app, ll) { qTemps.montrer(app, ll.lng, ll.lat); },

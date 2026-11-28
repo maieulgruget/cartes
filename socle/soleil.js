@@ -43,6 +43,13 @@
   function lumiere(opts) {
     const memo = {}, q = {
       theme: opts.theme || 'Lumière', libelle: opts.libelle || 'Où est la lumière à cette heure ?',
+      schema: `<svg viewBox="0 0 320 130" role="img" aria-label="Un rayon part de chaque point du terrain vers le soleil : s'il rencontre le relief, le point est à l'ombre">
+        <path d="M0 118 L60 96 L112 38 L150 84 L196 104 L250 92 L320 110 L320 130 L0 130Z" fill="currentColor" opacity="0.18"/>
+        <path d="M112 38 L150 84 L196 104 L219 99 Z" fill="#10192a" opacity="0.55"/>
+        <circle cx="34" cy="22" r="11" fill="#f2c14e"/><g stroke="#f2c14e" stroke-width="1.5"><path d="M34 5v-4M34 39v4M17 22h-4M51 22h4M22 10l-3-3M46 10l3-3M22 34l-3 3M46 34l3 3"/></g>
+        <path d="M178 96 L52 28" stroke="#e63946" stroke-width="1.6" stroke-dasharray="4 3"/><circle cx="178" cy="96" r="3.5" fill="#e63946"/>
+        <path d="M262 94 L60 30" stroke="#f2c14e" stroke-width="1.6"/><circle cx="262" cy="94" r="3.5" fill="#f2c14e"/>
+        <text x="150" y="124">rayon arrêté par le relief : ombre</text><text x="226" y="84">rayon libre : soleil</text></svg>`,
       aide: 'Ombres portées par le relief à la date et à l\'heure choisies : pour chaque maille, la carte remonte un rayon vers le soleil et regarde si le terrain le coupe. En vue rapprochée, elle prend le relevé de surface, donc les arbres et les bâtiments portent ombre. La position du soleil est calculée à un demi-degré près ; les nuages ne sont pas pris en compte.',
       async ouvrir(app) {
         const c = app.repondre(q.libelle, entete(opts.fuseau) + `<input type="range" class="h" min="0" max="1430" step="10" value="${etat.minutes}">

@@ -54,11 +54,11 @@
      touchent le centre de la vue (un à quatre), et recommence quand la carte se déplace. Les carrés déjà relevés sont
      gardés (huit au plus, les moins récemment vus partent les premiers) : revenir sur ses pas ne relit pas le LiDAR, et
      la carte ne s'alourdit pas sans fin. Elle reste allumée d'un thème à l'autre, jusqu'à ce qu'on l'éteigne. */
-  const COTE = 400, GARDES = 8, MARGE = 6;
+  const COTE = 400, GARDES = 8, MARGE = 6, ZMIN = 14.7;   // les arbres arrivent un peu avant les bâtiments en volume (zoom 15,3)
   function couche(app) {
     if (app._arbres) return app._arbres;
     const m = app.map, masques = new Set(), carres = new Map();
-    let tour = 0, minuterie = null, pasLon = 0, horloge = 0;
+    let tour = 0, minuterie = null, pasLon = 0, horloge = 0, opacite = 1;
     const pasLat = COTE / 110540;
     const voulus = () => {   // carrés que touche un carré de 200 m centré sur la vue
       const ctr = m.getCenter(); if (!pasLon) pasLon = COTE / (111320 * Math.cos(ctr.lat * Math.PI / 180));
@@ -80,25 +80,26 @@
         m.addSource('cimes-zone', { type: 'geojson', data: zone });
         m.addLayer({ id: 'cimes-zone', type: 'line', source: 'cimes-zone', paint: { 'line-color': '#b8963e', 'line-width': 1, 'line-dasharray': [2, 3], 'line-opacity': 0.5 } });
         m.addSource('cimes3d', { type: 'geojson', data: volumes(c.arbres) });
-        m.addLayer({ id: 'cimes3d', type: 'fill-extrusion', source: 'cimes3d', paint: { 'fill-extrusion-color': ['get', c.parHauteur ? 'couleur' : 'vert'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-height': ['get', 'haut'], 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true } });
+        m.addLayer({ id: 'cimes3d', type: 'fill-extrusion', source: 'cimes3d', paint: { 'fill-extrusion-color': ['get', c.parHauteur ? 'couleur' : 'vert'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-height': ['get', 'haut'], 'fill-extrusion-opacity': opacite, 'fill-extrusion-vertical-gradient': true } });
       }
       c.filtrer();
     }
     const c = {
       actif: false, arbres: [], parHauteur: false, message: '', masques, cote: COTE, surChange: [], get carres() { return carres.size; },
+      voiler(v) { opacite = v; if (m.getLayer('cimes3d')) m.setPaintProperty('cimes3d', 'fill-extrusion-opacity', v); },   // arbres discrets (d'office) ou pleins (demandés)
       teinter() { if (m.getLayer('cimes3d')) m.setPaintProperty('cimes3d', 'fill-extrusion-color', ['get', c.parHauteur ? 'couleur' : 'vert']); },
       filtrer() { if (m.getLayer('cimes3d')) m.setFilter('cimes3d', masques.size ? ['!', ['in', ['get', 'c'], ['literal', [...masques].map(Number)]]] : null); },
-      async activer(oui) {
+      async activer(oui, sans3d) {
         if (oui === c.actif) return;
         c.actif = oui;
         if (!oui) { tour++; app.retirer('cimes3d', 'cimes-zone'); app.forcerSolNu(false); carres.clear(); c.arbres = []; c.message = ''; prevenir(); return; }
-        app.forcerSolNu(true); if (!app.relief3d) app.mettre3d(true);   // les arbres se posent sur le sol nu, pas sur le couvert en volume
+        app.forcerSolNu(true); if (!sans3d && !app.relief3d) app.mettre3d(true);   // les arbres se posent sur le sol nu, pas sur le couvert en volume
         prevenir(); await c.relever();
       },
       // Le relevé : les carrés autour du centre de la vue qui manquent encore sont lus dans le LiDAR, les autres sont repris tels quels.
       async relever() {
         const moi = ++tour;
-        if (m.getZoom() < 15) { if (!c.arbres.length) { c.message = 'Zoome de plus près (un hameau, une ravine) : les arbres se dresseront autour du centre de la vue.'; prevenir(); } return; }
+        if (m.getZoom() < ZMIN) { if (!c.arbres.length) { c.message = 'Zoome de plus près (un hameau, une ravine) : les arbres se dresseront autour du centre de la vue.'; prevenir(); } return; }
         const l = voulus(), manquent = l.filter(([i, j]) => !carres.has(i + '/' + j));
         for (const [i, j] of l) { const k = carres.get(i + '/' + j); if (k) k.vu = ++horloge; }
         if (!manquent.length) return;
@@ -132,6 +133,14 @@
     }
     const q = {
       theme: 'Cimes', libelle: opts.libelle || 'Quelle hauteur, ces arbres ?',
+      schema: `<svg viewBox="0 0 320 130" role="img" aria-label="La hauteur d'un arbre est l'écart entre la surface relevée par le laser et le sol nu">
+        <path d="M0 112 C60 104 110 110 170 100 S270 92 320 96 L320 130 L0 130Z" fill="currentColor" opacity="0.18"/>
+        <path d="M0 112 C60 104 110 110 170 100 S270 92 320 96" fill="none" stroke="#b8963e" stroke-width="1.8"/>
+        <path d="M0 112 C20 104 34 60 62 58 S92 96 112 104 C128 96 138 36 170 34 S206 88 224 96 C240 90 250 70 268 70 S300 92 320 96" fill="none" stroke="#7fb069" stroke-width="1.8" stroke-dasharray="5 3"/>
+        <g fill="#4c7a48"><path d="M62 60 l-13 26 h26z"/><path d="M170 36 l-17 34 h34z"/><path d="M268 72 l-9 16 h18z"/></g>
+        <g stroke="#6b5744" stroke-width="2.5"><path d="M62 86v22M170 70v30M268 88v6"/></g>
+        <path d="M170 34 V100" stroke="#e63946" stroke-width="1.4"/><path d="M165 34h10M165 100h10" stroke="#e63946" stroke-width="1.4"/>
+        <text x="180" y="62" style="fill:#e63946">hauteur</text><text x="6" y="50" style="fill:#7fb069">surface (laser)</text><text x="6" y="126" style="fill:#b8963e">sol nu</text></svg>`,
       aide: 'Autour du centre de la vue, la carte lit le LiDAR HD deux fois (la surface, puis le sol nu) : la différence est la hauteur du couvert. Chaque sommet de ce couvert est pris pour une cime, et dressé en arbre à sa hauteur : la silhouette est la même pour tous, seule la taille est mesurée. Le relevé suit la carte, par carrés de 400 m, et garde les huit derniers carrés vus. Dans une forêt serrée, plusieurs arbres peuvent n\'en faire qu\'un, et un grand houppier en donner deux ; un pylône, un rocher isolé peuvent passer pour un arbre. Le relevé a quelques années : un arbre a pu pousser ou tomber. Pour un vol, garder une marge. Les arbres restent sur la carte quand on change de thème, jusqu\'à « Retirer les arbres ».',
       async ouvrir(app) {
         ctl = couche(app);

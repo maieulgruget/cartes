@@ -552,7 +552,7 @@
     if (cfg.sansNoms) style.layers = style.layers.filter(l => !(l.type === 'symbol' && cfg.sansNoms.includes(l['source-layer'])));
     const textes = style.layers.filter(l => l.type === 'symbol').map(l => l.id);
     style.layers.splice(style.layers.findIndex(l => l.id === 'analyses') + 1, 0,
-      { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15, layout: { visibility: 'none' },
+      { id: 'batiments3d', type: 'fill-extrusion', source: 'bdtopo', 'source-layer': 'batiment', minzoom: 15.3, layout: { visibility: 'none' },
         paint: { 'fill-extrusion-height': ['coalesce', ['get', 'hauteur'], 4], 'fill-extrusion-opacity': 0.8, 'fill-extrusion-vertical-gradient': true,
           'fill-extrusion-color': ['match', ['get', 'usage_1'], 'Résidentiel', '#e8dcc2', 'Agricole', '#c9b458', 'Commercial et services', '#7aa6c2', 'Industriel', '#9a8fb5', 'Religieux', '#c97b63', 'Sportif', '#7fb069', 'Annexe', '#cfcfcf', '#dcdcdc'] } });
 
@@ -585,7 +585,7 @@
       orthothr: ['ignsur://THR.ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}', 'ignsur3d://THR.ORTHOIMAGERY.ORTHOPHOTOS/{z}/{x}/{y}'] };
     let photo3d = false;
     const majPhotos = () => { const oui = avecRemparts && relief3d; if (oui === photo3d) return; photo3d = oui; for (const s in TUILES_PHOTO) map.getSource(s).setTiles([TUILES_PHOTO[s][oui ? 1 : 0]]); };
-    const mettre3d = oui => { relief3d = oui; majPhotos(); if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); };
+    const mettre3d = oui => { relief3d = oui; majPhotos(); if (oui) { map.setTerrain(null); poserRelief(); } else map.setTerrain(null); majBatiments(); map.easeTo({ pitch: oui ? (cfg.pitch3d || 60) : 0, duration: 700 }); b3d.setAttribute('aria-pressed', oui); majAuto(); };
     const mettreArbres = oui => { arbres = oui; majArbres(); if (oui && !relief3d) mettre3d(true); else poserRelief(); majBatiments(); };
     map.on('zoomend', () => { if (arbres && relief3d) { poserRelief(); majBatiments(); } });
 
@@ -676,7 +676,7 @@
       map.setLayoutProperty('estompe', 'visibility', FONDS[f].estompe ? 'visible' : 'none');
       if (FONDS[f].estompe) map.setPaintProperty('estompe', 'hillshade-exaggeration', FONDS[f].estompe);
       for (const fn of surFond) { try { fn(f); } catch (e) { console.error(e); } }
-      majArbres(); poserRelief(); majBatiments();
+      majArbres(); poserRelief(); majBatiments(); majAuto();
     }
     // Le bouton des fonds ouvre une courte liste : un toucher choisit, un toucher ailleurs referme.
     const listeFonds = el('div', { class: 'listefonds', hidden: '' });
@@ -718,12 +718,28 @@
       bSurvol.setAttribute('aria-pressed', 'true');
       volEnCours = window.Socle.survol.lancer(app, t.pts, { suivre: t.suivre, fin(alafin) { volEnCours = null; bSurvol.setAttribute('aria-pressed', 'false'); survol.maj(); if (t.fin) t.fin(alafin); } });
     };
+    /* Sur le Plan HD, les arbres sont là d'office, en discret (un peu transparents) : dès que la vue est en 3D et assez
+       proche (zoom 14,7, un peu avant les bâtiments en volume), ils se dressent sans qu'on le demande, et s'effacent
+       quand on quitte ce fond ou la 3D. Le bouton « Arbres » les retire (et s'en souvient jusqu'au prochain toucher).
+       Sur les autres fonds, et sur une carte qui le demande (cfg.arbres = 'option'), ils restent un choix : éteints au
+       départ, pleins une fois allumés à la main. */
+    let prefArbres = true, autoArbres = false, tourArbres = 0;
+    const fondArbres = () => fond === 'plan' && cfg.arbres !== 'option';
+    const coucheA = async () => { await chargerArbres(); if (!coucheArbres) coucheArbres = window.Socle.arbres.couche(app); if (!coucheArbres.surChange.includes(majArbres)) coucheArbres.surChange.push(majArbres); return coucheArbres; };
+    async function majAuto() {
+      const moi = ++tourArbres, veut = prefArbres && fondArbres() && relief3d;
+      if (veut && !semantique() && map.getZoom() >= 14.7) { try { const c = await coucheA(); if (moi !== tourArbres || c.actif) return; autoArbres = true; c.voiler(0.7); await c.activer(true, true); } catch (e) { /* sans arbres */ } }
+      else if (!veut && semantique() && autoArbres) { autoArbres = false; await coucheArbres.activer(false); }
+      majArbres();
+    }
+    map.on('zoomend', majAuto);
     bSem.onclick = async () => {
-      try { await chargerArbres(); } catch (e) { app.occupe(true, 'Les arbres ne se chargent pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; }
-      if (!coucheArbres) coucheArbres = window.Socle.arbres.couche(app);
-      if (!coucheArbres.surChange.includes(majArbres)) coucheArbres.surChange.push(majArbres);
-      const allumer = !coucheArbres.actif; await coucheArbres.activer(allumer);
-      if (allumer && coucheArbres.message) { app.occupe(true, coucheArbres.message); setTimeout(() => app.occupe(false), 3200); }
+      let c; try { c = await coucheA(); } catch (e) { app.occupe(true, 'Les arbres ne se chargent pas pour l\'instant'); setTimeout(() => app.occupe(false), 2500); return; }
+      const allumer = !c.actif;
+      if (fondArbres()) prefArbres = allumer;
+      autoArbres = allumer && fondArbres(); c.voiler(autoArbres ? 0.7 : 1);
+      await c.activer(allumer);
+      if (allumer && c.message) { app.occupe(true, c.message); setTimeout(() => app.occupe(false), 3200); }
       majArbres();
     };
     bNord.onclick = () => map.easeTo({ bearing: 0, duration: 600 });
@@ -762,7 +778,7 @@
       repondre(titre, html) {
         reponse.hidden = false; if (masque) { masque = false; appliquerMasque(); }
         reponse.classList.toggle('replie', garde.lire(clePanneau(), '') === 'reduit'); reponse.classList.remove('aveclegende');
-        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && (app.active.plein !== false || app.active.pleinPropre) ? '<button class="grand">⤢ Plein écran</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
+        reponse.innerHTML = `<h2><span>${propre(titre)}</span><button class="pli" aria-label="Réduire ou ouvrir le panneau"></button><button class="leg" aria-pressed="false">Légende</button>${app.active && (app.active.plein !== false || app.active.pleinPropre) ? '<button class="grand">⤢ Plein écran</button>' : ''}<button class="oeil" aria-pressed="true">Calque</button><button class="info" aria-label="Comprendre ce thème" hidden>?</button><button class="x" aria-label="Fermer le thème">×</button></h2><div class="corps">${html}</div>`;
         reponse.querySelector('h2 .x').onclick = () => app.choisir(null);
         if (reponse.querySelector('h2 .grand')) {
           // Un thème peut avoir son propre plein écran (q.pleinPropre : le drone, dont les commandes s'accrochent au point).
@@ -778,9 +794,13 @@
         reponse.querySelector('h2 .oeil').onclick = e => { masque = !masque; e.target.setAttribute('aria-pressed', !masque); appliquerMasque(); };
         // Les explications (ce qui est calculé, comment, avec quelle fiabilité) se rangent sous un seul intitulé.
         const corps = reponse.querySelector('.corps'), notes = [...corps.querySelectorAll(':scope > p.petit')], q = app.active;
-        if (notes.length || (q && q.aide)) {
-          const det = el('details', { class: 'aide' }, '<summary>Ce que montre la carte</summary>' + (q && q.aide ? `<p>${q.aide}</p>` : ''));
-          notes.forEach(p => det.append(p)); corps.append(det);
+        /* Le panneau ne porte que la réponse. Tout ce qui explique (ce que la carte calcule, comment, avec quelle fiabilité)
+           sort du panneau et s'ouvre en fenêtre par le bouton « ? » : un schéma s'il y en a un (q.schema), l'explication
+           du thème phrase par phrase, puis les précisions propres à la vue affichée. */
+        notes.forEach(p => p.remove());
+        if (notes.length || (q && (q.aide || q.schema))) {
+          const b = reponse.querySelector('h2 .info'); b.hidden = false;
+          b.onclick = () => comprendre(q, titre, notes.map(p => p.innerHTML));
         }
         const plier = () => { const r = reponse.classList.toggle('replie'); garde.ecrire(clePanneau(), r ? 'reduit' : 'ouvert'); if (!r) { reponse.classList.remove('aveclegende'); reponse.querySelector('h2 .leg').setAttribute('aria-pressed', 'false'); } };
         reponse.querySelector('h2 span').onclick = plier; reponse.querySelector('h2 .pli').onclick = plier;
@@ -812,9 +832,10 @@
       /* En-tête de tout plein écran : « ☰ thème » (rend le panneau), puis les autres thèmes de la même famille (on passe
          d'Épaisseur à Gel sans repasser par le panneau), puis « Calque », qui cache l'analyse pour voir le fond dessous. */
       enTete(cont, surPanneau) {
-        const q = app.active, f = q && q.famille && familles.get(q.famille), voisins = f ? f.membres.filter(m => m !== q) : [], oeil = reponse.querySelector('h2 .oeil');
-        cont.innerHTML = `<button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(q ? q.theme || q.libelle : 'Thème')}</button>${voisins.map((m, i) => `<button class="p-voisin" data-v="${i}" title="${propre(m.libelle || '')}">${propre(m.theme || m.libelle)} ›</button>`).join('')}`;
+        const q = app.active, f = q && q.famille && familles.get(q.famille), voisins = f ? f.membres.filter(m => m !== q) : [], oeil = reponse.querySelector('h2 .oeil'), info = reponse.querySelector('h2 .info');
+        cont.innerHTML = `<button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(q ? q.theme || q.libelle : 'Thème')}</button>${info && !info.hidden ? '<button class="p-info" aria-label="Comprendre ce thème">?</button>' : ''}${voisins.map((m, i) => `<button class="p-voisin" data-v="${i}" title="${propre(m.libelle || '')}">${propre(m.theme || m.libelle)} ›</button>`).join('')}`;
         cont.querySelector('.p-theme').onclick = surPanneau;
+        const bi = cont.querySelector('.p-info'); if (bi) bi.onclick = () => info.click();   // la fenêtre « Comprendre », sans repasser par le panneau
         cont.querySelectorAll('.p-voisin').forEach(b => { b.onclick = () => app.choisir(voisins[+b.dataset.v]); });
         // « Calque » (voir le fond sous l'analyse) : sur le bord droit, à mi-hauteur, au-dessus de la pastille du tracé, là où le pouce le trouve.
         const pil = cont.closest('.pilote'); pil.querySelectorAll(':scope > .p-oeil').forEach(x => x.remove());
@@ -1188,6 +1209,20 @@
       } catch (e) { const boite = menu.querySelector('.qr'); if (boite) boite.innerHTML = '<p class="sources">Le code ne se dessine pas pour l\'instant : copie le lien.</p>'; }
     }
 
+    // Fenêtre « Comprendre » d'un thème : schéma, explication en phrases courtes, précisions de la vue.
+    const phrases = t => String(t || '').split(/(?<=[.!?…])\s+(?=[A-ZÀ-ÝÉ«])/).map(x => x.trim()).filter(Boolean);
+    function comprendre(q, titre, notes) {
+      const aide = q && q.aide ? phrases(q.aide) : [];
+      menu.innerHTML = `<div class="comprendre"><h3>${propre((q && (q.theme || q.libelle)) || titre)}</h3>
+        ${q && q.schema ? `<div class="schema">${q.schema}</div>` : ''}
+        ${aide.length ? `<ul class="points">${aide.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+        ${notes.length ? `<h4>Sur cette vue</h4><ul class="points">${notes.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+        <p style="text-align:right;margin:12px 0 0"><button class="tout">Toute la carte</button> <button class="fermer">Fermer</button></p></div>`;
+      menu.hidden = false;
+      menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
+      menu.querySelector('.tout').onclick = () => { dessinerMenu(); menu.querySelector('.methode').click(); };
+    }
+
     // --- Menu : signets (des vues), recherche de lieux, sources ---
     const AUTRES = [['tarentaise', 'Tarentaise', 'ski de randonnée aux Chapelles'], ['marees', 'Marées', 'de Bréhat au cap Fréhel'], ['reunion', 'La Réunion', 'la lumière sur le relief'], ['semnoz', 'Champignons', 'autour d\'Annecy'], ['greolieres', 'Champignons 06', 'Gréolières, Bar-sur-Loup, Sophia'], ['voile', 'Voile', 'de Cerbère à Menton, et la Corse'], ['corse', 'Randos', 'Corse et France, sur le relief']];
     const cleSignets = 'cartes.signets.' + cfg.id;
@@ -1293,7 +1328,7 @@
       menu.querySelector('.autres').onclick = e => { const b = e.target.closest('button[data-u]'); if (b) location.href = b.dataset.u; };
       // Page « méthode » : tous les thèmes de la carte, ce qu'ils calculent, leurs limites ; puis les sources.
       menu.querySelector('.methode').onclick = () => {
-        menu.innerHTML = `<div><h3>Comprendre la carte</h3>${app.questions.map(q => `<h4>${propre(q.theme || q.libelle)} — ${propre(q.libelle)}</h4><p class="sources">${q.aide || 'Ouvre ce thème : son panneau décrit ce qu\'il montre.'}</p>`).join('')}
+        menu.innerHTML = `<div><h3>Comprendre la carte</h3>${app.questions.map(q => `<h4>${propre(q.theme || q.libelle)} — ${propre(q.libelle)}</h4>${q.schema ? `<div class="schema">${q.schema}</div>` : ''}${q.aide ? `<ul class="points">${phrases(q.aide).map(x => `<li>${x}</li>`).join('')}</ul>` : '<p class="sources">Ouvre ce thème : son panneau décrit ce qu\'il montre.</p>'}`).join('')}
           <h3>Sources et limites</h3><p class="sources">${cfg.sources || ''}</p><p style="text-align:right;margin:10px 0 0"><button class="retour">Retour</button> <button class="fermer">Fermer</button></p></div>`;
         menu.querySelector('.retour').onclick = dessinerMenu; menu.querySelector('.fermer').onclick = () => { menu.hidden = true; };
       };
