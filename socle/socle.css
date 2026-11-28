@@ -315,6 +315,13 @@ body.pilotage .repere, body.pilotage .outils, body.pilotage .listefonds, body.pi
 .p-visee .ligne { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .p-visee label { color: var(--muted); font-size: 12px; }
 .p-visee b { color: var(--gold); min-width: 34px; text-align: right; }
+.p-feuille { width: min(340px, calc(100% - 20px)); max-height: 46vh; overflow-y: auto; }
+.p-feuille[hidden] { display: none; }
+.p-feuille .pl-voir { flex: 1; text-align: left; font-size: 13px; padding: 8px 10px; }
+.p-feuille .pl-voir b { min-width: 0; margin-right: 6px; }
+.p-feuille .pl-x { padding: 8px 11px; }
+.p-feuille .puces { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.p-actions button[hidden] { display: none; }
 
 /* ---------- Plein écran d'un thème : nom du thème, phrase et légende en haut ; réglages en bas ---------- */
 body.pleintheme .bas, body.pleintheme .repere { display: none !important; }
