@@ -21,6 +21,8 @@
   main { max-width: 560px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom)); }
   h1 { font-family: "Source Serif 4", Georgia, serif; font-size: 26px; font-weight: 600; margin: 0 0 4px; }
   .sous { color: #9aa8bb; margin: 0 0 22px; font-size: 15px; }
+  h2 { font-family: "Source Serif 4", Georgia, serif; font-size: 15px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #b8963e; margin: 26px 0 10px; }
+  h2:first-of-type { margin-top: 0; }
   .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   a.carte { display: block; text-decoration: none; color: inherit; background: #101c2e; border: 1px solid rgba(184, 150, 62, 0.35); border-radius: 18px; padding: 12px 12px 14px; }
   a.carte:active { border-color: #b8963e; }
@@ -31,7 +33,7 @@
   /* Ordinateur : trois cartes par rangée, plus d'air, un survol qui répond. */
   @media (min-width: 900px) {
     main { max-width: 1080px; padding-top: 56px; padding-bottom: 56px; }
-    h1 { font-size: 36px; } .sous { font-size: 17px; margin-bottom: 30px; }
+    h1 { font-size: 36px; } h2 { font-size: 16px; margin-top: 38px; } .sous { font-size: 17px; margin-bottom: 30px; }
     .grille { grid-template-columns: repeat(3, 1fr); gap: 22px; }
     a.carte { display: grid; grid-template-columns: 104px 1fr; grid-template-rows: 1fr auto auto 1fr; column-gap: 16px; padding: 14px; transition: border-color .15s, transform .15s; }
     a.carte img { grid-row: 1 / 5; align-self: center; }
@@ -47,17 +49,25 @@
 <body>
 <main>
   <h1>Cartes</h1>
-  <p class="sous">Neuf cartes, chacune avec ses thèmes.</p>
+  <p class="sous">Dix cartes, chacune avec ses thèmes.</p>
+  <h2>Montagne</h2>
   <div class="grille">
     <a class="carte" href="tarentaise/"><img src="tarentaise/icone-512.png" alt=""><b>Tarentaise</b><span>Les Chapelles : itinéraire, avalanche, neige, soleil, météo</span></a>
-    <a class="carte" href="marees/"><img src="marees/icone-512.png" alt=""><b>Marées</b><span>De Bréhat au cap Fréhel : marée, estran, traversée, oiseaux</span></a>
-    <a class="carte" href="reunion/"><img src="reunion/icone-512.png" alt=""><b>La Réunion</b><span>Lumière, versants, lever et coucher, drone</span></a>
-    <a class="carte" href="semnoz/"><img src="semnoz/icone-512.png" alt=""><b>Champignons</b><span>Autour d'Annecy : où chercher, pluie, forêts</span></a>
-    <a class="carte" href="greolieres/"><img src="greolieres/icone-512.png" alt=""><b>Champignons 06</b><span>Gréolières, Bar-sur-Loup et Sophia Antipolis</span></a>
+    <a class="carte" href="reunion/"><img src="reunion/icone-512.png" alt=""><b>Photo – La Réunion</b><span>Lumière, versants, lever et coucher, drone</span></a>
+    <a class="carte" href="corse/"><img src="corse/icone-512.png" alt=""><b>Randos</b><span>Corse et France : mes tracés sur le relief, profil, pente, sol, itinéraire sur sentiers</span></a>
+  </div>
+  <h2>Mer</h2>
+  <div class="grille">
+    <a class="carte" href="marees/"><img src="marees/icone-512.png" alt=""><b>Marées – Saint-Brieuc</b><span>De Bréhat au cap Fréhel : marée, estran, traversée, oiseaux</span></a>
     <a class="carte" href="voile/"><img src="voile/icone-512.png" alt=""><b>Voile</b><span>De Cerbère à Menton et la Corse : vent, mer, fonds, ports, route, bateau</span></a>
     <a class="carte" href="plongee/"><img src="plongee/icone-512.png" alt=""><b>Plongée</b><span>Lérins et cap d'Antibes : la mer vidée, fonds, poissons, sites, parcours, conditions</span></a>
     <a class="carte" href="plongee-baie/"><img src="plongee-baie/icone-512.png" alt=""><b>Plongée Bretagne</b><span>Baie de Saint-Brieuc, de Binic à Erquy : les fonds selon la marée, poissons, épaves, conditions</span></a>
-    <a class="carte" href="corse/"><img src="corse/icone-512.png" alt=""><b>Randos</b><span>Corse et France : mes tracés sur le relief, profil, pente, sol, itinéraire sur sentiers</span></a>
+    <a class="carte" href="iheya/"><img src="iheya/icone-512.png" alt=""><b>Iheya</b><span>Okinawa : l'île et son lagon, les couleurs de l'eau, l'île il y a 50 ans</span></a>
+  </div>
+  <h2>Champignons</h2>
+  <div class="grille">
+    <a class="carte" href="semnoz/"><img src="semnoz/icone-512.png" alt=""><b>Champignons – Annecy</b><span>Autour d'Annecy : où chercher, pluie, forêts</span></a>
+    <a class="carte" href="greolieres/"><img src="greolieres/icone-512.png" alt=""><b>Champignons – Gréolières</b><span>Gréolières, Bar-sur-Loup et Sophia Antipolis</span></a>
   </div>
   <p class="astuce">Sur ordinateur : les thèmes sont à gauche de la carte. <b>F</b> affiche la carte en grand écran, avec peu de texte ; dans le menu de chaque carte, « Envoyer cette vue au téléphone » donne un code à scanner.</p>
 </main>
