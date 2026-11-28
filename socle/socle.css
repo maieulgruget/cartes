@@ -176,6 +176,7 @@ details.aide p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 .frise .ici b { color: #fff; font-weight: 700; }
 .frise b { font-weight: 400; display: block; height: 14px; white-space: nowrap; }
 .frise span { display: block; font-size: 13px; line-height: 1.1; height: 15px; }
+.frise em { display: block; font-style: normal; font-size: 10px; line-height: 1.2; height: 13px; color: var(--ink); letter-spacing: -0.3px; white-space: nowrap; }
 .frise .nj { border-left: 1px solid var(--line); margin-left: 3px; padding-left: 3px; }
 .tranches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 6px 0; }
 .tranches div { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px 3px; font-size: 11.5px; text-align: center; line-height: 1.3; }
