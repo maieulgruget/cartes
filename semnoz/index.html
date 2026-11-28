@@ -168,7 +168,7 @@
       const c = app.repondre(q1.libelle, `<div class="vignettes esp">${Object.entries(CHAMPIGNONS).map(([k, v]) => `<button data-k="${k}" aria-pressed="${k === choisi}">${DESSINS[k]}<span>${v.nom}</span></button>`).join('')}</div>
         <p class="mot"></p><p class="etat"></p>
         <div class="legende"></div>
-        <div class="puces" style="margin-top:6px"><button class="bobs" aria-pressed="false">Observations</button><button class="bsent" aria-pressed="false">Sentiers</button></div>
+        <div class="puces" style="margin-top:6px"><button class="bobs" aria-pressed="false" title="Les trouvailles publiées de cette espèce (base GBIF) : des points datés sur la carte">Trouvailles signalées</button><button class="bsent" aria-pressed="false" title="Les sentiers, et en turquoise ceux qui longent une zone « meilleur »">Sentiers</button></div>
         <p class="obs petit2"></p><p class="sent petit2"></p>
         <p class="petit">Note de chaque maille : type de forêt × altitude où la température de la semaine convient × fraîcheur du versant × creux du relief. Les classes sont relatives à l'espèce : « le meilleur » est le dixième le plus favorable de la forêt regardée, « très bon » les deux dixièmes suivants. C'est un potentiel d'habitat, pas une garantie de cueillette. Touche les niveaux de la légende pour n'en garder qu'un : il ressort alors en teinte vive.</p>`);
       /* Classes relatives : chaque espèce est classée par rapport à elle-même. Le « meilleur » est le dixième le plus
@@ -243,31 +243,37 @@
         }
         verifier();
       };
-      /* Sentiers et chemins de la BD TOPO (en vue rapprochée), et tronçons qui passent à moins de 100 m d'une zone « meilleur ». */
+      /* Sentiers et chemins, et tronçons qui passent à moins de 100 m d'une zone « meilleur ». De près (niveau 15 et plus), ceux
+         de la BD TOPO, qui dit lesquels sont privés ; de plus loin (dès le niveau 13), ceux du Plan IGN, sans ce détail. */
       const chargerSentiers = () => {
         const cible = c.querySelector('.sent');
-        if (!sentActif) { app.retirer('sentiers-bons', 'sentiers', 'sentiers-bord'); if (map.getSource('sentiers-bons')) map.removeSource('sentiers-bons'); cible.textContent = ''; return; }
-        const filtre = ['in', ['get', 'nature'], ['literal', ['Sentier', 'Chemin']]];
+        if (!sentActif) { app.retirer('sentiers-bons', 'sentiers', 'sentiers-bord', 'sentiers-loin', 'sentiers-loin-bord'); if (map.getSource('sentiers-bons')) map.removeSource('sentiers-bons'); cible.textContent = ''; return; }
+        const filtre = ['in', ['get', 'nature'], ['literal', ['Sentier', 'Chemin']]], filtreLoin = ['in', ['get', 'symbo'], ['literal', ['SENTIER', 'CHEMIN']]];
         if (!map.getLayer('sentiers')) {
           map.addSource('sentiers-bons', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
           map.addLayer({ id: 'sentiers-bons', type: 'line', source: 'sentiers-bons', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#19e3c8', 'line-width': 9, 'line-opacity': 0.9 } });
+          if (map.getSource('plan_ign')) {
+            map.addLayer({ id: 'sentiers-loin-bord', type: 'line', source: 'plan_ign', 'source-layer': 'routier_chemin', minzoom: 13, maxzoom: 15, filter: filtreLoin, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2.6, 15, 4.5], 'line-opacity': 0.9 } });
+            map.addLayer({ id: 'sentiers-loin', type: 'line', source: 'plan_ign', 'source-layer': 'routier_chemin', minzoom: 13, maxzoom: 15, filter: filtreLoin, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#10192a', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.2, 15, 2], 'line-dasharray': ['literal', [2, 1.5]] } });
+          }
           map.addLayer({ id: 'sentiers-bord', type: 'line', source: 'bdtopo', 'source-layer': 'troncon_de_route', minzoom: 15, filter: filtre, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 4.5, 'line-opacity': 0.9 } });
           map.addLayer({ id: 'sentiers', type: 'line', source: 'bdtopo', 'source-layer': 'troncon_de_route', minzoom: 15, filter: filtre, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['case', ['==', ['get', 'prive'], true], '#b3261e', '#10192a'], 'line-width': 2, 'line-dasharray': ['literal', [2, 1.5]] } });
         }
-        if (map.getZoom() < 15) { cible.textContent = 'Approche-toi : les sentiers de l\'IGN s\'affichent en vue rapprochée (à partir du niveau 15).'; map.getSource('sentiers-bons').setData({ type: 'FeatureCollection', features: [] }); return; }
+        const pres15 = map.getZoom() >= 15, loin = !pres15 && !!map.getLayer('sentiers-loin');
+        if (map.getZoom() < 13 || (!pres15 && !loin)) { cible.textContent = 'Approche-toi un peu : les sentiers s\'affichent à partir de l\'échelle d\'un vallon (niveau 13).'; map.getSource('sentiers-bons').setData({ type: 'FeatureCollection', features: [] }); return; }
         const g = memo.g, cl = memo.classes; if (!g || !cl) return;
         const r = Math.max(1, Math.round(100 / g.pas)), pas = Math.max(1, Math.round(r / 6));
         const pres = (lon, lat) => { const k = app.indice(g, lon, lat); if (k < 0) return false; const i0 = k % g.w, j0 = (k - i0) / g.w; for (let dj = -r; dj <= r; dj += pas) for (let di = -r; di <= r; di += pas) { if (di * di + dj * dj > r * r) continue; const i = i0 + di, j = j0 + dj; if (i >= 0 && j >= 0 && i < g.w && j < g.h && cl[j * g.w + i] === 'm') return true; } return false; };
         const bons = [], vus = new Set(); let nb = 0, km = 0;
-        for (const f of map.querySourceFeatures('bdtopo', { sourceLayer: 'troncon_de_route', filter: filtre })) {
-          const id = f.properties.cleabs + '|' + JSON.stringify(f.geometry.coordinates[0]).slice(0, 40); if (vus.has(id)) continue; vus.add(id);
+        for (const f of (pres15 ? map.querySourceFeatures('bdtopo', { sourceLayer: 'troncon_de_route', filter: filtre }) : map.querySourceFeatures('plan_ign', { sourceLayer: 'routier_chemin', filter: filtreLoin }))) {
+          const id = (f.properties.cleabs || f.properties.symbo) + '|' + JSON.stringify(f.geometry.coordinates[0]).slice(0, 40); if (vus.has(id)) continue; vus.add(id);
           for (const ligne of (f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates)) for (let n = 1; n < ligne.length; n++) {
             const a = ligne[n - 1], b = ligne[n]; if (pres((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) { bons.push([a, b]); km += app.distKm(a, b); }
           }
           nb++;
         }
         map.getSource('sentiers-bons').setData({ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: bons } });
-        cible.innerHTML = nb ? `Sentiers et chemins de l'IGN (en rouge : signalés privés). En turquoise, ${km >= 0.05 ? `<span class="fort">${km.toFixed(1).replace('.', ',')} km</span> de tronçons` : 'aucun tronçon'} à moins de 100 m d'une zone « meilleur ». Un chemin de la carte peut avoir disparu ou traverser une propriété.` : 'Aucun sentier de l\'IGN dans cette vue.';
+        cible.innerHTML = nb ? `<span class="fort">Surlignés en turquoise</span> : ${km >= 0.05 ? `<span class="fort">${km.toFixed(1).replace('.', ',')} km</span> de sentiers` : 'aucun sentier'} à moins de 100 m d'une zone « meilleur » — par où passer pour longer les bons coins. En pointillé, les sentiers et chemins de l'IGN${pres15 ? ' (en rouge : signalés privés)' : ' (de plus près, les chemins privés passent en rouge)'}. Un chemin de la carte peut avoir disparu ou traverser une propriété.` : 'Aucun sentier de l\'IGN dans cette vue.';
       };
       let p = await meteoPassee();
       const dessiner = async () => {
@@ -316,7 +322,7 @@
       const t = CODES[type[k] - 1], e = a.expo[k];
       document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, ${t ? LIB[t] : 'hors forêt'}, pente de ${Math.round(a.pente[k])}° tournée vers ${['le nord', 'le nord-est', 'l\'est', 'le sud-est', 'le sud', 'le sud-ouest', 'l\'ouest', 'le nord-ouest'][Math.round(e / 45) % 8]}${passe ? `, environ ${Math.round(tempA(passe, g.z[k]))} °C de moyenne cette semaine` : ''}. Note : <span class="fort">${Math.round(notes[k] * 100)} / 100</span> pour ${CHAMPIGNONS[choisi].nom.toLowerCase()}${memo.classes && memo.classes[k] ? `, classe « ${{ p: 'possible', b: 'bon', t: 'très bon', m: 'le meilleur' }[memo.classes[k]]} »` : ''}.`;
     },
-    fermer(app) { app.retirer('note', 'reperes', 'obs-mois', 'obs', 'sentiers-bons', 'sentiers', 'sentiers-bord'); }
+    fermer(app) { app.retirer('note', 'reperes', 'obs-mois', 'obs', 'sentiers-bons', 'sentiers', 'sentiers-bord', 'sentiers-loin', 'sentiers-loin-bord'); }
   };
 
   // ---------- 2. Pluie et température ----------
