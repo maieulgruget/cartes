@@ -47,7 +47,7 @@
   });
   app.map.setMinZoom(9.6);
   const P = await Socle.plongee.installer(app, {
-    id: 'plongee-baie', donnees: './', fuseau: F, centreMeteo: [-2.62, 48.66],
+    id: 'plongee-baie', donnees: './', fuseau: F, centreMeteo: [-2.62, 48.66], nomMeteo: 'au milieu de la baie',
     // Marée : points de référence au large, et niveau moyen de la mer au-dessus du zéro des cartes terrestres (les mêmes que la carte Marées).
     maree: { refs: [{ nom: 'Saint-Quay', p: [-2.75, 48.67] }, { nom: 'baie de Saint-Brieuc', p: [-2.62, 48.62] }, { nom: 'Erquy', p: [-2.45, 48.67] }], decal: 0.45 },
     especes: Socle.plongee.especesManche,
