@@ -85,6 +85,72 @@
       return { data: (await cacheRelief.get(cle)).slice(0) };
     });
   }
+  /* ---------- Le fond vu de près ----------
+     L'image du fond s'arrête au zoom des tuiles (3,5 m par point à Antibes, 6 m en baie de Saint-Brieuc). Au-delà, la
+     carte l'étirait : des aplats flous aux bords en marches d'escalier. Les tuiles plus fines sont maintenant calculées
+     dans la page à partir de la dernière tuile réelle :
+       - elle est relue en douceur, et ses limites (sable, herbier, roche) sont un peu bousculées par un bruit lent, pour
+         qu'un bord naturel ne soit plus une droite floue ;
+       - un grain lui est ajouté, qui dépend de ce que l'image montre : rides et piqueté sur le sable (clair), touffes
+         serrées sur l'herbier (vert), marbrures plus dures sur la roche (sombre).
+     Ce grain est un habillage, pas une mesure : il ne montre rien que le relevé ne sache. Il est le même d'une tuile à
+     l'autre (il ne dépend que de la position sur la Terre), et s'efface en dézoomant. */
+  const cacheFond = new Map(), cacheFondSrc = new Map(); let fileFond = Promise.resolve();
+  const dansFond = (z, x, y) => { const t = D.indexFond && D.indexFond.tuiles[z]; return !!t && x >= t[0] && x <= t[1] && y >= t[2] && y <= t[3]; };
+  // Bruit de valeur, continu, entre 0 et 1 : le même en un point donné quelle que soit la tuile qui le demande.
+  const alea = (i, j) => { let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const bruit = (x, y) => { const i = Math.floor(x), j = Math.floor(y), u = x - i, v = y - j, a = u * u * (3 - 2 * u), b = v * v * (3 - 2 * v); return (alea(i, j) * (1 - a) + alea(i + 1, j) * a) * (1 - b) + (alea(i, j + 1) * (1 - a) + alea(i + 1, j + 1) * a) * b; };
+  function tuileFond(x, y) {
+    const cle = x + '/' + y;
+    if (!cacheFondSrc.has(cle)) {
+      cacheFondSrc.set(cle, (async () => {
+        const r = await fetch(`${D.racine}fond/${ZT()}/${x}/${y}.webp`); if (!r.ok) return null;
+        const c = document.createElement('canvas'); c.width = c.height = 512; const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(await createImageBitmap(await r.blob()), 0, 0);
+        return ctx.getImageData(0, 0, 512, 512).data;
+      })().catch(() => null));
+      if (cacheFondSrc.size > 16) cacheFondSrc.delete(cacheFondSrc.keys().next().value);
+    }
+    return cacheFondSrc.get(cle);
+  }
+  async function fondFin(z, x, y) {
+    const dz = z - ZT(), n = 1 << dz, src = await tuileFond(x >> dz, y >> dz); if (!src) return null;
+    const im = new ImageData(512, 512), d = im.data;
+    const x0 = (x & (n - 1)) * 512 / n, y0 = (y & (n - 1)) * 512 / n, pas = 1 / n;
+    // Position en points du zoom 18 (une vingtaine de centimètres) : l'unité du grain.
+    const k18 = Math.pow(2, 18 - z), gx = x * 512 * k18, gy = y * 512 * k18, force = Math.min(1, 0.35 + 0.22 * dz);
+    for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
+      const wx = gx + i * k18, wy = gy + j * k18;
+      // Bords bousculés : on lit la tuile un peu à côté, d'un écart lent (une quinzaine de mètres) et d'un écart court.
+      const ex = (bruit(wx / 70, wy / 70) - 0.5) * 2.2 + (bruit(wx / 17 + 31, wy / 17) - 0.5) * 0.9, ey = (bruit(wx / 70 + 57, wy / 70 + 13) - 0.5) * 2.2 + (bruit(wx / 17, wy / 17 + 91) - 0.5) * 0.9;
+      const sx = Math.min(510.999, Math.max(0, x0 + (i + 0.5) * pas - 0.5 + ex)), sy = Math.min(510.999, Math.max(0, y0 + (j + 0.5) * pas - 0.5 + ey));
+      const a = sx | 0, b = sy | 0, u = sx - a, v = sy - b, p = 4 * (b * 512 + a), w00 = (1 - u) * (1 - v), w10 = u * (1 - v), w01 = (1 - u) * v, w11 = u * v;
+      let r = src[p] * w00 + src[p + 4] * w10 + src[p + 2048] * w01 + src[p + 2052] * w11, g = src[p + 1] * w00 + src[p + 5] * w10 + src[p + 2049] * w01 + src[p + 2053] * w11, bl = src[p + 2] * w00 + src[p + 6] * w10 + src[p + 2050] * w01 + src[p + 2054] * w11;
+      const al = src[p + 3] * w00 + src[p + 7] * w10 + src[p + 2051] * w01 + src[p + 2055] * w11;
+      // Ce que l'image montre ici : herbier (vert), roche (sombre), sinon sédiment.
+      const lum = (r + g + bl) / 3, vert = Math.max(0, Math.min(1, (g - (r + bl) / 2 - 8) / 14)), roche = (1 - vert) * Math.max(0, Math.min(1, (78 - lum) / 30)), sable = 1 - vert - roche;
+      const fin = bruit(wx / 2.3, wy / 2.3) - 0.5, moyen = bruit(wx / 9, wy / 9) - 0.5, large = bruit(wx / 38, wy / 38) - 0.5;
+      // Sable : rides parallèles, dont l'orientation et le pas tournent lentement, et un piqueté fin.
+      const cap = large * 2.2 + 0.6, rides = Math.sin((wx * Math.cos(cap) + wy * Math.sin(cap)) / 3.1 + moyen * 5) * (0.5 + moyen);
+      // Herbier : touffes serrées, plus contrastées. Roche : marbrures dures (le pli du bruit).
+      const touffes = (bruit(wx / 3.4, wy / 6.5) - 0.5) * 1.5 + fin * 0.8, marbre = (Math.abs(moyen) * 2 - 0.5) * 1.3 + fin * 0.9;
+      const t = 1 + force * (sable * (0.05 * rides + 0.07 * fin + 0.06 * large) + vert * (0.22 * touffes + 0.08 * large) + roche * (0.2 * marbre + 0.1 * large));
+      const q = 4 * (j * 512 + i); d[q] = Math.max(0, Math.min(255, r * t)); d[q + 1] = Math.max(0, Math.min(255, g * t)); d[q + 2] = Math.max(0, Math.min(255, bl * t)); d[q + 3] = al;
+    }
+    return im;   // rendue telle quelle à la carte : l'encoder en image attendait un temps mort que l'animation ne laisse pas
+  }
+  function brancherFond() {
+    if (brancherFond.fait) return; brancherFond.fait = true;
+    maplibregl.addProtocol('plfond', async (params) => {
+      const cle = params.url, [z, x, y] = cle.replace('plfond://', '').split('/').map(Number);
+      if (z <= ZT()) { if (!dansFond(z, x, y)) throw new Error('hors du secteur'); const r = await fetch(`${D.racine}fond/${z}/${x}/${y}.webp`); if (!r.ok) throw new Error('tuile absente'); return { data: await r.arrayBuffer() }; }
+      if (!dansFond(ZT(), x >> (z - ZT()), y >> (z - ZT()))) throw new Error('hors du secteur');
+      // Une tuile à la fois, en laissant la main entre deux : le calcul (un dixième de seconde environ) ne fige pas la carte.
+      if (!cacheFond.has(cle)) { const p = fileFond.then(() => new Promise(r => setTimeout(r, 0))).then(() => fondFin(z, x, y)).catch(() => null); fileFond = p; cacheFond.set(cle, p); if (cacheFond.size > 28) cacheFond.delete(cacheFond.keys().next().value); }
+      const im = await cacheFond.get(cle); if (!im) throw new Error('tuile absente');
+      return { data: await createImageBitmap(im) };
+    });
+  }
   // Zoom le plus fin des tuiles du secteur (14 à Antibes : 3,5 m ; 13 en baie de Saint-Brieuc : 6 m).
   const ZT = () => D.zt;
   // Altitudes d'une tuile du secteur à son zoom le plus fin (512 × 512), décodées une fois et gardées un moment.
@@ -512,7 +578,7 @@
     }
     return { w, h, b, fetch: out, yM };
   }
-  function peindreAbri(r, hauteur) {
+  function peindreAbri(r, hauteur, masques) {
     const c = document.createElement('canvas'); c.width = r.w; c.height = r.h; const x = c.getContext('2d'), im = x.createImageData(r.w, r.h), d = im.data;
     // Exposition de 0 (abri) à 1, adoucie sur cinq mailles : l'ombre d'un caillou isolé ne tire plus un trait de plusieurs kilomètres.
     const w = r.w, h = r.h, e0 = new Float32Array(w * h), e1 = new Float32Array(w * h);
@@ -529,6 +595,7 @@
       const col = e < 0.2 ? [58, 178, 150] : e < 0.45 ? [158, 204, 112] : e < 0.7 ? [240, 176, 84] : [226, 106, 68];
       // Posé sur une mer claire et unie : quatre teintes franches, comme sur une carte de classes ; les crêtes disent le mouvement.
       // Vers le bord du secteur, la teinte s'efface : la carte ne sait rien dire au-delà.
+      if (masques && masques.has(e < 0.2 ? 'abri' : e < 0.45 ? 'peu' : e < 0.7 ? 'expose' : 'tres')) continue;   // classe masquée dans la légende
       d[4 * k] = col[0]; d[4 * k + 1] = col[1]; d[4 * k + 2] = col[2]; d[4 * k + 3] = (e < 0.2 ? 215 : e < 0.45 ? 195 : e < 0.7 ? 170 : 150) * bord;
     }
     x.putImageData(im, 0, 0);
@@ -599,12 +666,12 @@
   async function installer(app, opts) {
     styles();
     const map = app.map, racine = opts.donnees;
-    const [index, fonds, habitats] = await Promise.all([
+    const [index, fonds, habitats, indexFond] = await Promise.all([
       fetch(racine + 'relief/index.json').then(r => r.json()), fetch(racine + 'fonds.json').then(r => r.json()),
-      fetch(racine + 'habitats.json').then(r => r.json())]);
+      fetch(racine + 'habitats.json').then(r => r.json()), fetch(racine + 'fond/index.json').then(r => r.ok ? r.json() : null).catch(() => null)]);
     // Les herbiers n'existent que si le script de préparation les a trouvés (fonds.herbiers) : pas de requête perdue sinon.
     const herbiers = fonds.herbiers ? await fetch(racine + 'herbiers.json').then(r => r.ok ? r.json() : null).catch(() => null) : null;
-    D = { racine, index, fonds, habitats, herbiers, zt: Math.max(...Object.keys(index.tuiles).map(Number)), zMonde: opts.zoomMonde || 12, zPoissons: opts.zoomPoissons || 13.8, nordFerme: opts.nordFerme !== false };
+    D = { racine, index, fonds, habitats, herbiers, indexFond, zt: Math.max(...Object.keys(index.tuiles).map(Number)), zMonde: opts.zoomMonde || 12, zPoissons: opts.zoomPoissons || 13.8, nordFerme: opts.nordFerme !== false };
     const NV = fonds.niveaux || { haut: 0, moyen: 0, bas: 0 }, TX = Object.assign({ releve: 'relevé au lidar (1 m)', autre: 'modèle à 100 m : ordre de grandeur', credit: 'Fonds : Litto3D® Shom-IGN, HOMONIM Shom, natures de fond Shom' }, opts.textes || {});
     if (opts.especes) ESPECES = opts.especes;
     MER = NV.moyen;
@@ -615,7 +682,9 @@
     app.forcerSolNu(true);
     map.getSource('relief').setTiles(['plongee://{z}/{x}/{y}']);
     const e = index.emprise;
-    map.addSource('pl-fond', { type: 'raster', tiles: [racine + 'fond/{z}/{x}/{y}.webp'], tileSize: 512, minzoom: 10, maxzoom: D.zt, bounds: e, attribution: TX.credit });
+    // Avec l'index des tuiles du fond, les zooms plus fins sont calculés dans la page (« le fond vu de près ») ; sans lui, la carte étire la dernière tuile, comme avant.
+    if (indexFond) brancherFond();
+    map.addSource('pl-fond', { type: 'raster', tiles: [indexFond ? 'plfond://{z}/{x}/{y}' : racine + 'fond/{z}/{x}/{y}.webp'], tileSize: 512, minzoom: 10, maxzoom: indexFond ? Math.min(17, D.zt + 3) : D.zt, bounds: e, attribution: TX.credit });
     map.addLayer({ id: 'pl-fond', type: 'raster', source: 'pl-fond', paint: { 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, 'analyses');
     map.addSource('pl-vect', { type: 'geojson', data: fonds });
     if (herbiers) {
@@ -626,9 +695,9 @@
     if (herbiers) for (let k = 0; k < NIMG; k++) map.addImage('pl-herb' + k, motifHerbier(k), { pixelRatio: 2 });
     if (herbiers) {
       map.addLayer({ id: 'pl-herbiers', type: 'fill', source: 'pl-herbiers', filter: ['==', ['get', 'k'], 'herbier'], minzoom: 15.6, paint: { 'fill-pattern': 'pl-herb0', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15.6, 0, 16.4, 0.8] } }, 'analyses');
-      map.addLayer({ id: 'pl-herbiers-aplat', type: 'fill', source: 'pl-herbiers', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'k'], 'herbier', '#2f9a4a', '#b98a5e'], 'fill-opacity': 0.8, 'fill-outline-color': 'rgba(20,50,25,0.5)' } }, 'analyses');
+      map.addLayer({ id: 'pl-herbiers-aplat', type: 'fill', source: 'pl-herbiers', layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'k'], 'herbier', '#2f9a4a', '#b98a5e'], 'fill-opacity': 0.78, 'fill-outline-color': 'rgba(20,50,25,0.5)' } }, 'analyses');
     }
-    map.addLayer({ id: 'pl-nature', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'nature'], layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'm'], 'roche', '#6b4a3a', 'sable', '#f2d27a', 'vase', '#8fa3b5', '#cccccc'], 'fill-opacity': 0.72, 'fill-outline-color': 'rgba(40,30,20,0.45)' } }, 'analyses');
+    map.addLayer({ id: 'pl-nature', type: 'fill', source: 'pl-vect', filter: ['==', ['get', 'k'], 'nature'], layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'm'], 'roche', '#6b4a3a', 'sable', '#f2d27a', 'vase', '#8fa3b5', '#cccccc'], 'fill-opacity': 0.78, 'fill-antialias': false } }, 'analyses');
     // L'eau lit le relief dans sa propre source (les mêmes tuiles, déjà en mémoire du navigateur) : la carte dessine mieux
     // une teinte et un relief 3D qui ne partagent pas la même source.
     // Au-delà du zoom des tuiles, le relief est recalculé (adouci) jusqu'au zoom 17 plutôt qu'étiré par la carte graphique :
@@ -727,7 +796,7 @@
       sites: 'Épaves et obstructions : base du Shom (CC BY-SA 4.0), avec la précision de position annoncée. Secs : sommets sous-marins repérés par la carte dans le relief du lidar, qui dominent leurs alentours d\'au moins 4 m. Les sites que tu ajoutes restent dans ce téléphone ; « Partager » les envoie par un lien. Aucun site n\'est une autorisation : zones protégées, chenaux et mouillages réglementés restent à vérifier.',
       parcours: 'Le profil lit le relief au pas de 3,5 m (lidar) le long du tracé. La durée suppose un groupe de plongeurs qui palme tranquillement, autour de 10 m par minute, sans les paliers : elle donne un ordre de grandeur pour choisir un parcours, pas un temps de plongée. Ni la carte ni ce calcul ne remplacent le directeur de plongée, les tables ou l\'ordinateur.',
       niveaux: 'Repères de profondeur maximale de la Fédération française d\'études et de sports sous-marins : baptême 6 m ; niveau 1 jusqu\'à 20 m encadré ; niveau 2 jusqu\'à 40 m encadré (20 m en autonomie) ; niveau 3 jusqu\'à 60 m en autonomie. Les conditions du jour, l\'expérience et le directeur de plongée décident : ces lignes servent à lire le relief autour d\'un site.',
-      conditions: 'Prévision Open-Meteo : vagues, houle, température de l\'eau et courant (modèles de vagues et d\'océan, maille de plusieurs kilomètres), vent (modèles de Météo-France). L\'abri compare, pour chaque endroit de la mer, la longueur d\'eau libre dans la direction d\'où viennent les vagues (le fetch) : un cap ou une île devant soi abrite. Les crêtes dessinées avancent dans le sens des vagues, plus serrées quand la période est courte, plus marquées quand la mer est haute ; elles s\'effacent à l\'abri. La diffraction autour des pointes et le ressac le long des falaises ne sont pas calculés. La visibilité sous l\'eau n\'est prévue par personne : elle dépend du plancton, des pluies et des derniers coups de vent.'
+      conditions: 'Prévision Open-Meteo : vagues, houle, température de l\'eau et courant (modèles de vagues et d\'océan, maille de plusieurs kilomètres), vent (modèles de Météo-France). Ces chiffres valent pour un seul point, marqué sur la carte avec la flèche du vent : à l\'échelle du secteur, le vent et les vagues du large changent peu, c\'est l\'abri de la côte qui fait la différence. Chaque classe d\'exposition se masque en touchant la légende. L\'abri compare, pour chaque endroit de la mer, la longueur d\'eau libre dans la direction d\'où viennent les vagues (le fetch) : un cap ou une île devant soi abrite. Les crêtes dessinées avancent dans le sens des vagues, plus serrées quand la période est courte, plus marquées quand la mer est haute ; elles s\'effacent à l\'abri. La diffraction autour des pointes et le ressac le long des falaises ne sont pas calculés. La visibilité sous l\'eau n\'est prévue par personne : elle dépend du plancton, des pluies et des derniers coups de vent.'
     };
     const poserEau = (N, k) => map.setPaintProperty('pl-eau', 'color-relief-color', regleEau(N, k));
     Object.assign(aide, opts.aide || {});
@@ -1057,6 +1126,19 @@
     themes.conditions = (() => {
       const q = { theme: 'Conditions', libelle: 'Fait-il bon plonger ?', aide: aide.conditions };
       let h = 0, M = null, tour = 0, derniere = null;
+      const masquesAbri = new Set();
+      const CLASSES_ABRI = [['abri', 'rgb(58,178,150)', 'à l\'abri'], ['peu', 'rgb(158,204,112)', 'peu exposé'], ['expose', 'rgb(240,176,84)', 'exposé'], ['tres', 'rgb(226,106,68)', 'très exposé']];
+      // Les prévisions sont celles d'un seul point, au large du secteur : il est marqué sur la carte, avec la flèche du vent.
+      const OU = opts.nomMeteo || 'au large du secteur';
+      const poserAbri = () => { const ab = q._ab, r = derniere; if (!ab || !r || r.vague == null) return; app.poser('pl-abri', { x0: S.versMerc(ab.b[0], ab.b[1])[0], y0: S.versMerc(ab.b[0], ab.b[1])[1], x1: S.versMerc(ab.b[2], ab.b[3])[0], y1: S.versMerc(ab.b[2], ab.b[3])[1] }, peindreAbri(ab, r.vague, masquesAbri), 0.8); };
+      function pointVent(r) {
+        if (!map.hasImage('pl-fleche-vent')) { const k = 2, cv = document.createElement('canvas'); cv.width = cv.height = 44 * k; const x = cv.getContext('2d'); x.scale(k, k); x.beginPath(); x.moveTo(22, 3); x.lineTo(33, 20); x.lineTo(26, 20); x.lineTo(26, 41); x.lineTo(18, 41); x.lineTo(18, 20); x.lineTo(11, 20); x.closePath(); x.fillStyle = '#ffffff'; x.fill(); x.lineWidth = 2.4; x.strokeStyle = '#1a2e4a'; x.lineJoin = 'round'; x.stroke(); map.addImage('pl-fleche-vent', x.getImageData(0, 0, 44 * k, 44 * k), { pixelRatio: k }); }
+        const fc = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { rot: r.dirVent != null ? (r.dirVent + 180) % 360 : 0, vent: r.vent != null && r.dirVent != null ? 1 : 0, t: r.vent != null ? `vent ${Math.round(r.vent)} nd` : 'point des prévisions' }, geometry: { type: 'Point', coordinates: opts.centreMeteo } }] };
+        if (map.getSource('pl-vent')) { map.getSource('pl-vent').setData(fc); return; }
+        map.addSource('pl-vent', { type: 'geojson', data: fc });
+        map.addLayer({ id: 'pl-vent-rond', type: 'circle', source: 'pl-vent', paint: { 'circle-radius': 5, 'circle-color': '#1a2e4a', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
+        map.addLayer({ id: 'pl-vent', type: 'symbol', source: 'pl-vent', layout: { 'icon-image': 'pl-fleche-vent', 'icon-size': ['case', ['==', ['get', 'vent'], 1], 1, 0], 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map', 'icon-offset': [0, -24], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': true }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+      }
       const maintenant = () => { const d = new Date(); d.setMinutes(0, 0, 0); return d; };
       const dateDe = k => new Date(maintenant().getTime() + k * 3600000);
       const jour = d => d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', timeZone: opts.fuseau });
@@ -1134,15 +1216,19 @@
           ['Vagues', r.vague != null ? fr(r.vague, 1) + ' m' : '—', r.periode ? Math.round(r.periode) + ' s' : ''],
           ['Houle', r.houle != null ? fr(r.houle, 1) + ' m' : '—', r.dirHoule != null ? cardinal(r.dirHoule) : ''],
           ['Vent', r.vent != null ? Math.round(r.vent) + ' nd' : '—', r.rafales != null ? 'rafales ' + Math.round(r.rafales) : ''],
-          ['Eau', r.eau != null ? Math.round(r.eau) + ' °C' : '—', r.courant != null ? 'courant ' + fr(r.courant / 1.852, 1) + ' nd' : '']].map(x => `<div><b>${x[0]}</b>${x[1]}<small style="display:block;color:var(--muted)">${x[2] || '&nbsp;'}</small></div>`).join('')}</div>`;
+          ['Eau', r.eau != null ? Math.round(r.eau) + ' °C' : '—', r.courant != null ? 'courant ' + fr(r.courant / 1.852, 1) + ' nd' : '']].map(x => `<div><b>${x[0]}</b>${x[1]}<small style="display:block;color:var(--muted)">${x[2] || '&nbsp;'}</small></div>`).join('')}</div>
+          <p class="petit2" style="margin:4px 0 0">Prévisions au point marqué sur la carte, ${propre(OU)} ; la flèche y donne le sens du vent.</p>`;
+        pointVent(r);
         majMaree(c, d.getTime());
-        if (dir != null && r.vague != null) { const ab = abri(dir); app.poser('pl-abri', { x0: S.versMerc(ab.b[0], ab.b[1])[0], y0: S.versMerc(ab.b[0], ab.b[1])[1], x1: S.versMerc(ab.b[2], ab.b[3])[0], y1: S.versMerc(ab.b[2], ab.b[3])[1] }, peindreAbri(ab, r.vague), 0.8); q._ab = ab; crete.dir = dir; crete.h = r.vague; crete.per = r.periode || 5; semer(); toile(true); horloge.geste = Date.now(); }
+        if (dir != null && r.vague != null) { const ab = abri(dir); q._ab = ab; poserAbri(); crete.dir = dir; crete.h = r.vague; crete.per = r.periode || 5; semer(); toile(true); horloge.geste = Date.now(); }
       }
       q.ouvrir = async (app) => {
         const c = q._c = app.repondre(q.libelle, `<p class="etat">Lecture des prévisions…</p>
           <div class="ligne"><label style="min-width:60px">Quand</label><input type="range" class="hh" min="0" max="84" step="1" value="${h}" style="flex:1"><span class="fort v-h" style="min-width:96px;text-align:right"></span></div>
           <div class="pl-cond"></div><div class="pl-maree"></div>
-          <div class="legende"><span><i style="background:rgb(58,178,150)"></i>à l'abri</span><span><i style="background:rgb(158,204,112)"></i>peu exposé</span><span><i style="background:rgb(240,176,84)"></i>exposé</span><span><i style="background:rgb(226,106,68)"></i>très exposé</span></div>`);
+          <div class="legende"></div>`);
+        // La légende se touche : chaque classe d'exposition se masque ou se rétablit.
+        app.legende(c, CLASSES_ABRI.map(k => ({ cle: k[0], couleur: k[1], texte: k[2] })), poserAbri, masquesAbri);
         c.querySelector('.hh').oninput = e => { h = +e.target.value; maj(c); };
         map.setPaintProperty('pl-eau', 'color-relief-color', regleUnie(MER));
         await maj(c);
@@ -1151,10 +1237,10 @@
         const ab = q._ab, r = derniere; if (!ab || !r) return;
         const k = caseMasque(ll.lng, ll.lat), f = k >= 0 ? ab.fetch[k] : NaN;
         if (f !== f) { app.bulle(ll, 'À terre ou hors du secteur'); return; }
-        app.bulle(ll, `<span class="fort">${exposition(f, r.vague)}</span><small>${f >= 12000 ? 'mer libre sur plus de 12 km' : 'eau libre sur ' + (f < 1000 ? Math.round(f / 10) * 10 + ' m' : fr(f / 1000, 1) + ' km')} ${versCap(dirMer(r))}</small>`);
+        app.bulle(ll, `<span class="fort">${exposition(f, r.vague)}</span><small>${f >= 12000 ? 'mer libre sur plus de 12 km' : 'eau libre sur ' + (f < 1000 ? Math.round(f / 10) * 10 + ' m' : fr(f / 1000, 1) + ' km')} ${versCap(dirMer(r))}</small>${r.vent != null ? `<small>vent ${Math.round(r.vent)} nœuds (${Math.round(r.vent * 1.852)} km/h) ${duCap(r.dirVent)}${r.rafales != null ? ', rafales ' + Math.round(r.rafales) : ''}</small>` : ''}${r.vague != null ? `<small>vagues du large ${fr(r.vague, 1)} m</small>` : ''}`);
       };
       q.plein = () => ({ bloc: T ? ['.pl-cond', '.pl-maree'] : '.pl-cond' });
-      q.fermer = (app) => { tour++; toile(false); app.retirer('pl-abri'); poserEau(MER); if (T) majMer(); };
+      q.fermer = (app) => { tour++; toile(false); app.retirer('pl-abri', 'pl-vent-rond', 'pl-vent'); poserEau(MER); if (T) majMer(); };
       return q;
     })();
 

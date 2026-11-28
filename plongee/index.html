@@ -44,7 +44,7 @@
     ],
     sources: 'Fonds marins : Litto3D® PACA 2015 (Shom, IGN ; Licence Ouverte), lidar bathymétrique au mètre jusqu\'à une quarantaine de mètres de fond ; au-delà, MNT de façade HOMONIM du Shom à 100 m, relu sur sa palette. À terre : Litto3D puis RGE ALTI de l\'IGN. Natures de fond au 1/50 000 : Shom, 2025 (Licence Ouverte). Herbiers de posidonie et matte morte : inventaire de l\'Office français de la biodiversité (Life Marha, Licence Ouverte ; producteurs : Andromède Océanologie, Semantic TS, GIS Posidonie). Épaves et obstructions : Shom (CC BY-SA 4.0). Vagues, houle, vent, température de l\'eau : Open-Meteo. Les poissons sont une illustration de ce qu\'on peut croiser selon le milieu, pas une observation. Carte de préparation et de découverte : elle ne remplace ni la carte marine, ni les tables ou l\'ordinateur de plongée, ni le directeur de plongée.'
   });
-  const P = await Socle.plongee.installer(app, { donnees: './', fuseau: F, centreMeteo: [7.06, 43.50] });
+  const P = await Socle.plongee.installer(app, { donnees: './', fuseau: F, centreMeteo: [7.06, 43.50], nomMeteo: 'au sud des îles de Lérins' });
   const famille = (nom, q) => app.question(Object.assign(q, { famille: nom }));
   // Trois familles : la mer (ses profondeurs, avec le niveau que l'on fait baisser ; sa lumière), la vie (poissons, fonds), plonger (sites, parcours, niveaux, conditions).
   famille('Mer', P.themes.profondeurs);

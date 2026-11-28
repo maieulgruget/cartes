@@ -69,6 +69,16 @@ RGE ALTI et des natures de fond du Shom ; il se relance pour une autre emprise. 
 l'OFB, Licence Ouverte) sont lus par le même script : ils teintent l'image du fond, donnent leur milieu aux points
 d'habitat et sont écrits dans `plongee/herbiers.json`.
 
+`relais/plongee_affiner.py [dossier]` reprend ensuite `herbiers.json` et `fonds.json` sans rien retélécharger : contours
+des herbiers arrondis (pointes rabotées, trous de moins de 250 m² rebouchés), et plus aucun recouvrement entre aplats
+(dans l'ordre herbier, matte, roche, sable, vase). À relancer après `plongee_fonds.py`. Arrondir ne rend pas la donnée
+plus exacte, seulement plus plausible à l'œil.
+
+Le fond vu de près : au-delà du zoom des tuiles du fond, la page calcule elle-même les tuiles plus fines (trois zooms de
+plus) à partir de la dernière tuile réelle, relue en douceur, avec des limites un peu bousculées et un grain qui dépend
+de ce que l'image montre (rides sur le sable, touffes sur l'herbier, marbrures sur la roche). C'est un habillage, pas
+une mesure.
+
 Le même script prépare un autre secteur (`--secteur=baie` pour `plongee-baie/`) : en Bretagne le fond vient du Litto3D
 Bretagne 2018-2021, dont `relais/plongee_litto3d_bzh.py` ne rapatrie que le modèle à 5 m (archives 7z lues à distance
 par requêtes partielles), et les natures de fond de la carte sédimentaire mondiale du Shom. Dans une mer à marée, la
