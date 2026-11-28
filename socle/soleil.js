@@ -372,11 +372,11 @@
     let tour = 0;
     const q = {
       theme: opts.theme || 'Nuages', libelle: opts.libelle || 'Le ciel sera-t-il dégagé ?',
-      aide: 'Couverture nuageuse prévue par Open-Meteo au point touché, heure par heure, en frise : chaque case va du bleu (ciel clair) au gris (couvert). La première frise montre les nuages bas (ceux qui bouchent les cirques et les sommets) ; la seconde, tous les nuages, quand le modèle les distingue. Les créneaux dégagés (30 % de nuages bas au plus) sont cerclés d\'or, l\'heure qu\'il est de blanc. Quand le modèle donne la même valeur pour les nuages bas et pour le total, une seule frise est affichée. La maille du modèle fait plusieurs kilomètres : il donne la tendance du secteur, pas le nuage accroché à un rempart précis. Sous les tropiques, les nuages montent souvent dans les hauts dès la fin de matinée.',
+      aide: 'Couverture nuageuse prévue par Open-Meteo au point touché, heure par heure, en frise : chaque case va du bleu (ciel clair) au gris (couvert). La première frise montre les nuages bas (ceux qui bouchent les cirques et les sommets) ; la seconde, tous les nuages, quand le modèle les distingue. Les créneaux dégagés (30 % de nuages bas au plus) sont cerclés d\'or, l\'heure qu\'il est de blanc. Sous chaque pictogramme, la température prévue à cette heure, à l\'altitude du point. Quand le modèle donne la même valeur pour les nuages bas et pour le total, une seule frise est affichée. La maille du modèle fait plusieurs kilomètres : il donne la tendance du secteur, pas le nuage accroché à un rempart précis. Sous les tropiques, les nuages montent souvent dans les hauts dès la fin de matinée.',
       async ouvrir(app) { q._c = app.repondre(q.libelle, `<p class="etat">Lecture du ciel…</p><div class="tab"></div>`); await q.lire(app, app.map.getCenter()); },
       async lire(app, ll) {
         const c = q._c, moi = ++tour;
-        const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${ll.lat.toFixed(3)}&longitude=${ll.lng.toFixed(3)}&hourly=cloud_cover_low,cloud_cover,precipitation_probability&forecast_hours=36&timezone=${encodeURIComponent(opts.fuseau)}`);
+        const j = await app.meteo(`https://api.open-meteo.com/v1/forecast?latitude=${ll.lat.toFixed(3)}&longitude=${ll.lng.toFixed(3)}&hourly=cloud_cover_low,cloud_cover,precipitation_probability,temperature_2m&forecast_hours=36&timezone=${encodeURIComponent(opts.fuseau)}`);
         if (moi !== tour || app.active !== q) return;
         const h = j && j.hourly; if (!h) { c.querySelector('.etat').textContent = 'Le ciel n\'a pas pu être lu. Réessaie dans un moment.'; return; }
         const jour = h.time.map((t, i) => ({ t, i, hh: +t.slice(11, 13) })).filter(x => x.hh >= 5 && x.hh <= 19).slice(0, 18);
@@ -391,7 +391,11 @@
         const picto = v => v <= 15 ? '☀️' : v <= 40 ? '🌤️' : v <= 75 ? '⛅' : '☁️';
         // L'heure qu'il est se repère dans la frise (case cerclée de blanc), quand elle fait partie des heures de jour montrées.
         const ici = maintenant(opts.fuseau), cleIci = ici.jour + 'T' + String(Math.floor(ici.minutes / 60)).padStart(2, '0');
-        const bande = (val, pictos) => `<div class="frise">${jour.map((x, n) => { const v = val(x), nj = n > 0 && x.t.slice(0, 10) !== jour[n - 1].t.slice(0, 10); return `<div class="${v != null && v <= 30 ? 'ok' : ''}${nj ? ' nj' : ''}${x.t.slice(0, 13) === cleIci ? ' ici' : ''}" title="${x.hh} h : ${v == null ? '–' : Math.round(v) + ' %'}">${pictos ? `<span>${v == null ? '' : picto(v)}</span>` : ''}<i style="background:${v == null ? '#39455c' : teinte(v)}"></i><b>${pictos && x.t.slice(0, 13) === cleIci ? 'maint.' : pictos && (x.hh % 2 === 1 || nj) ? x.hh + 'h' : ''}</b></div>`; }).join('')}</div>`;
+        const bande = (val, pictos) => `<div class="frise">${jour.map((x, n) => { const v = val(x), nj = n > 0 && x.t.slice(0, 10) !== jour[n - 1].t.slice(0, 10); return `<div class="${v != null && v <= 30 ? 'ok' : ''}${nj ? ' nj' : ''}${x.t.slice(0, 13) === cleIci ? ' ici' : ''}" title="${x.hh} h : ${v == null ? '–' : Math.round(v) + ' %'}">${pictos ? `<span>${v == null ? '' : picto(v)}</span>${temp ? `<em>${temp(x)}</em>` : ''}` : ''}<i style="background:${v == null ? '#39455c' : teinte(v)}"></i><b>${pictos && x.t.slice(0, 13) === cleIci ? 'maint.' : pictos && (x.hh % 2 === 1 || nj) ? x.hh + 'h' : ''}</b></div>`; }).join('')}</div>`;
+        // La température de l'heure, sous le pictogramme : celle du modèle à l'altitude du point touché.
+        const T = h.temperature_2m, temp = T && T.some(v => v != null) ? x => T[x.i] == null ? '' : String(Math.round(T[x.i])).replace('-', '−') + '°' : null;
+        const ts = T ? jour.map(x => T[x.i]).filter(v => v != null) : [];
+        if (ts.length) c.querySelector('.etat').innerHTML += ` Températures de <span class="fort">${String(Math.round(Math.min(...ts))).replace('-', '−')}°</span> à <span class="fort">${String(Math.round(Math.max(...ts))).replace('-', '−')}°</span> sur ces heures.`;
         const pareils = jour.every(x => bas(x) === tot(x));
         c.querySelector('.tab').innerHTML = bande(bas, true) + (pareils ? '' : `<p class="petit2" style="margin:6px 0 0">Tous nuages confondus (les nuages hauts voilent la lumière sans boucher la vue) :</p>` + bande(tot, false)) +
           '';
