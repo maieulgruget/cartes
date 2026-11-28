@@ -784,6 +784,7 @@
            boutons   liste choisie à la place des rangées : sélecteurs de boutons du panneau, ou { texte, action } ;
            ruban, date  réglages faits main ({ min, max, pas, echelle, lire, ecrire, texte, graduations, plages } ; { lire, ecrire }) ;
            consigne  phrase quand le panneau n'en a pas encore.
+           fermerBloc  ce que fait la croix du bloc avant de le ranger : désélectionner (renvoyer vrai si quelque chose a été retiré) ;
            rangees   sélecteurs des seules rangées de boutons à reprendre (sinon : les trois premières) ;
          q.pleinPropre(app) : le thème ouvre lui-même son plein écran (drone) ; q.plein = false : il n'en veut pas.
          La phrase est réduite à sa première phrase : le reste se lit dans le panneau.
@@ -834,8 +835,9 @@
         }
         const bts = o.boutons || null, blocs = [].concat(o.bloc || []);
         racine.innerHTML = `<div class="p-tete"><div class="p-entete"></div><p class="p-etat"></p><div class="p-legende legende"></div></div>
-          <div class="p-bas"><div class="p-bloc"></div>${o.ruban ? '<div class="p-lecture"></div><div class="p-ruban"><div class="p-bande"></div><i></i></div>' : ''}<div class="p-rangs"></div><div class="p-rang p-fixe">${o.date ? '<input type="date" class="p-date" aria-label="Jour">' : ''}${(bts || []).map((x, i) => `<button data-b="${i}"></button>`).join('')}</div></div>`;
+          <div class="p-bas"><button class="p-ferme" hidden aria-label="Fermer ce bloc pour rendre la place à la carte" title="Fermer">×</button><div class="p-bloc"></div>${o.ruban ? '<div class="p-lecture"></div><div class="p-ruban"><div class="p-bande"></div><i></i></div>' : ''}<div class="p-rangs"></div><div class="p-rang p-fixe">${o.date ? '<input type="date" class="p-date" aria-label="Jour">' : ''}${(bts || []).map((x, i) => `<button data-b="${i}"></button>`).join('')}</div></div>`;
         document.body.append(racine); document.body.classList.add('pleintheme'); libre(true);
+        let blocFerme = null; const fermeEl = racine.querySelector('.p-ferme');
         const etatEl = racine.querySelector('.p-etat'), legEl = racine.querySelector('.p-legende'), blocEl = racine.querySelector('.p-bloc'), rangsEl = racine.querySelector('.p-rangs');
         const r = o.ruban, k = r ? (r.echelle || 1) : 1, bande = racine.querySelector('.p-bande'), lecture = racine.querySelector('.p-lecture'), ruban = racine.querySelector('.p-ruban');
         const poser = (e, html) => { if (e.innerHTML !== html) e.innerHTML = html; e.hidden = !html.trim(); };
@@ -852,7 +854,13 @@
           const e = [...c.querySelectorAll('.etat')].find(x => horsAide(x) && x.textContent.trim()) || [...c.querySelectorAll(':scope > p:not(.petit):not(.petit2)')].find(x => x.textContent.trim());
           poser(etatEl, e ? courte(e) : (o.consigne || ''));
           const l = [...c.querySelectorAll('.legende')].find(horsAide); poser(legEl, l ? l.innerHTML : ''); legEl.classList.toggle('active', !!l && l.classList.contains('active'));
-          const bs = blocs.map(un).filter(x => x && x.innerHTML.trim()); poser(blocEl, bs.map(x => x.outerHTML).join(''));
+          /* Le bloc (une fiche, un profil, une liste) se ferme d'une croix, pour rendre la place à la carte : il reste fermé
+             tant que le panneau n'y met rien de nouveau (une autre fiche, un autre point touché le rouvrent). */
+          const bs = blocs.map(un).filter(x => x && x.innerHTML.trim()), htmlBloc = bs.map(x => x.outerHTML).join('');
+          if (blocFerme !== null && htmlBloc !== blocFerme) blocFerme = null;
+          poser(blocEl, blocFerme !== null ? '' : htmlBloc);
+          // Bloc rangé à la croix : la croix devient une flèche, qui le rouvre.
+          const range = blocFerme !== null; fermeEl.hidden = blocEl.hidden && !range; fermeEl.classList.toggle('rouvre', range); fermeEl.textContent = range ? '▴' : '×'; fermeEl.title = range ? 'Rouvrir' : 'Fermer'; fermeEl.setAttribute('aria-label', range ? 'Rouvrir le bloc' : 'Fermer ce bloc pour rendre la place à la carte');
           if (!bts) {
             // Les boutons du panneau, rangée par rangée : chaque conteneur de boutons donne une rangée, vidée de ce qui n'est pas bouton.
             const conteneurs = o.rangees ? o.rangees.map(un).filter(Boolean) : []; if (!o.rangees) c.querySelectorAll('button').forEach(b => { const par = b.parentElement; if (!horsAide(b) || par === c || conteneurs.includes(par) || !par.matches('.puces, .vignettes, .ligne') || (l && l.contains(b)) || bs.some(x => x.contains(b))) return; conteneurs.push(par); });
@@ -891,6 +899,14 @@
           ruban.addEventListener('pointermove', e => { if (!dep) return; const v = Math.max(r.min, Math.min(r.max, +(Math.round((dep.v - (e.clientX - dep.x) / k) / r.pas) * r.pas).toFixed(4))); if (v !== r.lire()) { r.ecrire(v); api.maj(); } });
           ruban.addEventListener('pointerup', fin); ruban.addEventListener('pointercancel', fin);
         }
+        /* La croix du bloc : le thème peut d'abord désélectionner ce qui est montré (o.fermerBloc, qui renvoie vrai s'il a
+           retiré quelque chose : la fiche part, la sélection sur la carte aussi) ; sinon le bloc est simplement rangé. */
+        fermeEl.onclick = () => {
+          if (blocFerme !== null) { blocFerme = null; api.maj(); return; }
+          let fait = false; try { fait = !!(o.fermerBloc && o.fermerBloc()); } catch (e) { console.error(e); }
+          if (!fait) { const bs = blocs.map(un).filter(x => x && x.innerHTML.trim()); blocFerme = bs.map(x => x.outerHTML).join(''); }
+          app.sansBulle(); api.maj();
+        };
         const date = racine.querySelector('.p-date'); if (date) date.onchange = () => { if (date.value) { o.date.ecrire(date.value); api.maj(); } };
         racine.querySelectorAll('[data-b]').forEach(b => { b.onclick = () => { const d = bts[+b.dataset.b]; if (typeof d === 'string') { const sb = un(d); if (sb) sb.click(); } else d.action(); api.maj(); }; });
         const touche = e => { if (e.key === 'Escape') { e.stopPropagation(); api.fermer(); } };
@@ -927,6 +943,8 @@
       bulle(ll, html) {
         if (bulleCarte) bulleCarte.remove();
         bulleCarte = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'bulle', maxWidth: '230px', offset: 10 }).setLngLat(ll).setHTML(html).addTo(map);
+        // Un toucher sur la bulle la ferme (et retire son repère) : on retrouve la carte sans avoir à toucher ailleurs.
+        bulleCarte.getElement().addEventListener('click', e => { if (!e.target.closest('a, button')) app.sansBulle(); });
         const d = { type: 'Feature', geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] } };
         if (map.getSource('pointbulle')) map.getSource('pointbulle').setData(d);
         else { map.addSource('pointbulle', { type: 'geojson', data: d }); map.addLayer({ id: 'pointbulle', type: 'circle', source: 'pointbulle', paint: { 'circle-radius': 6, 'circle-color': '#b8963e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }); }
