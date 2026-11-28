@@ -97,6 +97,7 @@
     const ESPECES = opts.especes, PAR = new Map(ESPECES.map(e => [e.k, e]));
     let donnees = null, esp = opts.depart || ESPECES[0].k, mois = new Date().getMonth() + 1, anim = null;
     const masques = new Set(), vide = { type: 'FeatureCollection', features: [] };
+    const PETIT = '#ef6fa6';   // les rencontres avec un petit : un rose qui ne se confond avec aucune teinte de secteur
     async function charger() {
       if (!donnees) donnees = fetch(opts.url).then(r => { if (!r.ok) throw new Error('données des cétacés : ' + r.status); return r.json(); }).then(prepare);
       return donnees;
@@ -126,7 +127,8 @@
       return { moy: moy * (d.effort ? 100 : 1), f: d.grille.map(c => c[2] < seuil ? null : (c[col] + poids * moy) / (c[2] + poids) * (d.effort ? 100 : 1)) };
     }
     // Seuls les secteurs dans la moyenne ou au-dessus sont peints : la mer reste lisible, sans damier.
-    const CLASSES = [[0.75, '#4fb0bd', 'dans la moyenne'], [1.5, '#e3c46a', 'souvent'], [3, '#f08a3c', 'très souvent']];
+    // Du clair au vif, en teintes chaudes : sur le bleu de la mer, la plus pâle se voit encore (un bleu-vert s'y perdait).
+    const CLASSES = [[0.75, '#f3e8c2', 'dans la moyenne'], [1.5, '#ecc14d', 'souvent'], [3, '#f07a2e', 'très souvent']];
     const classe = r => { let k = -1; for (let i = 0; i < CLASSES.length; i++) if (r >= CLASSES[i][0]) k = i; return k; };
     const carre = (lon, lat, d) => { if (d.effort) { const dy = 1 / 111.2, dx = dy / Math.cos(lat * RAD); return [[[lon - dx, lat - dy], [lon + dx, lat - dy], [lon + dx, lat + dy], [lon - dx, lat + dy], [lon - dx, lat - dy]]]; } const h = d.maille / 2; return [[[lon - h, lat - h], [lon + h, lat - h], [lon + h, lat + h], [lon - h, lat + h], [lon - h, lat - h]]]; };
     /* Le mois : observations par sortie si les sorties sont connues ; sinon, le nombre de signalements. Une part parmi
@@ -153,11 +155,14 @@
       const total = bonnes.reduce((s, x) => s + x.f * x.f, 0), tirer = () => { let r = Math.random() * total; for (const x of bonnes) { r -= x.f * x.f; if (r <= 0) return x.c; } return bonnes[0].c; };
       const pasCle = d.effort ? 55 : 1 / d.maille, cle = (lon, lat) => Math.floor(lon * pasCle) + ',' + Math.floor(lat * pasCle);
       const permis = new Set(bonnes.map(x => cle(x.c[0], x.c[1]))), dans = (lon, lat) => permis.has(cle(lon, lat));
+      // La mer connue (toutes les mailles) : un animal qui fait demi-tour peut déborder de son secteur, jamais de la mer.
+      const connue = new Set(d.grille.map(c => cle(c[0], c[1]))), enMer = (lon, lat) => connue.has(cle(lon, lat));
+      const VIRAGE = al.petit ? 110 : 45;   // degrés par seconde : une baleine tourne large
       const etale = d.effort ? 0.015 : d.maille * 0.8, betes = [];
       for (let g = 0; g < nb; g++) {
         const c = tirer(), lon = c[0] + (Math.random() - 0.5) * etale, lat = c[1] + (Math.random() - 0.5) * etale, cap = Math.random() * 360;
         const n = al.g[0] + Math.floor(Math.random() * (al.g[1] - al.g[0] + 1));
-        for (let i = 0; i < n; i++) betes.push({ lon: lon + (Math.random() - 0.5) * 0.002, lat: lat + (Math.random() - 0.5) * 0.002, cap: cap + (Math.random() - 0.5) * 20, chef: i === 0 ? null : betes.length - i, petit: !al.petit && i === 1 && e.dessin === 'bosse', phase: Math.random() * 20, etat: 'surface', t: Math.random() * 8, souffle: -1 });
+        for (let i = 0; i < n; i++) betes.push({ lon: lon + (Math.random() - 0.5) * 0.002, lat: lat + (Math.random() - 0.5) * 0.002, cap: cap + (Math.random() - 0.5) * 20, port: [c[0], c[1]], vise: null, chef: i === 0 ? null : betes.length - i, petit: !al.petit && i === 1 && e.dessin === 'bosse', phase: Math.random() * 20, etat: 'surface', t: Math.random() * 8, souffle: -1 });
       }
       for (const t of ['dos', 'queue', 'queuenoire', 'rorqual', 'cachalot', 'dau', 'globi']) if (!map.hasImage('cet-' + t)) map.addImage('cet-' + t, dessiner(t), { pixelRatio: 2 });
       map.addSource('cet-anim', { type: 'geojson', data: vide }); map.addSource('cet-souffle', { type: 'geojson', data: vide });
@@ -172,9 +177,15 @@
         const feats = [], souffles = [];
         for (const b of betes) {
           const chef = b.chef != null ? betes[b.chef] : null;
-          if (chef) { b.cap += ((chef.cap - b.cap + 540) % 360 - 180) * 0.08; b.etat = chef.etat; b.t = chef.t; }
+          if (chef) { b.cap += ((chef.cap - b.cap + 540) % 360 - 180) * Math.min(1, dt * 1.6); b.etat = chef.etat; b.t = chef.t; }
           else {
-            b.cap += (Math.random() - 0.5) * (al.petit ? 18 : 8) * dt * 5; b.t -= dt;
+            // Hors de son secteur, l'animal vise le centre de sa maille de départ et y revient par un virage, sans à-coup.
+            if (b.vise != null) {
+              const ecart = (b.vise - b.cap + 540) % 360 - 180, tour = Math.max(-VIRAGE * dt, Math.min(VIRAGE * dt, ecart));
+              b.cap = (b.cap + tour + 360) % 360;
+              if (Math.abs(ecart) < 8 && dans(b.lon, b.lat)) b.vise = null;
+            } else b.cap += (Math.random() - 0.5) * (al.petit ? 18 : 8) * dt * 5;
+            b.t -= dt;
             if (!al.petit) {   // surface → (queue) → plongée → surface, avec un souffle de temps en temps
               if (b.t <= 0) { if (b.etat === 'surface') { b.etat = al.q ? 'queue' : 'fond'; b.t = al.q ? 2.2 : 7 + Math.random() * 6; } else if (b.etat === 'queue') { b.etat = 'fond'; b.t = 6 + Math.random() * 6; } else { b.etat = 'surface'; b.t = 9 + Math.random() * 7; b.souffle = 0; } }
               if (b.etat === 'surface' && b.souffle < 0 && Math.random() < dt / 4) b.souffle = 0;
@@ -182,7 +193,15 @@
           }
           const v = v0 * (b.etat === 'fond' ? 1.4 : 1) * dt, mlat = v / 111200, mlon = mlat / Math.cos(b.lat * RAD);
           let lon = b.lon + Math.sin(b.cap * RAD) * mlon, lat = b.lat + Math.cos(b.cap * RAD) * mlat;
-          if (!dans(lon, lat) && !chef) { b.cap = (b.cap + 150 + Math.random() * 60) % 360; lon = b.lon; lat = b.lat; }
+          if (!chef) {
+            if (b.vise == null && !dans(lon, lat)) b.vise = (Math.atan2((b.port[0] - b.lon) * Math.cos(b.lat * RAD), b.port[1] - b.lat) / RAD + 360 + (Math.random() - 0.5) * 50) % 360;
+            if (!enMer(lon, lat)) {   // la terre ou la mer inconnue : il tourne sur place le temps du virage
+              lon = b.lon; lat = b.lat; b.bloque = (b.bloque || 0) + dt;
+              // Toujours bloqué une fois tourné : il essaie un autre cap ; après six secondes, il repart de sa maille.
+              if (b.vise != null && Math.abs((b.vise - b.cap + 540) % 360 - 180) < 8) b.vise = (b.vise + 40 + Math.random() * 80) % 360;
+              if (b.bloque > 6) { lon = b.port[0]; lat = b.port[1]; b.bloque = 0; b.vise = null; }
+            } else b.bloque = 0;
+          }
           b.lon = lon; b.lat = lat;
           if (b.souffle >= 0) { b.souffle += dt; const k = b.souffle / 1.6; if (k >= 1) b.souffle = -1; else souffles.push({ type: 'Feature', properties: { r: (b.petit ? 5 : 9) * (0.4 + k), o: 0.75 * (1 - k) }, geometry: { type: 'Point', coordinates: [lon, lat] } }); }
           if (b.etat === 'fond') continue;
@@ -198,15 +217,65 @@
     }
     function arreter() { if (!anim) return; cancelAnimationFrame(anim.raf); const a = anim.app; anim = null; a.retirer('cet-anim', 'cet-souffle'); }
 
+    /* Les secteurs : chaque maille compte avec ses voisines (moyenne pondérée par la distance, sur une maille et demie
+       environ), et le résultat est une image fine que la carte fond encore à l'affichage : des plages aux bords doux
+       au lieu d'un damier de carrés de 2 km. Seule la mer connue est peinte (la forme des mailles, découpées sur la
+       côte, sert de pochoir), et une maille trop peu parcourue reste vide. */
+    const imagesSecteurs = new Map();
+    function secteurs(d, F, k0) {
+      const cle = esp + '|' + k0 + '|' + [0, 1, 2].filter(k => masques.has('g' + k)).join('');
+      if (imagesSecteurs.has(cle)) return imagesSecteurs.get(cle);
+      const S = window.Socle, latM = d.grille.reduce((a, c) => a + c[1], 0) / d.grille.length;
+      const hy = d.effort ? 1 / 111.2 : d.maille / 2, hx = d.effort ? hy / Math.cos(latM * RAD) : d.maille / 2;   // demi-maille, en degrés
+      let o = 180, e = -180, su = 90, n = -90; for (const c of d.grille) { o = Math.min(o, c[0]); e = Math.max(e, c[0]); su = Math.min(su, c[1]); n = Math.max(n, c[1]); }
+      o -= 3 * hx; e += 3 * hx; su -= 3 * hy; n += 3 * hy;
+      const [x0, y0] = S.versMerc(o, su), [x1, y1] = S.versMerc(e, n);
+      const fin = Math.max(3, Math.min(10, Math.floor(900 / Math.max((e - o) / (2 * hx), (n - su) / (2 * hy)))));   // points d'image par maille
+      const W = Math.round((e - o) / (2 * hx) * fin), H = Math.round((n - su) / (2 * hy) * fin);
+      const lonDe = i => o + (i + 0.5) / W * (e - o), latDe = j => S.versGeo(0, y1 - (j + 0.5) / H * (y1 - y0))[1];
+      const px = lon => (lon - o) / (e - o) * W, py = lat => (y1 - S.versMerc(0, lat)[1]) / (y1 - y0) * H;
+      // Les mailles valides, rangées par case pour retrouver vite les voisines d'un point.
+      const cases = new Map(), ci = lon => Math.floor((lon - o) / (4 * hx)), cj = lat => Math.floor((lat - su) / (4 * hy));
+      const pochoir = document.createElement('canvas'); pochoir.width = W; pochoir.height = H; const xp = pochoir.getContext('2d'); xp.fillStyle = xp.strokeStyle = '#000'; xp.lineWidth = 1; xp.lineJoin = 'round';
+      d.grille.forEach((c, i) => {
+        const f = F.f[i]; if (f == null) return;
+        const k = ci(c[0]) + ',' + cj(c[1]); if (!cases.has(k)) cases.set(k, []); cases.get(k).push([c[0], c[1], f / (F.moy || 1)]);
+        // Pochoir : la maille découpée sur la côte garde sa forme exacte ; au large, un disque un peu plus grand que la
+        // maille, pour que le bord du secteur connu soit arrondi plutôt qu'en marches d'escalier.
+        if (Array.isArray(c[c.length - 1])) for (const an of c[c.length - 1]) { xp.beginPath(); an.forEach((p, q) => q ? xp.lineTo(px(p[0]), py(p[1])) : xp.moveTo(px(p[0]), py(p[1]))); xp.closePath(); xp.fill(); xp.stroke(); }
+        else { xp.beginPath(); xp.arc(px(c[0]), py(c[1]), fin * 0.82, 0, 2 * Math.PI); xp.fill(); }
+      });
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const x = cv.getContext('2d'), im = x.createImageData(W, H), dd = im.data;
+      const rgb = CLASSES.map(k => [1, 3, 5].map(q => parseInt(k[1].slice(q, q + 2), 16))), portee = 0.85;   // écart-type du lissage, en mailles
+      for (let j = 0; j < H; j++) {
+        const lat = latDe(j), bj = cj(lat);
+        for (let i = 0; i < W; i++) {
+          const lon = lonDe(i), bi = ci(lon); let sw = 0, sv = 0;
+          for (let a = bi - 1; a <= bi + 1; a++) for (let b = bj - 1; b <= bj + 1; b++) {
+            const l = cases.get(a + ',' + b); if (!l) continue;
+            for (const c of l) { const u = (c[0] - lon) / (2 * hx), v = (c[1] - lat) / (2 * hy), r2 = u * u + v * v; if (r2 > 6.25) continue; const w = Math.exp(-r2 / (2 * portee * portee)); sw += w; sv += w * c[2]; }
+          }
+          if (sw < 0.5) continue;
+          const k = classe(sv / sw); if (k < k0 || masques.has('g' + k)) continue;
+          const q4 = 4 * (j * W + i); dd[q4] = rgb[k][0]; dd[q4 + 1] = rgb[k][1]; dd[q4 + 2] = rgb[k][2]; dd[q4 + 3] = Math.round(255 * Math.min(1, (sw - 0.5) / 0.9));   // la teinte s'efface là où les voisines manquent
+        }
+      }
+      x.putImageData(im, 0, 0); x.globalCompositeOperation = 'destination-in'; x.drawImage(pochoir, 0, 0);
+      // Agrandie deux fois en douceur : les limites entre classes ne dessinent plus de marches.
+      const g = document.createElement('canvas'); g.width = W * 2; g.height = H * 2; const y = g.getContext('2d'); y.imageSmoothingEnabled = true; y.imageSmoothingQuality = 'high'; y.drawImage(cv, 0, 0, g.width, g.height);
+      const res = { g: { x0, y0, x1, y1 }, url: g.toDataURL() };
+      imagesSecteurs.set(cle, res); if (imagesSecteurs.size > 24) imagesSecteurs.delete(imagesSecteurs.keys().next().value);
+      return res;
+    }
     function peindre(app, d) {
-      const map = app.map, F = frequences(d, esp), cellules = [];
-      // Une maille qui touche la côte peut porter sa seule partie en mer (découpée une fois sur le contour de l'île).
+      const map = app.map, F = frequences(d, esp);
       // Sans effort connu, la classe « dans la moyenne » couvrirait toute la mer pour les espèces les plus signalées : on ne la peint pas.
-      const k0 = d.effort ? 0 : 1;
-      if (F) d.grille.forEach((c, i) => { const f = F.f[i]; if (f == null) return; const k = classe(f / (F.moy || 1)); if (k < k0) return; const geo = Array.isArray(c[c.length - 1]) ? c[c.length - 1] : null; cellules.push({ type: 'Feature', properties: { k, coul: CLASSES[k][1] }, geometry: geo ? { type: 'MultiPolygon', coordinates: geo.map(r => [r]) } : { type: 'Polygon', coordinates: carre(c[0], c[1], d) } }); });
+      if (F) {
+        const im = secteurs(d, F, d.effort ? 0 : 1); app.poser('cet-grille', im.g, im.url, 0.72);
+        const dessus = ['cet-lignes', 'cet-obs'].find(id => map.getLayer(id)); if (dessus) map.moveLayer('cet-grille', dessus);
+      } else app.retirer('cet-grille');
       const pts = d.obs.filter(o => o[2] === esp && (!mois || o[4] === mois)).map(o => ({ type: 'Feature', properties: { nb: o[5], petit: o[6] > 0 ? 1 : 0 }, geometry: { type: 'Point', coordinates: [o[0], o[1]] } }));
-      map.getSource('cet-grille').setData({ type: 'FeatureCollection', features: cellules.filter(c => !masques.has('g' + c.properties.k)) });
-      map.getSource('cet-obs').setData({ type: 'FeatureCollection', features: masques.has('obs') ? [] : pts.filter(p => !(masques.has('petit') && p.properties.petit)) });
+      map.getSource('cet-obs').setData({ type: 'FeatureCollection', features: (masques.has('obs') ? [] : pts.filter(p => !p.properties.petit)).concat(masques.has('petit') ? [] : pts.filter(p => p.properties.petit)) });
       return { pts, F };
     }
 
@@ -228,29 +297,29 @@
         // La mer doit être dans la vue : loin des mailles connues, ou de trop près, on rejoint la zone la plus suivie.
         const ct = map.getCenter(), pres = (d.effort ? 4 : 8) / 111.2;
         if (opts.vue && ((!d.effort && map.getZoom() > 9.5) || !d.grille.some(g => Math.abs(g[0] - ct.lng) < pres / Math.cos(ct.lat * RAD) && Math.abs(g[1] - ct.lat) < pres) || map.getZoom() > 13.5)) map.flyTo({ center: opts.vue.center, zoom: opts.vue.zoom, pitch: Math.min(map.getPitch(), 45), bearing: 0, duration: 1600 });
-        map.addSource('cet-grille', { type: 'geojson', data: vide }); map.addSource('cet-obs', { type: 'geojson', data: vide });
-        map.addLayer({ id: 'cet-grille', type: 'fill', source: 'cet-grille', paint: { 'fill-color': ['get', 'coul'], 'fill-opacity': 0.55, 'fill-antialias': false } }, 'analyses');
+        map.addSource('cet-obs', { type: 'geojson', data: vide });
         if (opts.lignes) {
           map.addSource('cet-lignes', { type: 'geojson', data: opts.lignes });
           map.addLayer({ id: 'cet-lignes', type: 'line', source: 'cet-lignes', paint: { 'line-color': '#e3c46a', 'line-width': 2, 'line-dasharray': [3, 2], 'line-opacity': 0.9 } }, 'analyses');
           map.addLayer({ id: 'cet-lignes-nom', type: 'symbol', source: 'cet-lignes', layout: { 'symbol-placement': 'line', 'text-field': ['get', 'nom'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12, 'symbol-spacing': 280 }, paint: { 'text-color': '#f6e7bd', 'text-halo-color': 'rgba(16,25,42,0.85)', 'text-halo-width': 1.4 } });
         }
-        map.addLayer({ id: 'cet-obs', type: 'circle', source: 'cet-obs', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, ['+', 1.5, ['*', 0.4, ['ln', ['max', 1, ['get', 'nb']]]]], 9, ['+', 2, ['*', 0.6, ['ln', ['max', 1, ['get', 'nb']]]]], 14, ['+', 4, ['*', 1.4, ['ln', ['max', 1, ['get', 'nb']]]]]], 'circle-color': '#ffffff', 'circle-opacity': 0.85, 'circle-stroke-color': ['case', ['==', ['get', 'petit'], 1], '#e0b341', '#1a2e4a'], 'circle-stroke-width': ['case', ['==', ['get', 'petit'], 1], 2.2, 1] } }, 'analyses');
+        map.addLayer({ id: 'cet-obs', type: 'circle', source: 'cet-obs', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, ['+', 1, ['*', 0.3, ['ln', ['max', 1, ['get', 'nb']]]]], 10.5, ['+', 1.5, ['*', 0.4, ['ln', ['max', 1, ['get', 'nb']]]]], 14, ['+', 4, ['*', 1.4, ['ln', ['max', 1, ['get', 'nb']]]]]], 'circle-color': ['case', ['==', ['get', 'petit'], 1], PETIT, '#ffffff'], 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 12.5, 0.92], 'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12.5, 1], 'circle-stroke-color': ['case', ['==', ['get', 'petit'], 1], '#ffffff', '#1a2e4a'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 12.5, ['case', ['==', ['get', 'petit'], 1], 1.4, 1]] } }, 'analyses');
         const [a0, a1] = annees(d), duree = a1 >= a0 ? `de ${a0} à ${a1}` : '';
         const maj = () => {
           const e = PAR.get(esp), ps = saison(d, esp), mx = Math.max(...ps) || 1;
           c.querySelector('.hist').innerHTML = MOIS.map((n, i) => `<button data-m="${i + 1}" aria-pressed="${mois === i + 1}" title="${n}" style="flex:1;padding:0;border-radius:3px;border:0;background:none;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;height:100%"><span style="display:block;background:${mois === i + 1 ? '#b8963e' : '#4a90c2'};border-radius:2px 2px 0 0;height:${Math.round(46 * ps[i] / mx) + 2}px"></span><small style="font-size:9px;color:${mois === i + 1 ? '#b8963e' : '#9aa8bb'};font-weight:${mois === i + 1 ? 700 : 400}">${n.charAt(0).toUpperCase()}</small></button>`).join('');
           c.querySelector('.annee').setAttribute('aria-pressed', String(!mois));
           const { pts, F } = peindre(app, d), petits = pts.filter(p => p.properties.petit).length;
+          const jeune = e.dessin === 'bosse' ? 'un baleineau' : 'un petit';
           let phrase = '';
           if (e.saison) {   // une espèce saisonnière (la baleine à bosse de La Réunion) : la phrase dit où en est la saison
             const p = mois ? ps[mois - 1] / mx : 1;
-            phrase = !mois ? `${e.saison} : ${nombre(pts.length)} observations ${duree}, dont ${nombre(petits)} avec un petit.`
+            phrase = !mois ? `${e.saison} : ${nombre(pts.length)} observations ${duree}, dont ${nombre(petits)} avec ${jeune}.`
               : p < 0.05 ? `En ${MOIS[mois - 1]}, elles sont parties. ${e.saison}.`
-              : `En ${MOIS[mois - 1]}, ${p > 0.6 ? 'plein cœur de la saison' : p > 0.25 ? 'la saison bat son plein' : 'début ou fin de saison'} : ${nombre(pts.length)} observations ${duree}, dont ${nombre(petits)} avec un petit.`;
+              : `En ${MOIS[mois - 1]}, ${p > 0.6 ? 'plein cœur de la saison' : p > 0.25 ? 'la saison bat son plein' : 'début ou fin de saison'} : ${nombre(pts.length)} observations ${duree}, dont ${nombre(petits)} avec ${jeune}.`;
           } else phrase = `${e.nom}${mois ? ` en ${MOIS[mois - 1]}` : ''} : ${nombre(pts.length)} ${d.effort ? 'observation' : 'signalement'}${pts.length > 1 ? 's' : ''} ${duree}. ${e.note || ''}`;
-          c.querySelector('.etat').innerHTML = phrase + (F ? (d.effort ? ' Les couleurs montrent où on les voit le plus souvent.' : ' Les couleurs montrent où elle domine parmi les cétacés signalés.') : '');
-          const items = (F ? CLASSES.map((k, i) => ({ cle: 'g' + i, couleur: k[1], texte: d.effort ? k[2] : k[2] + ' signalée' })).slice(d.effort ? 0 : 1) : []).concat([{ cle: 'obs', couleur: '#ffffff', texte: d.effort ? 'observations' : 'signalements' }]).concat(petits ? [{ cle: 'petit', couleur: '#e0b341', texte: 'avec un petit' }] : []);
+          c.querySelector('.etat').innerHTML = phrase + (F ? (d.effort ? ' Les plages de couleur montrent où on les voit le plus souvent ; chaque point est une rencontre.' : ' Les plages de couleur montrent où elle domine parmi les cétacés signalés ; chaque point est un signalement.') : '');
+          const items = (F ? CLASSES.map((k, i) => ({ cle: 'g' + i, couleur: k[1], texte: d.effort ? k[2] : k[2] + ' signalée' })).slice(d.effort ? 0 : 1) : []).concat([{ cle: 'obs', couleur: '#ffffff', texte: d.effort ? 'point : une rencontre' : 'point : un signalement' }]).concat(petits ? [{ cle: 'petit', couleur: PETIT, texte: 'rencontre avec ' + jeune }] : []);
           app.legende(c, items, () => peindre(app, d), masques);
           animer(app, d);
         };
