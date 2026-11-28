@@ -736,7 +736,8 @@
         if (map.getSource(id)) map.getSource(id).updateImage({ url, coordinates: coins });
         else { map.addSource(id, { type: 'image', url, coordinates: coins }); map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacite == null ? 1 : opacite, 'raster-fade-duration': 0, 'raster-resampling': net ? 'nearest' : 'linear' } }, 'analyses'); }
       },
-      retirer(...ids) { for (const id of ids) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); } },
+      // Les couches d'abord, les sources ensuite : une source encore lue par une couche ne se retire pas, quel que soit l'ordre donné.
+      retirer(...ids) { for (const id of ids) if (map.getLayer(id)) map.removeLayer(id); for (const id of ids) if (map.getSource(id) && !map.getStyle().layers.some(l => l.source === id)) map.removeSource(id); },
       /* Le panneau d'un thème a deux tailles. Ouvert : la réponse, ses réglages, sa légende. Réduit : son titre et sa
          phrase de réponse, sur deux lignes au plus, pour laisser la carte grande ; la légende s'y affiche à la demande.
          On passe de l'une à l'autre en touchant le titre ou le chevron ; la taille choisie est gardée d'un thème à l'autre.

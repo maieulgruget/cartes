@@ -176,9 +176,21 @@
         const h = c.querySelector('.h'), d0 = +h.value; bAnim.textContent = '■ Arrêter';
         q1.minuterie = setInterval(() => { if (app.active !== q1 || +h.value >= Math.min(288, d0 + 144)) { arreter(); return; } h.value = +h.value + 2; dessiner(); }, 220);
       };
-      c.querySelector('.h').oninput = dessiner; app.suivre(q1, dessiner); await dessiner();
+      /* Au point touché, à l'heure du curseur : à sec ou sous combien d'eau, et quand la mer y arrive ou s'en retire
+         (cherché de dix minutes en dix minutes sur les treize heures qui suivent). */
+      q1.lire = async ll => {
+        const g = await estran(); if (app.active !== q1) return;
+        const k = app.indice(g, ll.lng, ll.lat), z = k >= 0 ? g.z[k] : NaN; if (!(z === z)) { app.bulle(ll, 'Hors de l\'estran relevé.'); return; }
+        const t = depart() + c.querySelector('.h').value * 6e5, niv = niveau(s, t); if (!(niv === niv)) return;
+        const eau = h => (h < 10 ? h.toFixed(1).replace('.', ',') : Math.round(h)) + ' m';   // une épaisseur d'eau, sans signe
+        const sous = niv > z; let quand = null; for (let u = t + 6e5; u <= t + 13 * 36e5; u += 6e5) if ((niveau(s, u) > z) !== sous) { quand = u; break; }
+        app.bulle(ll, `<span class="fort">${sous ? 'Sous ' + eau(niv - z) + ' d\'eau' : 'À sec'}</span> à ${hhmm(t)}<small>sol à ${m(z)}, mer à ${m(niv)}</small><small>${quand ? (sous ? 'découvre vers ' : 'la mer y arrive vers ') + hhmm(quand) : sous ? 'reste sous l\'eau pendant les 13 heures qui suivent' : 'reste à sec pendant les 13 heures qui suivent'}</small>`);
+      };
+      q1.dernier = null;
+      c.querySelector('.h').oninput = () => { dessiner(); if (q1.dernier) q1.lire(q1.dernier); }; app.suivre(q1, dessiner); await dessiner();
     },
-    fermer(app) { clearInterval(q1.minuterie); q1.minuterie = null; app.retirer('mer'); }
+    toucher(app, ll) { if (q1.lire) { q1.dernier = ll; q1.lire(ll); } },
+    fermer(app) { clearInterval(q1.minuterie); q1.minuterie = null; q1.lire = null; q1.dernier = null; app.retirer('mer'); }
   };
 
   // ---------- 2. Hauteur libre ----------
@@ -190,10 +202,19 @@
       const c = app.repondre(q2.libelle, `<p>Mer à <span class="fort niv"></span> <span class="petit">(niveau des cartes terrestres)</span></p><input type="range" class="h" min="-70" max="90" value="${libre * 10}">
         <p class="etat petit">Repères sur cette côte : une basse mer de vive-eau descend vers −5,5 m, une pleine mer de vive-eau monte vers +6 m, et les plus grandes marées approchent +7 m. Au-delà, c'est une surcote de tempête.</p>
         <div class="legende"><span><i style="background:#2c6aa8"></i>sous l'eau</span></div>`);
-      const dessiner = async () => { const g = await estran(); if (app.active !== q2) return; libre = c.querySelector('.h').value / 10; c.querySelector('.niv').textContent = m(libre); peindreMer(g, libre); };
+      // Au point touché : la hauteur du sol, et ce qu'il y aurait d'eau dessus au niveau choisi.
+      q2.lire = async ll => {
+        const g = await estran(); if (app.active !== q2) return;
+        const k = app.indice(g, ll.lng, ll.lat), z = k >= 0 ? g.z[k] : NaN; if (!(z === z)) { app.bulle(ll, 'Hors de l\'estran relevé.'); return; }
+        const eau = h => (h < 10 ? h.toFixed(1).replace('.', ',') : Math.round(h)) + ' m';
+        app.bulle(ll, `<span class="fort">${libre > z ? 'Sous ' + eau(libre - z) + ' d\'eau' : 'Hors d\'eau'}</span><small>sol à ${m(z)}${libre > z ? '' : ', ' + eau(z - libre) + ' au-dessus de ce niveau'}</small><small>il faut une mer à ${m(z)} pour l'atteindre</small>`);
+      };
+      q2.dernier = null;
+      const dessiner = async () => { const g = await estran(); if (app.active !== q2) return; libre = c.querySelector('.h').value / 10; c.querySelector('.niv').textContent = m(libre); peindreMer(g, libre); if (q2.dernier) q2.lire(q2.dernier); };
       c.querySelector('.h').oninput = dessiner; app.suivre(q2, dessiner); await dessiner();
     },
-    fermer(app) { app.retirer('mer'); }
+    toucher(app, ll) { if (q2.lire) { q2.dernier = ll; q2.lire(ll); } },
+    fermer(app) { q2.lire = null; q2.dernier = null; app.retirer('mer'); }
   };
 
   // ---------- 3. Durée d'émersion de l'estran ----------
