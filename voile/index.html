@@ -170,7 +170,7 @@
     return false;
   }
   function dessinerBalises() {
-    const fc = { type: 'FeatureCollection', features: balises.liste.map((x, i) => ({ type: 'Feature', properties: { i, g: x.g, rang: balises.fichier ? x.rang : 0, fond: GENRES[x.g][1], bord: GENRES[x.g][2], lettre: GENRES[x.g][3] }, geometry: { type: 'Point', coordinates: [x.lon, x.lat] } })) };
+    const fc = { type: 'FeatureCollection', features: balises.liste.map((x, i) => ({ type: 'Feature', properties: { i, g: x.g, rang: x.rang, fond: GENRES[x.g][1], bord: GENRES[x.g][2], lettre: GENRES[x.g][3] }, geometry: { type: 'Point', coordinates: [x.lon, x.lat] } })) };
     if (map.getSource('balises')) { map.getSource('balises').setData(fc); return; }
     map.addSource('balises', { type: 'geojson', data: fc });
     const filtre = ['<=', ['get', 'rang'], ['step', ['zoom'], 1, 10.5, 2, 12.6, 3]];
@@ -393,8 +393,8 @@
       const ok = await lireBalises(app.emprise(0)); app.occupe(false); if (app.active !== qBal) return;
       if (!ok) { c.querySelector('.etat').textContent = 'Les balises n\'ont pas pu être lues : aucun des trois serveurs d\'OpenStreetMap n\'a répondu. Réessaie dans un moment.'; return; }
       if (!map.getSource('balises') || !balises.fichier) dessinerBalises();
-      const b = map.getBounds(), rv = balises.fichier ? (map.getZoom() < 10.5 ? 1 : map.getZoom() < 12.6 ? 2 : 3) : 3;
-      const vues = balises.liste.filter(x => b.contains([x.lon, x.lat])), mont = vues.filter(x => !balises.fichier || x.rang <= rv), d = mont.filter(x => DANGERS.has(x.g)).length;
+      const b = map.getBounds(), rv = map.getZoom() < 10.5 ? 1 : map.getZoom() < 12.6 ? 2 : 3;
+      const vues = balises.liste.filter(x => b.contains([x.lon, x.lat])), mont = vues.filter(x => x.rang <= rv), d = mont.filter(x => DANGERS.has(x.g)).length;
       c.querySelector('.etat').innerHTML = (vues.length ? `<span class="fort">${mont.length} marque${mont.length > 1 ? 's' : ''}</span> affichée${mont.length > 1 ? 's' : ''} dans la vue${mont.length < vues.length ? ` (sur ${vues.length} : approche-toi pour les autres)` : ''}, dont ${d} roche${d > 1 ? 's' : ''}, épave${d > 1 ? 's' : ''} ou danger${d > 1 ? 's' : ''} isolé${d > 1 ? 's' : ''}. Touche une marque pour son nom et son feu.` : 'Aucune marque relevée dans cette vue.') + (balises.date ? ` Relevé du ${balises.date.slice(8, 10)}/${balises.date.slice(5, 7)}/${balises.date.slice(0, 4)}, incomplet : la carte marine fait foi.` : ' Relevé incomplet : la carte marine fait foi.');
     },
     toucher(app, ll) {

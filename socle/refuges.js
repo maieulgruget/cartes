@@ -35,9 +35,14 @@
       const m = app.map;
       if (m.getSource('refuges')) { m.getSource('refuges').setData(fc); return; }
       images(m);
-      m.addSource('refuges', { type: 'geojson', data: fc });
-      m.addLayer({ id: 'refuges-choisi', type: 'circle', source: 'refuges', filter: ['==', ['get', 'on'], 1], paint: { 'circle-radius': 19, 'circle-color': '#ffffff', 'circle-opacity': 0.5, 'circle-stroke-color': '#b8963e', 'circle-stroke-width': 2.5 } });
-      m.addLayer({ id: 'refuges', type: 'symbol', source: 'refuges', layout: { 'icon-image': ['concat', 'refuge-', ['to-string', ['get', 't']]], 'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.7, 12, 1], 'icon-allow-overlap': true, 'text-field': ['step', ['zoom'], '', 11.3, ['get', 'nom']], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1.15], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 9 }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+      /* De loin, les refuges voisins se regroupent en une pastille qui porte leur nombre ; elle est rouge dès qu'elle
+         contient un refuge gardé (celui qu'on cherche d'abord), verte sinon. Elle se défait en zoomant, ou d'un toucher. */
+      m.addSource('refuges', { type: 'geojson', data: fc, cluster: true, clusterRadius: 44, clusterMaxZoom: 11, clusterProperties: { gardes: ['+', ['case', ['==', ['get', 't'], 10], 1, 0]] } });
+      m.addLayer({ id: 'refuges-groupes', type: 'circle', source: 'refuges', filter: ['has', 'point_count'], paint: { 'circle-radius': ['step', ['get', 'point_count'], 13, 5, 16, 15, 20, 40, 24], 'circle-color': ['case', ['>', ['get', 'gardes'], 0], '#b3402e', '#2f7d5b'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2, 'circle-opacity': 0.95 } });
+      m.addLayer({ id: 'refuges-nombre', type: 'symbol', source: 'refuges', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 13, 'text-allow-overlap': true }, paint: { 'text-color': '#ffffff' } });
+      m.addLayer({ id: 'refuges-choisi', type: 'circle', source: 'refuges', filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'on'], 1]], paint: { 'circle-radius': 19, 'circle-color': '#ffffff', 'circle-opacity': 0.5, 'circle-stroke-color': '#b8963e', 'circle-stroke-width': 2.5 } });
+      // Isolés : les refuges gardés passent devant les cabanes et les gîtes quand les noms se disputent la place.
+      m.addLayer({ id: 'refuges', type: 'symbol', source: 'refuges', filter: ['!', ['has', 'point_count']], layout: { 'symbol-sort-key': ['match', ['get', 't'], 10, 0, 9, 1, 2], 'icon-image': ['concat', 'refuge-', ['to-string', ['get', 't']]], 'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.7, 12, 1], 'icon-allow-overlap': true, 'text-field': ['step', ['zoom'], '', 11.3, ['get', 'nom']], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-offset': [0, 1.15], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 9 }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
     }
 
     // Lecture de refuges.info pour la vue, un peu élargie ; rien n'est relu tant que la vue reste dans la zone déjà lue.
@@ -110,7 +115,7 @@
 
     const q = {
       theme: opts.theme || 'Refuges', libelle: opts.libelle || 'Où dormir, où s\'abriter ?', famille: opts.famille,
-      aide: 'Refuges gardés, cabanes non gardées et gîtes d\'étape recensés par refuges.info, lus pour la vue affichée. La fiche reprend ce que le site sait du lieu : places, eau, bois, poêle, accès, remarques, et la date de sa dernière mise à jour. Ces fiches sont tenues par des bénévoles : une cabane peut avoir été fermée, abîmée ou rénovée depuis. Un refuge absent de refuges.info n\'apparaît pas.',
+      aide: 'Refuges gardés, cabanes non gardées et gîtes d\'étape recensés par refuges.info, lus pour la vue affichée. La fiche reprend ce que le site sait du lieu : places, eau, bois, poêle, accès, remarques, et la date de sa dernière mise à jour. Ces fiches sont tenues par des bénévoles : une cabane peut avoir été fermée, abîmée ou rénovée depuis. De loin, les refuges voisins sont regroupés en pastilles (rouges quand elles contiennent un refuge gardé) : zoome ou touche-les pour les défaire. Un refuge absent de refuges.info n\'apparaît pas.',
       async ouvrir(app) {
         const c = q._c = app.repondre(q.libelle, `<p class="etat"></p><div class="ref-liste"></div><div class="ref-fiche"></div><div class="legende"></div>`);
         app.legende(c, types.map(t => ({ cle: t, couleur: TYPES[t][1], texte: TYPES[t][0] })), () => { dessiner(app); dire(app, c); }, masques);
@@ -120,11 +125,14 @@
       },
       toucher(app, ll) {
         const m = app.map, pt = m.project(ll); if (!m.getLayer('refuges')) return;
+        // Une pastille touchée s'ouvre : la carte zoome juste assez pour la défaire.
+        const g = m.queryRenderedFeatures([[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]], { layers: ['refuges-groupes'] })[0];
+        if (g) { m.getSource('refuges').getClusterExpansionZoom(g.properties.cluster_id).then(z => m.easeTo({ center: g.geometry.coordinates, zoom: Math.min(z + 0.3, 14), duration: 700 })).catch(() => { }); return; }
         const f = m.queryRenderedFeatures([[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]], { layers: ['refuges'] })[0];
         if (f) fiche(app, q._c, +f.properties.id);
       },
       plein: () => ({ bloc: ['.ref-liste', '.ref-fiche'], consigne: 'Touche un refuge pour sa fiche.' }),
-      fermer(app) { tour++; app.retirer('refuges', 'refuges-choisi'); }
+      fermer(app) { tour++; app.retirer('refuges-nombre', 'refuges-groupes', 'refuges-choisi', 'refuges'); }
     };
     return q;
   }

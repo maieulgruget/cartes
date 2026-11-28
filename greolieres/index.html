@@ -237,7 +237,7 @@
         cible.innerHTML = `<span class="fort">${obs.liste.length} trouvaille${obs.liste.length > 1 ? 's' : ''}</span> localisée${obs.liste.length > 1 ? 's' : ''} précisément dans cette vue (points blancs cerclés)${flou}${dans ? ` : ${haut} sur ${dans} tombent en « meilleur » ou « très bon », des classes qui couvrent ${surf ? Math.round(100 * surfHaut / surf) : 0} % de la forêt notée` : ''}. Peu de points, souvent pris au bord des chemins : c'est un indice, pas une preuve.`;
       };
       const chargerObs = async () => {
-        if (!obsActif) { app.retirer('obs-mois', 'obs'); c.querySelector('.obs').textContent = ''; return; }
+        if (!obsActif) { app.retirer('obs-nombre', 'obs-groupes', 'obs-mois', 'obs'); c.querySelector('.obs').textContent = ''; return; }
         const b = app.emprise(0.1), cle = choisi + b.map(v => v.toFixed(2)).join();
         if (obs.cle !== cle) {
           obs.cle = cle; obs.liste = null; verifier();
@@ -259,11 +259,14 @@
         const MOIS = ['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
         const fc = { type: 'FeatureCollection', features: obs.liste.concat(obs.floues || []).map(o => ({ type: 'Feature', properties: { flou: o.flou ? 1 : 0, t: (MOIS[o.mois] || '') + (o.an ? ' ' + o.an : '') + (o.flou ? ` · à ${o.flou} km près` : '') }, geometry: { type: 'Point', coordinates: [o.lon, o.lat] } })) };
         if (map.getSource('obs')) map.getSource('obs').setData(fc);
-        else { map.addSource('obs', { type: 'geojson', data: fc }); }
+        // De loin, les trouvailles voisines se regroupent en une pastille qui porte leur nombre.
+        else { map.addSource('obs', { type: 'geojson', data: fc, cluster: true, clusterRadius: 34, clusterMaxZoom: 10 }); }
         if (!map.getLayer('obs')) {
           // Précise : un point blanc bien cerclé, qui ressort sur toutes les teintes de la carte. Floue : un grand cercle pâle.
-          map.addLayer({ id: 'obs', type: 'circle', source: 'obs', paint: { 'circle-radius': ['case', ['==', ['get', 'flou'], 1], 13, 7.5], 'circle-color': ['case', ['==', ['get', 'flou'], 1], 'rgba(255,255,255,0.22)', '#ffffff'], 'circle-stroke-color': ['case', ['==', ['get', 'flou'], 1], '#ffffff', '#10192a'], 'circle-stroke-width': ['case', ['==', ['get', 'flou'], 1], 1.5, 3] } });
-          map.addLayer({ id: 'obs-mois', type: 'symbol', source: 'obs', minzoom: 10.5, layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top' }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
+          map.addLayer({ id: 'obs-groupes', type: 'circle', source: 'obs', filter: ['has', 'point_count'], paint: { 'circle-radius': ['step', ['get', 'point_count'], 12, 5, 15, 20, 19], 'circle-color': '#ffffff', 'circle-stroke-color': '#10192a', 'circle-stroke-width': 2.5 } });
+          map.addLayer({ id: 'obs-nombre', type: 'symbol', source: 'obs', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 12.5, 'text-allow-overlap': true }, paint: { 'text-color': '#10192a' } });
+          map.addLayer({ id: 'obs', type: 'circle', source: 'obs', filter: ['!', ['has', 'point_count']], paint: { 'circle-radius': ['case', ['==', ['get', 'flou'], 1], 13, 7.5], 'circle-color': ['case', ['==', ['get', 'flou'], 1], 'rgba(255,255,255,0.22)', '#ffffff'], 'circle-stroke-color': ['case', ['==', ['get', 'flou'], 1], '#ffffff', '#10192a'], 'circle-stroke-width': ['case', ['==', ['get', 'flou'], 1], 1.5, 3] } });
+          map.addLayer({ id: 'obs-mois', type: 'symbol', source: 'obs', filter: ['!', ['has', 'point_count']], minzoom: 10.5, layout: { 'text-field': ['get', 't'], 'text-font': ['Source Sans Pro Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top' }, paint: { 'text-color': '#10192a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
         }
         verifier();
       };
@@ -346,7 +349,7 @@
       const t = CODES[type[k] - 1], e = a.expo[k];
       document.querySelector('.reponse .etat').innerHTML = `Ici : <span class="fort">${Math.round(g.z[k])} m</span>, ${t ? LIB[t] : 'hors forêt'}, pente de ${Math.round(a.pente[k])}° tournée vers ${['le nord', 'le nord-est', 'l\'est', 'le sud-est', 'le sud', 'le sud-ouest', 'l\'ouest', 'le nord-ouest'][Math.round(e / 45) % 8]}${passe ? `, environ ${Math.round(tempA(passe, g.z[k]))} °C de moyenne cette semaine` : ''}. Note : <span class="fort">${Math.round(notes[k] * 100)} / 100</span> pour ${CHAMPIGNONS[choisi].nom.toLowerCase()}${memo.classes && memo.classes[k] ? `, classe « ${{ p: 'possible', b: 'bon', t: 'très bon', m: 'le meilleur' }[memo.classes[k]]} »` : ''}.`;
     },
-    fermer(app) { app.retirer('note', 'reperes', 'obs-mois', 'obs', 'sentiers-bons', 'sentiers', 'sentiers-bord', 'sentiers-loin', 'sentiers-loin-bord'); }
+    fermer(app) { app.retirer('note', 'reperes', 'obs-nombre', 'obs-groupes', 'obs-mois', 'obs', 'sentiers-bons', 'sentiers', 'sentiers-bord', 'sentiers-loin', 'sentiers-loin-bord'); }
   };
 
   // ---------- 2. Pluie et température ----------
