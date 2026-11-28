@@ -450,3 +450,7 @@ svg[data-profil] { touch-action: pan-y; cursor: crosshair; user-select: none; -w
 .heures b { display: block; color: var(--gold); font-size: 12.5px; }
 .heures div.nuit { background: rgba(255,255,255,0.02); }
 .heures small { color: var(--muted); }
+
+/* « ? » de l'en-tête du plein écran : ouvre la fenêtre « Comprendre », qui passe devant le plein écran. */
+.p-info { width: 34px; height: 34px; padding: 0; border-radius: 50%; font-weight: 600; color: var(--gold); border-color: var(--gold); backdrop-filter: blur(6px); pointer-events: auto; }
+.menu:has(.comprendre) { z-index: 60; }

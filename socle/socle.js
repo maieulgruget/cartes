@@ -832,9 +832,10 @@
       /* En-tête de tout plein écran : « ☰ thème » (rend le panneau), puis les autres thèmes de la même famille (on passe
          d'Épaisseur à Gel sans repasser par le panneau), puis « Calque », qui cache l'analyse pour voir le fond dessous. */
       enTete(cont, surPanneau) {
-        const q = app.active, f = q && q.famille && familles.get(q.famille), voisins = f ? f.membres.filter(m => m !== q) : [], oeil = reponse.querySelector('h2 .oeil');
-        cont.innerHTML = `<button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(q ? q.theme || q.libelle : 'Thème')}</button>${voisins.map((m, i) => `<button class="p-voisin" data-v="${i}" title="${propre(m.libelle || '')}">${propre(m.theme || m.libelle)} ›</button>`).join('')}`;
+        const q = app.active, f = q && q.famille && familles.get(q.famille), voisins = f ? f.membres.filter(m => m !== q) : [], oeil = reponse.querySelector('h2 .oeil'), info = reponse.querySelector('h2 .info');
+        cont.innerHTML = `<button class="p-theme" aria-label="Ouvrir le panneau du thème"><span>☰</span> ${propre(q ? q.theme || q.libelle : 'Thème')}</button>${info && !info.hidden ? '<button class="p-info" aria-label="Comprendre ce thème">?</button>' : ''}${voisins.map((m, i) => `<button class="p-voisin" data-v="${i}" title="${propre(m.libelle || '')}">${propre(m.theme || m.libelle)} ›</button>`).join('')}`;
         cont.querySelector('.p-theme').onclick = surPanneau;
+        const bi = cont.querySelector('.p-info'); if (bi) bi.onclick = () => info.click();   // la fenêtre « Comprendre », sans repasser par le panneau
         cont.querySelectorAll('.p-voisin').forEach(b => { b.onclick = () => app.choisir(voisins[+b.dataset.v]); });
         // « Calque » (voir le fond sous l'analyse) : sur le bord droit, à mi-hauteur, au-dessus de la pastille du tracé, là où le pouce le trouve.
         const pil = cont.closest('.pilote'); pil.querySelectorAll(':scope > .p-oeil').forEach(x => x.remove());
