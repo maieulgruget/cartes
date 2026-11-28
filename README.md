@@ -11,6 +11,7 @@ Cartes interactives personnelles, servies par GitHub Pages.
 | Où chercher (Gréolières, Bar-sur-Loup et Sophia Antipolis, champignons) | `greolieres/` | même carte dans le 06, du Cheiron à Sophia, avec le sanguin et les chênaies |
 | Sous voile (de Cerbère à Menton, et la Corse) | `voile/` | vent, vagues dessinées sur la mer, fonds marins et isobathes, ports et abris par ordre d'importance, balises, route avec allures et profil des fonds, voilier en volume |
 | Sous la surface (îles de Lérins, golfe Juan, cap d'Antibes) | `plongee/` | profondeurs, avec le niveau de la mer que l'on fait baisser pour voir le fond à sec, couleurs qui s'éteignent avec la profondeur, poissons selon le milieu, natures de fond, sites (épaves, secs, sites à soi), parcours avec profil du fond, limites des niveaux, conditions et abri à la houle |
+| Sous la baie (baie de Saint-Brieuc, de Binic à Erquy) | `plongee-baie/` | la même carte dans une mer à marée : hauteur d'eau à l'heure choisie (maintenant, basse mer, pleine mer, baie vidée), estran qui découvre, poissons de la Manche selon le milieu, natures de fond, épaves, parcours et limites des niveaux pour la mer du moment, conditions avec la courbe de marée |
 | Mes randos (Corse, puis toute la France) | `corse/` | où je suis passé : tracés drapés sur le relief, profil, pente le long du chemin, altitude, sol et type de chemin (Komoot), survol ; lumière ; itinéraire à préparer |
 
 Photo aérienne : la BD ORTHO courante de l'IGN (20 cm), sous la photo à très haute résolution de l'IGN là où elle existe
@@ -53,6 +54,15 @@ minute sans geste. `relais/plongee_fonds.py` prépare
 RGE ALTI et des natures de fond du Shom ; il se relance pour une autre emprise. Les herbiers de posidonie (inventaire de
 l'OFB, Licence Ouverte) sont lus par le même script : ils teintent l'image du fond, donnent leur milieu aux points
 d'habitat et sont écrits dans `plongee/herbiers.json`.
+
+Le même script prépare un autre secteur (`--secteur=baie` pour `plongee-baie/`) : en Bretagne le fond vient du Litto3D
+Bretagne 2018-2021, dont `relais/plongee_litto3d_bzh.py` ne rapatrie que le modèle à 5 m (archives 7z lues à distance
+par requêtes partielles), et les natures de fond de la carte sédimentaire mondiale du Shom. Dans une mer à marée, la
+carte reçoit `maree` : `socle/maree.js` (le calcul de la carte Marées : niveau de la mer d'Open-Meteo, prolongé par un
+ajustement d'ondes de marée) donne le niveau de l'instant, et toutes les lectures (teintes, profil, limites des niveaux,
+milieux des poissons) se font sous ce niveau. Au bord du secteur, le fond relevé rejoint le relief mondial sur 1,5 km.
+Dans « Conditions », la mer devient claire et unie sous les quatre teintes d'abri, et des crêtes avancent dans le sens
+des vagues (plus serrées quand la période est courte, effacées à l'abri).
 
 `socle/arbres.js` : autour du centre de la vue, il repère chaque cime dans la hauteur du couvert (surface moins sol du
 LiDAR HD) et dresse un arbre à sa hauteur ; le relevé suit la carte. Sur toutes les cartes et tous les fonds par le bouton
