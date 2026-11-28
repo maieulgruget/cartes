@@ -128,6 +128,7 @@
     fond = f;
     for (const k in FONDS) for (const id of FONDS[k].calques) map.setLayoutProperty(id, 'visibility', FONDS[f].calques.includes(id) ? 'visible' : 'none');
     for (const id of NOMS) map.setLayoutProperty(id, 'visibility', FONDS[f].noms ? 'visible' : 'none');
+    if (theme === 'hier') map.setLayoutProperty('photo', 'visibility', 'visible');
   }
   document.getElementById('bFond').onclick = e => {
     e.stopPropagation();
@@ -170,13 +171,15 @@
     hier: {
       nom: 'Il y a 50 ans',
       texte: "<b>Iheya vers 1975</b>, juste après le retour d'Okinawa au Japon — fais glisser pour revenir à aujourd'hui."
-        + '<input type="range" id="curseur" min="0" max="100" value="100" aria-label="Des années 1970 à aujourd\'hui"><div class="bornes"><span>aujourd\'hui</span><span>vers 1975</span></div>',
+        + '<input type="range" id="curseur" min="0" max="100" value="100" aria-label="Des années 1970 à aujourd\'hui"><div class="bornes"><span>photo actuelle</span><span>photo vers 1975</span></div>',
+      // Le curseur va toujours de la photo actuelle à celle des années 1970, quel que soit le fond choisi.
       allumer() {
+        map.setLayoutProperty('photo', 'visibility', 'visible');
         map.setLayoutProperty('hier', 'visibility', 'visible');
         map.setPaintProperty('hier', 'raster-opacity', 1);
         setTimeout(() => { const c = document.getElementById('curseur'); if (c) c.oninput = () => map.setPaintProperty('hier', 'raster-opacity', c.value / 100); });
       },
-      eteindre() { map.setLayoutProperty('hier', 'visibility', 'none'); }
+      eteindre() { map.setLayoutProperty('hier', 'visibility', 'none'); mettreFond(fond); }
     }
   };
   let theme = null;
